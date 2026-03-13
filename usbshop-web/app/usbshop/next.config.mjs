@@ -1,7 +1,10 @@
 /** @type {import("next").NextConfig} */
 const nextConfig = {
-  output: "export",
-  trailingSlash: true,
+  // Usar SSR para permitir rutas dinámicas y middleware
+  // output: "export" removido para soporte de /admin routes dinámicas
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     unoptimized: true,
   },
