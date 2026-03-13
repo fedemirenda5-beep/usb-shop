@@ -1,0 +1,52 @@
+# Python bytecode and virtual environments
+__pycache__/
+*.py[cod]
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.python-version
+.venv/
+venv/
+env/
+
+# Node/Next build artifacts
+node_modules/
+.next/
+out/
+.firebase/
+
+# Build and distribution outputs
+build/
+dist/
+*.log
+
+# Local environment files
+.env
+.env.rtf
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Local databases and backups
+*.db
+*.sqlite*
+*.bak
+Copia de seguridad/
+
+# Large local assets outside source control
+Imagenes prueba/
+Catálogo/
+
+# OS junk
+Thumbs.db
+.DS_Store
+ 
+*.db-wal 
+*.db-shm
+.worktree-merge/
+
+# Large git bundle backups
+*.bundle

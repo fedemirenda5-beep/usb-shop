@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 140">
+  <defs>
+    <linearGradient id="padGlow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9bf83b"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <path d="M42 34h136c14 0 24 10 24 24 0 18-8 30-16 40-8 10-12 24-14 36-2 12-12 20-24 20h-8c-12 0-22-8-24-20-2-12-12-22-24-22s-22 10-24 22c-2 12-12 20-24 20h-8c-12 0-22-8-24-20-2-12-6-26-14-36-8-10-16-22-16-40 0-14 10-24 24-24z" fill="#0b0714" stroke="url(#padGlow)" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="70" cy="60" r="26" fill="#111827"/>
+  <rect x="58" y="58" width="24" height="8" rx="4" fill="url(#padGlow)"/>
+  <rect x="66" y="48" width="8" height="24" rx="4" fill="url(#padGlow)"/>
+  <circle cx="150" cy="60" r="26" fill="#111827"/>
+  <circle cx="144" cy="50" r="7" fill="url(#padGlow)"/>
+  <circle cx="166" cy="44" r="7" fill="url(#padGlow)"/>
+  <circle cx="174" cy="62" r="7" fill="url(#padGlow)"/>
+  <circle cx="152" cy="70" r="7" fill="url(#padGlow)"/>
+  <circle cx="88" cy="96" r="15" fill="#0f172a" stroke="url(#padGlow)" stroke-width="3"/>
+  <circle cx="132" cy="96" r="15" fill="#0f172a" stroke="url(#padGlow)" stroke-width="3"/>
+  <rect x="100" y="64" width="20" height="6" rx="3" fill="url(#padGlow)"/>
+  <rect x="100" y="74" width="20" height="6" rx="3" fill="url(#padGlow)"/>
+</svg>

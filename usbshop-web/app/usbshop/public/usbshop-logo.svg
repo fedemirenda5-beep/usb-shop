@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 240">
+  <defs>
+    <linearGradient id="usbGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9bf83b"/>
+      <stop offset="0.55" stop-color="#c7f99a"/>
+      <stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-50%" width="140%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1200" height="240" fill="none"/>
+  <g filter="url(#softGlow)">
+    <text
+      x="80"
+      y="160"
+      font-family="Space Grotesk, Segoe UI, sans-serif"
+      font-size="140"
+      font-weight="700"
+      letter-spacing="8"
+      fill="url(#usbGlow)"
+    >
+      Usb-Shop
+    </text>
+  </g>
+  <rect x="70" y="182" width="900" height="10" rx="5" fill="#9bf83b" opacity="0.7"/>
+  <rect x="70" y="198" width="900" height="8" rx="4" fill="#a855f7" opacity="0.6"/>
+</svg>

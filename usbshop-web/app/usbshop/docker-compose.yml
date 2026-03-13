@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  web:
+    build: .
+    container_name: usbshop-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://host.docker.internal:8000
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next

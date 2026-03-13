@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /login
+Disallow: /register
+Sitemap: https://usbshop.com.ar/sitemap.xml

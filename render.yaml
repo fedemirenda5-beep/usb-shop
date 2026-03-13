@@ -1,0 +1,38 @@
+databases:
+  - name: usbshop-db
+    databaseName: usbshop
+    user: usbshop
+
+services:
+  - type: web
+    name: usbshop-api
+    env: python
+    region: oregon
+    plan: free
+    rootDir: usbshop-web/api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: CONTROLSTOCK_DATABASE_URL
+        fromDatabase:
+          name: usbshop-db
+          property: connectionString
+      - key: USB_ALLOWED_ORIGINS
+        value: https://YOUR-WEB-DOMAIN
+      - key: USB_AUTH_SECRET
+        value: CHANGE-ME-TO-A-LONG-RANDOM-STRING
+      - key: USB_ORDER_SECRET
+        value: ""
+      - key: USB_SYNC_SECRET
+        value: ""
+
+  - type: web
+    name: usbshop-web
+    env: static
+    plan: free
+    rootDir: usbshop-web/app/usbshop
+    buildCommand: npm install && npm run build
+    staticPublishPath: out
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://YOUR-API-DOMAIN
