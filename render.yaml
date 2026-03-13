@@ -18,9 +18,9 @@ services:
           name: usbshop-db
           property: connectionString
       - key: USB_ALLOWED_ORIGINS
-        value: https://YOUR-WEB-DOMAIN
+        value: https://www.usbshop.com.ar
       - key: USB_AUTH_SECRET
-        value: CHANGE-ME-TO-A-LONG-RANDOM-STRING
+        value: usbshop2026securekey1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7
       - key: USB_ORDER_SECRET
         value: ""
       - key: USB_SYNC_SECRET
@@ -35,4 +35,4 @@ services:
     staticPublishPath: out
     envVars:
       - key: NEXT_PUBLIC_API_BASE_URL
-        value: https://YOUR-API-DOMAIN
+        value: https://api.usbshop.com.ar

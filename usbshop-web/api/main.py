@@ -1423,7 +1423,6 @@ def set_featured(
 
 @app.post("/auth/login")
 def auth_login(request: Request, response: Response, payload: dict = Body(...)) -> dict:
-    _require_local(request)
     username = str(payload.get("username") or "").strip()
     password = str(payload.get("password") or "")
     if not username or not password:
@@ -1460,7 +1459,6 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
 
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
-    _require_local(request)
     if response is not None:
         response.delete_cookie(SESSION_COOKIE)
     return {"status": "ok"}
