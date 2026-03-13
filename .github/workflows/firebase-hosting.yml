@@ -3,7 +3,7 @@ name: Deploy Firebase Hosting
 on:
   push:
     branches:
-      - master
+      - release
       - main
       - "deploy-*"
     paths:
