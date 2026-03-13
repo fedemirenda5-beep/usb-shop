@@ -1,10 +1,13 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { ProductForm } from '../components/ProductForm';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 export default function NuevaProductoPage() {
+  const router = useRouter();
+
   const handleSubmit = async (data: any) => {
     const res = await fetch(`${API_BASE}/admin/products`, {
       method: 'POST',
@@ -17,6 +20,9 @@ export default function NuevaProductoPage() {
       const error = await res.json();
       throw new Error(error.detail || 'Error creando producto');
     }
+
+    // Redirect after success
+    router.push('/admin/productos');
   };
 
   return (

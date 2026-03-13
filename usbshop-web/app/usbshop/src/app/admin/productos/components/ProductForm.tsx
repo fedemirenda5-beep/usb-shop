@@ -69,7 +69,6 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
       }
 
       await onSubmit(formData);
-      router.push('/admin/productos');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando producto');
     } finally {

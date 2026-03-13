@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import Link from 'next/link';
+import { ProductForm } from './components/ProductForm';
 import styles from './productos.module.css';
 
 interface Product {
@@ -21,7 +23,11 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
 export default function ProductosPage() {
   const { user } = useAdminSession();
+  const searchParams = useSearchParams();
+  const editId = searchParams?.get('edit');
+  
   const [products, setProducts] = useState<Product[]>([]);
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -56,6 +62,16 @@ export default function ProductosPage() {
   useEffect(() => {
     loadProducts();
   }, [offset, limit]);
+
+  // Cargar producto cuando se activa edit mode
+  useEffect(() => {
+    if (editId && products.length > 0) {
+      const product = products.find((p) => p.id === parseInt(editId));
+      setEditProduct(product || null);
+    } else {
+      setEditProduct(null);
+    }
+  }, [editId, products]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,7 +202,7 @@ export default function ProductosPage() {
                   </td>
                   <td className={styles.actions}>
                     <Link
-                      href={`/admin/productos/${product.id}`}
+                      href={`/admin/productos?edit=${product.id}`}
                       className={styles.btnEdit}
                     >
                       ✏️
@@ -225,6 +241,41 @@ export default function ProductosPage() {
           >
             Siguiente →
           </button>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editProduct && (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <button
+              className={styles.modalClose}
+              onClick={() => window.history.pushState(null, '', '/admin/productos')}
+            >
+              ✕
+            </button>
+            <ProductForm
+              initialData={editProduct}
+              title="Editar Producto"
+              onSubmit={async (data) => {
+                const res = await fetch(`${API_BASE}/admin/products/${editProduct.id}`, {
+                  method: 'PUT',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data),
+                });
+
+                if (!res.ok) {
+                  const error = await res.json();
+                  throw new Error(error.detail || 'Error actualizando producto');
+                }
+                
+                // Cerrar modal y recargar
+                window.history.pushState(null, '', '/admin/productos');
+                loadProducts();
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
