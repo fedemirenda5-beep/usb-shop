@@ -34,6 +34,12 @@ jobs:
       - name: Install deps
         run: npm install
 
+      - name: Generate runtime config
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || secrets.NEXT_PUBLIC_API_BASE_URL }}
+        run: |
+          echo "{\"apiBaseUrl\": \"${NEXT_PUBLIC_API_BASE_URL}\"}" > public/usbshop-config.json
+
       - name: Build static export
         env:
           NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL || secrets.NEXT_PUBLIC_API_BASE_URL }}
@@ -41,6 +47,7 @@ jobs:
           NEXT_PUBLIC_SYNC_SECRET: ${{ vars.NEXT_PUBLIC_SYNC_SECRET || secrets.NEXT_PUBLIC_SYNC_SECRET }}
           NEXT_PUBLIC_APP_VERSION: ${{ github.sha }}
         run: npm run build
+
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
