@@ -391,30 +391,22 @@ def _auth_secret() -> str:
 
 
 def _hash_password(password: str) -> str:
-    secret = _auth_secret().encode("utf-8")
-    data = f"{password}".encode("utf-8")
-    return hashlib.sha256(secret + b":" + data).hexdigest()
+    # Sin hashing por ahora: comparación directa
+    return password
 
 
 def _sign_session(payload: dict) -> str:
-    secret = _auth_secret().encode("utf-8")
+    # Token simple base64 sin firma (sin USB_AUTH_SECRET)
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    encoded = base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
-    signature = hmac.new(secret, encoded.encode("utf-8"), hashlib.sha256).hexdigest()
-    return f"{encoded}.{signature}"
+    return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
 
 
 def _verify_session(token: str) -> Optional[dict]:
-    if not token or "." not in token:
+    if not token:
         return None
-    encoded, signature = token.rsplit(".", 1)
-    secret = _auth_secret().encode("utf-8")
-    expected = hmac.new(secret, encoded.encode("utf-8"), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, signature):
-        return None
-    padding = "=" * (-len(encoded) % 4)
+    padding = "=" * (-len(token) % 4)
     try:
-        raw = base64.urlsafe_b64decode(encoded + padding)
+        raw = base64.urlsafe_b64decode(token + padding)
         payload = json.loads(raw.decode("utf-8"))
     except Exception:
         return None
