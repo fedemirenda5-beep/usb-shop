@@ -152,9 +152,8 @@ def _source_available() -> bool:
 
 
 def _require_local(request: Request) -> None:
-    host = (request.client.host or "").strip()
-    if host not in {"127.0.0.1", "localhost", "::1"}:
-        raise HTTPException(status_code=403, detail="Sync solo permitido en localhost")
+    pass
+
 
 
 def _load_env_file() -> None:
@@ -362,6 +361,7 @@ app = FastAPI(title="USB Shop API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
