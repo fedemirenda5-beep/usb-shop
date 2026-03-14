@@ -1174,8 +1174,9 @@ def admin_list_orders(
     status: str = "PENDING",
     limit: int = 200,
     include_items: bool = True,
+    session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> list[dict]:
-    _require_sync_token(request)
+    _require_admin(session)
     status_value = (status or "PENDING").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED"}:
         status_value = "PENDING"
@@ -1263,8 +1264,9 @@ def admin_update_order_status(
     order_id: int,
     request: Request,
     payload: OrderStatusPayload = Body(...),
+    session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
-    _require_sync_token(request)
+    _require_admin(session)
     status_value = (payload.status or "").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "DELETED"}:
         raise HTTPException(status_code=400, detail="Estado invalido")
