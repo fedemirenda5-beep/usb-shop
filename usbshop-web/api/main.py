@@ -1533,7 +1533,7 @@ def product_image(
 @app.get("/admin/products")
 def admin_list_products(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
     category: Optional[str] = None,
     limit: int = 50,
@@ -1605,7 +1605,7 @@ def admin_list_products(
 @app.post("/admin/products")
 def admin_create_product(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Crea nuevo producto. Requiere sesión admin."""
@@ -1650,7 +1650,7 @@ def admin_create_product(
 def admin_update_product(
     product_id: int,
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Actualiza producto. Requiere sesión admin."""
@@ -1704,7 +1704,7 @@ def admin_update_product(
 async def admin_upload_product_image(
     product_id: int,
     file: UploadFile = File(...),
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     """Sube imagen del producto a Supabase Storage y actualiza image_path."""
     _require_admin(session_token)
@@ -1756,7 +1756,7 @@ async def admin_upload_product_image(
 def admin_delete_product(
     product_id: int,
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     """Elimina (soft delete) producto. Requiere sesión admin."""
     _require_admin(session_token)
@@ -1789,7 +1789,7 @@ def admin_delete_product(
 @app.get("/admin/customers")
 def admin_list_customers(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
@@ -1849,7 +1849,7 @@ def admin_list_customers(
 @app.get("/admin/orders-with-items")
 def admin_list_orders_detailed(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     status: str = "PENDING",
     limit: int = 50,
 ) -> list[dict]:
@@ -1920,7 +1920,7 @@ def admin_list_orders_detailed(
 @app.get("/admin/sales")
 def admin_list_sales(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     limit: int = 50,
@@ -1975,7 +1975,7 @@ def admin_list_sales(
 @app.post("/admin/sales")
 def admin_create_sale(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Registra nueva venta. Requiere sesión admin."""
@@ -2030,7 +2030,7 @@ def admin_create_sale(
 @app.get("/admin/purchases")
 def admin_list_purchases(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     limit: int = 50,
@@ -2086,7 +2086,7 @@ def admin_list_purchases(
 @app.post("/admin/purchases")
 def admin_create_purchase(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Registra nueva compra. Requiere sesión admin."""
@@ -2146,7 +2146,7 @@ def admin_create_purchase(
 @app.get("/admin/categories")
 def admin_list_categories(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> list[dict]:
     """Lista categorías. Requiere sesión admin."""
     _require_admin(session_token)
@@ -2180,7 +2180,7 @@ def admin_list_categories(
 @app.post("/admin/categories")
 def admin_create_category(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Crea nueva categoría. Requiere sesión admin."""
@@ -2236,7 +2236,7 @@ def admin_create_category(
 def admin_update_category(
     category_id: int,
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Actualiza categoría. Requiere sesión admin."""
@@ -2281,7 +2281,7 @@ def admin_update_category(
 def admin_delete_category(
     category_id: int,
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     """Elimina categoría. Requiere sesión admin."""
     _require_admin(session_token)
@@ -2324,7 +2324,7 @@ def admin_delete_category(
 @app.get("/admin/expenses")
 def admin_list_expenses(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     limit: int = 50,
@@ -2380,7 +2380,7 @@ def admin_list_expenses(
 @app.post("/admin/expenses")
 def admin_create_expense(
     request: Request,
-    session_token: Optional[str] = Cookie(default=None),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
     """Registra nuevo gasto. Requiere sesión admin."""

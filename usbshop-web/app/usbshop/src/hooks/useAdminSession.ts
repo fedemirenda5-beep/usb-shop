@@ -85,7 +85,7 @@ export function useAdminSession() {
       console.error('Error during logout:', err);
     } finally {
       setUser(null);
-      router.push('/(auth)/login');
+      router.push('/login');
     }
   }, [router]);
 

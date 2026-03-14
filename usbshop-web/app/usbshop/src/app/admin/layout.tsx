@@ -17,7 +17,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   // Redirigir si no está autenticado
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/(auth)/login');
+      router.push('/login');
     }
   }, [user, isLoading, router]);
 
