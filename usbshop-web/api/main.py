@@ -1452,7 +1452,8 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
             value=token,
             max_age=SESSION_TTL_SECONDS,
             httponly=True,
-            samesite="lax",
+            samesite="none",
+            secure=True,
         )
     return {"username": row["username"], "role": row["role"]}
 
@@ -1460,7 +1461,7 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
     if response is not None:
-        response.delete_cookie(SESSION_COOKIE)
+        response.delete_cookie(SESSION_COOKIE, samesite="none", secure=True)
     return {"status": "ok"}
 
 
