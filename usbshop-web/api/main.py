@@ -20,7 +20,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import Body, Cookie, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Body, Cookie, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -61,6 +61,9 @@ SMTP_USER = (os.getenv("USB_SMTP_USER") or "").strip()
 SMTP_PASSWORD = (os.getenv("USB_SMTP_PASSWORD") or "").strip()
 SMTP_FROM = (os.getenv("USB_SMTP_FROM") or "").strip()
 SMTP_USE_TLS = os.getenv("USB_SMTP_USE_TLS", "1").strip() != "0"
+SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+SUPABASE_SERVICE_KEY = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip()
+SUPABASE_STORAGE_BUCKET = (os.getenv("SUPABASE_STORAGE_BUCKET") or "Catalogo").strip()
 MAIL_PROVIDER = (os.getenv("USB_MAIL_PROVIDER") or "mailgun").strip().lower()
 MAIL_FROM = (
     os.getenv("USB_MAIL_FROM")
@@ -1695,6 +1698,58 @@ def admin_update_product(
         return {"id": product_id, "message": "Producto actualizado"}
     finally:
         conn.close()
+
+
+@app.post("/admin/products/{product_id}/image")
+async def admin_upload_product_image(
+    product_id: int,
+    file: UploadFile = File(...),
+    session_token: Optional[str] = Cookie(default=None),
+) -> dict:
+    """Sube imagen del producto a Supabase Storage y actualiza image_path."""
+    _require_admin(session_token)
+
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        raise HTTPException(status_code=500, detail="Supabase Storage no configurado")
+
+    # Leer contenido del archivo
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Archivo vacío")
+
+    # Determinar extensión y content type
+    filename = file.filename or f"product_{product_id}.jpg"
+    safe_filename = filename.replace(" ", "_")
+    content_type = file.content_type or "image/jpeg"
+
+    # Subir a Supabase Storage via REST API
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_STORAGE_BUCKET}/{safe_filename}"
+    req = Request(upload_url, data=content)
+    req.add_header("Authorization", f"Bearer {SUPABASE_SERVICE_KEY}")
+    req.add_header("Content-Type", content_type)
+    req.add_header("x-upsert", "true")
+    req.get_method = lambda: "POST"
+
+    try:
+        urlopen(req, timeout=30)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error subiendo imagen: {exc}") from exc
+
+    # Construir URL pública
+    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{safe_filename}"
+
+    # Actualizar image_path en la DB
+    conn = _connect()
+    try:
+        conn.execute(
+            "UPDATE products SET image_path = ? WHERE id = ?",
+            (public_url, product_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"image_url": public_url, "product_id": product_id}
 
 
 @app.delete("/admin/products/{product_id}")
