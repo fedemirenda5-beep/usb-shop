@@ -1,6 +1,6 @@
 .container {
   padding: 2rem;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -14,18 +14,13 @@
   margin-bottom: 0.5rem;
 }
 
-.header p {
-  color: #666;
-}
-
 .searchBar {
   margin-bottom: 2rem;
-  display: flex;
-  gap: 1rem;
 }
 
 .searchInput {
-  flex: 1;
+  width: 100%;
+  max-width: 500px;
   padding: 0.75rem 1rem;
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -41,8 +36,8 @@
 .tableContainer {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  overflow: auto;
 }
 
 .table {
@@ -56,9 +51,8 @@
   background: #f8fafc;
   color: #64748b;
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.025em;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -68,9 +62,10 @@
   vertical-align: middle;
 }
 
-.customerInfo {
+.customerInfo, .taxInfo, .locationInfo, .statsInfo {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .customerName {
@@ -78,55 +73,143 @@
   color: #1a1a1a;
 }
 
-.customerEmail {
-  font-size: 0.875rem;
+.customerEmail, .customerPhone, .cuit, .taxCondition, .locality, .address {
+  font-size: 0.8125rem;
   color: #64748b;
-}
-
-.phone {
-  color: #475569;
 }
 
 .badge {
   display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.625rem;
-  border-radius: 9999px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
   font-size: 0.75rem;
-  font-weight: 500;
-  background: #eff6ff;
-  color: #1e40af;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #475569;
+  width: fit-content;
 }
 
 .total {
-  font-weight: 600;
+  font-weight: 700;
   color: #059669;
 }
 
-.date {
-  font-size: 0.875rem;
-  color: #64748b;
+.actions {
+  display: flex;
+  gap: 0.75rem;
 }
 
-.loading, .empty, .error {
-  padding: 3rem;
-  text-align: center;
-  color: #64748b;
+.actionsHeader {
+  width: 100px;
 }
 
-.error {
-  color: #dc2626;
-  background: #fef2f2;
-  border-radius: 8px;
+.editBtn, .ordersBtn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editBtn:hover {
+  background: #eff6ff;
+  border-color: #3b82f6;
+}
+
+.ordersBtn:hover {
+  background: #f0fdf4;
+  border-color: #22c55e;
+}
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 600px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal h2 {
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+}
+
+.formGroup {
   margin-bottom: 1rem;
-  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-@media (max-width: 768px) {
-  .table th:nth-child(3),
-  .table td:nth-child(3),
-  .table th:nth-child(5),
-  .table td:nth-child(5) {
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.formGroup label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.formGroup input, .formGroup select {
+  padding: 0.625rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
+.modalActions {
+  margin-top: 2rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.modalActions button {
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #ddd;
+  background: white;
+}
+
+.saveBtn {
+  background: #3b82f6 !important;
+  color: white !important;
+  border-color: #2563eb !important;
+}
+
+.saveBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1024px) {
+  .taxInfo, .locationInfo {
     display: none;
   }
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './pedidos.module.css';
 
@@ -39,24 +40,28 @@ const statusOptions = [
   { value: 'CANCELLED', label: 'Cancelado' },
 ];
 
-export default function PedidosPage() {
+function PedidosContent() {
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+
   const { user } = useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('PENDING');
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
-  const loadOrders = async (status: string) => {
+  const loadOrders = async (status: string, q = '') => {
     try {
       setLoading(true);
       setError('');
 
-      const res = await fetch(
-        `${API_BASE}/admin/orders?status=${status}&limit=200&include_items=true`,
-        { credentials: 'include' }
-      );
+      let url = `${API_BASE}/admin/orders?status=${status}&limit=200&include_items=true`;
+      if (q) url += `&q=${encodeURIComponent(q)}`;
+
+      const res = await fetch(url, { credentials: 'include' });
 
       if (!res.ok) throw new Error('No se pudieron cargar los pedidos');
 
@@ -70,8 +75,11 @@ export default function PedidosPage() {
   };
 
   useEffect(() => {
-    loadOrders(selectedStatus);
-  }, [selectedStatus]);
+    const timer = setTimeout(() => {
+      loadOrders(selectedStatus, searchTerm);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [selectedStatus, searchTerm]);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     try {
@@ -204,17 +212,27 @@ export default function PedidosPage() {
 
       {/* Status Filter */}
       <div className={styles.filterBar}>
-        {statusOptions.map((opt) => (
-          <button
-            key={opt.value}
-            className={`${styles.filterBtn} ${
-              selectedStatus === opt.value ? styles.active : ''
-            }`}
-            onClick={() => setSelectedStatus(opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
+        <div className={styles.statusFilters}>
+          {statusOptions.map((opt) => (
+            <button
+              key={opt.value}
+              className={`${styles.filterBtn} ${selectedStatus === opt.value ? styles.active : ''}`}
+              onClick={() => setSelectedStatus(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.searchBox}>
+          <input
+            type="text"
+            placeholder="Buscar por cliente o ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className={styles.searchInput}
+          />
+        </div>
       </div>
 
       {/* Orders Table */}
@@ -361,5 +379,12 @@ export default function PedidosPage() {
         )}
       </div>
     </div>
+  );
+}
+export default function PedidosPage() {
+  return (
+    <Suspense fallback={<div>Cargando pedidos...</div>}>
+      <PedidosContent />
+    </Suspense>
   );
 }

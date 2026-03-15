@@ -5,13 +5,18 @@ import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './clientes.module.css';
 
 interface Customer {
+  id: number;
   name: string;
   email: string;
   phone: string;
+  locality: string;
+  address: string;
+  tax_condition: string;
+  cuit: string;
   order_count: number;
   total_spent: number;
-  first_order: string;
   last_order: string;
+  created_at: string;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
@@ -22,6 +27,8 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadCustomers = async (query = '') => {
     try {
@@ -59,6 +66,30 @@ export default function ClientesPage() {
     });
   };
 
+  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editingCustomer) return;
+
+    try {
+      setIsSaving(true);
+      const res = await fetch(`${API_BASE}/admin/customers/${editingCustomer.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingCustomer),
+        credentials: 'include'
+      });
+
+      if (!res.ok) throw new Error('Error al actualizar cliente');
+      
+      setEditingCustomer(null);
+      loadCustomers(search);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -88,32 +119,55 @@ export default function ClientesPage() {
             <thead>
               <tr>
                 <th>Cliente</th>
-                <th>Teléfono</th>
-                <th>Pedidos</th>
-                <th>Total Gastado</th>
-                <th>Último Pedido</th>
+                <th>CUIT / Cond. IVA</th>
+                <th>Ubicación</th>
+                <th>Web Stats</th>
+                <th className={styles.actionsHeader}>Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((customer, idx) => (
-                <tr key={customer.email || idx}>
+              {customers.map((customer) => (
+                <tr key={customer.id}>
                   <td>
                     <div className={styles.customerInfo}>
                       <span className={styles.customerName}>{customer.name}</span>
                       <span className={styles.customerEmail}>{customer.email}</span>
+                      <span className={styles.customerPhone}>{customer.phone}</span>
                     </div>
                   </td>
                   <td>
-                    <span className={styles.phone}>{customer.phone || '-'}</span>
+                    <div className={styles.taxInfo}>
+                      <span className={styles.cuit}>{customer.cuit || 'Sin CUIT'}</span>
+                      <span className={styles.taxCondition}>{customer.tax_condition}</span>
+                    </div>
                   </td>
                   <td>
-                    <span className={styles.badge}>{customer.order_count}</span>
+                    <div className={styles.locationInfo}>
+                      <span className={styles.locality}>{customer.locality || '-'}</span>
+                      <span className={styles.address}>{customer.address}</span>
+                    </div>
                   </td>
                   <td>
-                    <span className={styles.total}>${customer.total_spent.toFixed(2)}</span>
+                    <div className={styles.statsInfo}>
+                      <span className={styles.badge}>{customer.order_count} ped.</span>
+                      <span className={styles.total}>${customer.total_spent.toFixed(2)}</span>
+                    </div>
                   </td>
-                  <td>
-                    <span className={styles.date}>{formatDate(customer.last_order)}</span>
+                  <td className={styles.actions}>
+                    <button 
+                      onClick={() => setEditingCustomer(customer)}
+                      className={styles.editBtn}
+                      title="Editar Datos"
+                    >
+                      ✏️
+                    </button>
+                    <a 
+                      href={`/admin/pedidos?search=${customer.email}`}
+                      className={styles.ordersBtn}
+                      title="Ver sus pedidos"
+                    >
+                      📦
+                    </a>
                   </td>
                 </tr>
               ))}
@@ -121,6 +175,91 @@ export default function ClientesPage() {
           </table>
         )}
       </div>
+
+      {editingCustomer && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <h2>Editar Cliente</h2>
+            <form onSubmit={handleUpdate}>
+              <div className={styles.formGroup}>
+                <label>Nombre</label>
+                <input 
+                  type="text" 
+                  value={editingCustomer.name} 
+                  onChange={e => setEditingCustomer({...editingCustomer, name: e.target.value})}
+                  required
+                />
+              </div>
+              <div className={styles.formGrid}>
+                <div className={styles.formGroup}>
+                  <label>Email</label>
+                  <input 
+                    type="email" 
+                    value={editingCustomer.email} 
+                    onChange={e => setEditingCustomer({...editingCustomer, email: e.target.value})}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Teléfono</label>
+                  <input 
+                    type="text" 
+                    value={editingCustomer.phone} 
+                    onChange={e => setEditingCustomer({...editingCustomer, phone: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div className={styles.formGrid}>
+                <div className={styles.formGroup}>
+                  <label>CUIT</label>
+                  <input 
+                    type="text" 
+                    value={editingCustomer.cuit} 
+                    onChange={e => setEditingCustomer({...editingCustomer, cuit: e.target.value})}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Condición IVA</label>
+                  <select 
+                    value={editingCustomer.tax_condition}
+                    onChange={e => setEditingCustomer({...editingCustomer, tax_condition: e.target.value})}
+                  >
+                    <option value="CONSUMIDOR_FINAL">Consumidor Final</option>
+                    <option value="RESPONSABLE_INSCRIPTO">Responsable Inscripto</option>
+                    <option value="MONOTRIBUTO">Monotributo</option>
+                    <option value="EXENTO">Exento</option>
+                  </select>
+                </div>
+              </div>
+              <div className={styles.formGrid}>
+                <div className={styles.formGroup}>
+                  <label>Localidad</label>
+                  <input 
+                    type="text" 
+                    value={editingCustomer.locality} 
+                    onChange={e => setEditingCustomer({...editingCustomer, locality: e.target.value})}
+                  />
+                </div>
+                <div className={styles.formGroup}>
+                  <label>Dirección</label>
+                  <input 
+                    type="text" 
+                    value={editingCustomer.address} 
+                    onChange={e => setEditingCustomer({...editingCustomer, address: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" onClick={() => setEditingCustomer(null)} disabled={isSaving}>
+                  Cancelar
+                </button>
+                <button type="submit" className={styles.saveBtn} disabled={isSaving}>
+                  {isSaving ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1794,52 +1794,100 @@ def admin_list_customers(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    """Lista clientes únicos de pedidos web. Requiere sesión admin."""
+    """Lista clientes de la tabla oficial cruzados con pedidos web. Requiere sesión admin."""
     _require_admin(session_token)
     
     conn = _connect()
     try:
+        _ensure_web_order_tables(conn)
         conditions = []
         params: list = []
         
         if q:
             conditions.append(
-                "(customer_name LIKE ? OR customer_email LIKE ? OR customer_phone LIKE ?)"
+                "(c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.cuit LIKE ?)"
             )
             like = f"%{q}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, like])
         
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         
-        rows = conn.execute(
-            f"""
+        # SQL robusto para Postgres y SQLite (usando agregados para las columnas no agrupadas)
+        query = f"""
             SELECT 
-                   customer_name, customer_email, customer_phone,
-                   COUNT(*) as order_count,
-                   SUM(total) as total_spent,
-                   MIN(created_at) as first_order,
-                   MAX(created_at) as last_order
-            FROM web_orders
+                c.id, c.name, c.email, c.phone, 
+                c.created_at,
+                COALESCE(c.locality, '') as locality,
+                COALESCE(c.address, '') as address,
+                COALESCE(c.tax_condition, 'CONSUMIDOR_FINAL') as tax_condition,
+                COALESCE(c.cuit, '') as cuit,
+                COALESCE(w.order_count, 0) as web_order_count,
+                COALESCE(w.total_spent, 0) as web_total_spent,
+                w.last_order
+            FROM customers c
+            LEFT JOIN (
+                SELECT 
+                    customer_email,
+                    COUNT(*) as order_count,
+                    SUM(total) as total_spent,
+                    MAX(created_at) as last_order
+                FROM web_orders
+                GROUP BY customer_email
+            ) w ON c.email = w.customer_email
             {where_clause}
-            GROUP BY customer_email
-            ORDER BY last_order DESC
+            ORDER BY c.name ASC
             LIMIT ? OFFSET ?
-            """,
-            params + [limit, offset],
-        ).fetchall()
+        """
+        
+        rows = conn.execute(query, params + [limit, offset]).fetchall()
         
         return [
             {
-                "name": row["customer_name"] or "Sin nombre",
-                "email": row["customer_email"],
-                "phone": row["customer_phone"],
-                "order_count": int(row["order_count"]),
-                "total_spent": float(row["total_spent"] or 0.0),
-                "first_order": row["first_order"],
-                "last_order": row["last_order"],
+                "id": row["id"],
+                "name": row["name"],
+                "email": row["email"],
+                "phone": row["phone"],
+                "locality": row["locality"],
+                "address": row["address"],
+                "tax_condition": row["tax_condition"],
+                "cuit": row["cuit"],
+                "order_count": int(row["web_order_count"]),
+                "total_spent": float(row["web_total_spent"]),
+                "last_order": str(row["last_order"]) if row["last_order"] else None,
+                "created_at": str(row["created_at"])
             }
             for row in rows
         ]
+    finally:
+        conn.close()
+
+@app.put("/admin/customers/{customer_id}")
+def admin_update_customer(
+    customer_id: int,
+    data: dict = Body(...),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+):
+    """Actualiza datos de un cliente. Requiere sesión admin."""
+    _require_admin(session_token)
+    
+    fields = ["name", "email", "phone", "locality", "address", "tax_condition", "cuit"]
+    updates = []
+    params = []
+    
+    for field in fields:
+        if field in data:
+            updates.append(f"{field} = ?")
+            params.append(data[field])
+            
+    if not updates:
+        return {"message": "Nada que actualizar"}
+        
+    conn = _connect()
+    try:
+        query = f"UPDATE customers SET {', '.join(updates)} WHERE id = ?"
+        conn.execute(query, params + [customer_id])
+        conn.commit()
+        return {"message": "Cliente actualizado correctamente"}
     finally:
         conn.close()
 
