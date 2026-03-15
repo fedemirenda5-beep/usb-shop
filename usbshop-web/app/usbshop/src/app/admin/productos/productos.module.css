@@ -152,6 +152,26 @@
   color: var(--purple);
 }
 
+.productThumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--bg-soft);
+  background: #f8fafc;
+}
+
+.noImage {
+  display: inline-block;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .inStock {
   display: inline-block;
   padding: 4px 8px;

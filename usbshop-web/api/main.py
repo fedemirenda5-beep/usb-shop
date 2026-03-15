@@ -12,7 +12,7 @@ import time
 import smtplib
 import threading
 from email.message import EmailMessage
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional, List, Any
@@ -20,7 +20,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from fastapi import Body, Cookie, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
+from fastapi import Body, Cookie, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -39,6 +39,7 @@ except Exception:  # pragma: no cover - optional thumbnail support
     ImageOps = None
 
 BASE_DIR = Path(__file__).resolve().parent
+CATALOG_ASSETS_DIR = BASE_DIR / "catalog_assets"
 DB_PATH = Path(os.getenv("CONTROLSTOCK_DB", str(BASE_DIR / "data" / "controlStock.db")))
 SOURCE_DB_PATH = Path(
     os.getenv("CONTROLSTOCK_SOURCE_DB", r"C:\Users\Fede\ControlStock\documentos\controlStock.db")
@@ -61,9 +62,6 @@ SMTP_USER = (os.getenv("USB_SMTP_USER") or "").strip()
 SMTP_PASSWORD = (os.getenv("USB_SMTP_PASSWORD") or "").strip()
 SMTP_FROM = (os.getenv("USB_SMTP_FROM") or "").strip()
 SMTP_USE_TLS = os.getenv("USB_SMTP_USE_TLS", "1").strip() != "0"
-SUPABASE_URL = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
-SUPABASE_SERVICE_KEY = (os.getenv("SUPABASE_SERVICE_KEY") or "").strip()
-SUPABASE_STORAGE_BUCKET = (os.getenv("SUPABASE_STORAGE_BUCKET") or "Catalogo").strip()
 MAIL_PROVIDER = (os.getenv("USB_MAIL_PROVIDER") or "mailgun").strip().lower()
 MAIL_FROM = (
     os.getenv("USB_MAIL_FROM")
@@ -155,8 +153,9 @@ def _source_available() -> bool:
 
 
 def _require_local(request: Request) -> None:
-    pass
-
+    host = (request.client.host or "").strip()
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        raise HTTPException(status_code=403, detail="Sync solo permitido en localhost")
 
 
 def _load_env_file() -> None:
@@ -350,8 +349,25 @@ def _send_order_email_async(order_id: int, total: float, customer: dict, items: 
 def _allowed_origins() -> list[str]:
     raw = os.getenv("USB_ALLOWED_ORIGINS", "").strip()
     if not raw:
-        return ["http://localhost:3000", "http://127.0.0.1:3000"]
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "https://usbshop.com.ar",
+            "https://www.usbshop.com.ar",
+        ]
+    origins = {origin.strip() for origin in raw.split(",") if origin.strip()}
+    if "https://www.usbshop.com.ar" in origins:
+        origins.add("https://usbshop.com.ar")
+    if "https://usbshop.com.ar" in origins:
+        origins.add("https://www.usbshop.com.ar")
+    return sorted(origins)
+
+
+def _allowed_origin_regex() -> str:
+    raw = os.getenv("USB_ALLOWED_ORIGIN_REGEX", "").strip()
+    if raw:
+        return raw
+    return r"^https://([a-z0-9-]+\.)*usbshop\.com\.ar$"
 
 
 _load_env_file()
@@ -364,7 +380,7 @@ app = FastAPI(title="USB Shop API", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
-    allow_origin_regex=".*",
+    allow_origin_regex=_allowed_origin_regex(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -394,28 +410,35 @@ def _auth_secret() -> str:
 
 
 def _hash_password(password: str) -> str:
-    # Sin hashing por ahora: comparación directa
-    return password
+    secret = _auth_secret().encode("utf-8")
+    data = f"{password}".encode("utf-8")
+    return hashlib.sha256(secret + b":" + data).hexdigest()
 
 
 def _sign_session(payload: dict) -> str:
-    # Token simple base64 sin firma (sin USB_AUTH_SECRET)
+    secret = _auth_secret().encode("utf-8")
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
+    encoded = base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
+    signature = hmac.new(secret, encoded.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{encoded}.{signature}"
 
 
 def _verify_session(token: str) -> Optional[dict]:
-    if not token:
+    if not token or "." not in token:
         return None
-    padding = "=" * (-len(token) % 4)
+    encoded, signature = token.rsplit(".", 1)
+    secret = _auth_secret().encode("utf-8")
+    expected = hmac.new(secret, encoded.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        return None
+    padding = "=" * (-len(encoded) % 4)
     try:
-        raw = base64.urlsafe_b64decode(token + padding)
+        raw = base64.urlsafe_b64decode(encoded + padding)
         payload = json.loads(raw.decode("utf-8"))
     except Exception:
         return None
     exp = payload.get("exp")
     if not isinstance(exp, (int, float)) or exp < time.time():
-        LOGGER.warning("Sesion expirada o exp invalido: %s", exp)
         return None
     return payload
 
@@ -457,6 +480,36 @@ def _ensure_users_table(conn: DBConn) -> None:
     conn.commit()
 
 
+def _ensure_bootstrap_admin(conn: DBConn) -> None:
+    username = (os.getenv("USB_ADMIN_USERNAME") or "").strip()
+    password = os.getenv("USB_ADMIN_PASSWORD") or ""
+    if not username or not password:
+        return
+    password_hash = _hash_password(password)
+    row = conn.execute(
+        "SELECT id FROM users WHERE username = ?",
+        (username,),
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            """
+            INSERT INTO users (username, password_hash, role, active)
+            VALUES (?, ?, ?, 1)
+            """,
+            (username, password_hash, "admin"),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, role = ?, active = 1
+            WHERE username = ?
+            """,
+            (password_hash, "admin", username),
+        )
+    conn.commit()
+
+
 def _pick_price(row: Any) -> float:
     price_list_1 = row["price_list_1"] or 0
     price = row["price"] or 0
@@ -480,15 +533,21 @@ def _as_existing_local_image_path(image_value: Optional[str]) -> Optional[Path]:
     raw = str(image_value).strip()
     if not raw:
         return None
+    candidates: list[Path] = []
     try:
-        path = Path(raw).expanduser()
+        expanded = Path(raw).expanduser()
+        candidates.append(expanded)
+        if not expanded.is_absolute():
+            candidates.append(BASE_DIR / expanded)
+            candidates.append(CATALOG_ASSETS_DIR / expanded.name)
     except Exception:
         return None
-    try:
-        if path.exists() and path.is_file():
-            return path
-    except OSError:
-        return None
+    for path in candidates:
+        try:
+            if path.exists() and path.is_file():
+                return path
+        except OSError:
+            continue
     return None
 
 
@@ -574,22 +633,6 @@ def _has_column(conn: DBConn, table: str, column: str) -> bool:
     return any(row[1] == column for row in info)
 
 
-
-SCHEMA_CACHE: dict[str, bool] = {}
-
-def _get_has_column(conn: DBConn, table: str, column: str) -> bool:
-    key = f"col_{table}_{column}_{'pg' if DB_IS_POSTGRES else 'sl'}"
-    if key not in SCHEMA_CACHE:
-        SCHEMA_CACHE[key] = _has_column(conn, table, column)
-    return SCHEMA_CACHE[key]
-
-def _get_has_table(conn: DBConn, table: str) -> bool:
-    key = f"tab_{table}_{'pg' if DB_IS_POSTGRES else 'sl'}"
-    if key not in SCHEMA_CACHE:
-        SCHEMA_CACHE[key] = _has_table(conn, table)
-    return SCHEMA_CACHE[key]
-
-
 def _has_table(conn: DBConn, table: str) -> bool:
     if DB_IS_POSTGRES:
         row = conn.execute(
@@ -604,10 +647,20 @@ def _has_table(conn: DBConn, table: str) -> bool:
     return row is not None
 
 
+def _ensure_products_cost_column(conn: DBConn) -> None:
+    if _has_column(conn, "products", "cost"):
+        return
+    if DB_IS_POSTGRES:
+        conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS cost NUMERIC(12, 2) DEFAULT 0")
+    else:
+        conn.execute("ALTER TABLE products ADD COLUMN cost REAL DEFAULT 0")
+    conn.commit()
+
+
 def _require_sync_token(request: Request) -> None:
-    token = (os.getenv("USB_SYNC_TOKEN") or "").strip()
+    token = (os.getenv("USB_SYNC_TOKEN") or os.getenv("USB_SYNC_SECRET") or "").strip()
     if not token:
-        raise HTTPException(status_code=500, detail="Falta USB_SYNC_TOKEN")
+        raise HTTPException(status_code=500, detail="Falta USB_SYNC_TOKEN/USB_SYNC_SECRET")
     header = (request.headers.get("Authorization") or "").strip()
     supplied = ""
     if header.lower().startswith("bearer "):
@@ -619,7 +672,7 @@ def _require_sync_token(request: Request) -> None:
 
 
 def _ensure_category_id(conn: DBConn, name: str) -> Optional[int]:
-    if not name or not _get_has_table(conn, "categories"):
+    if not name or not _has_table(conn, "categories"):
         return None
     row = conn.execute(
         "SELECT id FROM categories WHERE name = ?",
@@ -701,17 +754,17 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
 
 
 def _product_images_column(conn: DBConn) -> Optional[str]:
-    if not _get_has_table(conn, "product_images"):
+    if not _has_table(conn, "product_images"):
         return None
-    if _get_has_column(conn, "product_images", "image_path"):
+    if _has_column(conn, "product_images", "image_path"):
         return "image_path"
-    if _get_has_column(conn, "product_images", "image_url"):
+    if _has_column(conn, "product_images", "image_url"):
         return "image_url"
     return None
 
 
 def _ensure_product_images_table(conn: DBConn) -> None:
-    if _get_has_table(conn, "product_images"):
+    if _has_table(conn, "product_images"):
         return
     if DB_IS_POSTGRES:
         conn.execute(
@@ -781,6 +834,313 @@ def _fetch_product_images(conn: DBConn, product_ids: list[int]) -> dict[int, lis
     return images
 
 
+def _ensure_accounting_tables(conn: DBConn) -> None:
+    if DB_IS_POSTGRES:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS account_customers (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT,
+                phone TEXT,
+                tax_id TEXT,
+                tax_condition TEXT,
+                address TEXT,
+                city TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS account_movements (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER NOT NULL REFERENCES account_customers(id) ON DELETE CASCADE,
+                movement_type TEXT NOT NULL,
+                amount NUMERIC(12, 2) NOT NULL,
+                description TEXT,
+                document_type TEXT,
+                document_number TEXT,
+                due_date DATE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS account_documents (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER NOT NULL REFERENCES account_customers(id) ON DELETE CASCADE,
+                document_kind TEXT NOT NULL,
+                document_number TEXT NOT NULL,
+                issue_date DATE NOT NULL,
+                total NUMERIC(12, 2) NOT NULL,
+                customer_name TEXT NOT NULL,
+                customer_tax_id TEXT,
+                customer_tax_condition TEXT,
+                customer_address TEXT,
+                notes TEXT,
+                items_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_account_movements_customer_id ON account_movements(customer_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_account_documents_customer_id ON account_documents(customer_id)"
+        )
+        conn.commit()
+        return
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT,
+            phone TEXT,
+            tax_id TEXT,
+            tax_condition TEXT,
+            address TEXT,
+            city TEXT,
+            notes TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            movement_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            description TEXT,
+            document_type TEXT,
+            document_number TEXT,
+            due_date TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES account_customers(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            document_kind TEXT NOT NULL,
+            document_number TEXT NOT NULL,
+            issue_date TEXT NOT NULL,
+            total REAL NOT NULL,
+            customer_name TEXT NOT NULL,
+            customer_tax_id TEXT,
+            customer_tax_condition TEXT,
+            customer_address TEXT,
+            notes TEXT,
+            items_json TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES account_customers(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_account_movements_customer_id ON account_movements(customer_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_account_documents_customer_id ON account_documents(customer_id)"
+    )
+    conn.commit()
+
+
+def _movement_signed_amount(row: Any) -> float:
+    movement_type = str(row["movement_type"] if isinstance(row, dict) else row[2]).upper()
+    amount = float(row["amount"] if isinstance(row, dict) else row[3])
+    return amount if movement_type == "DEBIT" else -amount
+
+
+def _customer_balance(conn: DBConn, customer_id: int) -> float:
+    rows = conn.execute(
+        """
+        SELECT movement_type, amount
+        FROM account_movements
+        WHERE customer_id = ?
+        """,
+        (customer_id,),
+    ).fetchall()
+    balance = 0.0
+    for row in rows:
+        movement_type = str(row["movement_type"] if isinstance(row, dict) else row[0]).upper()
+        amount = float(row["amount"] if isinstance(row, dict) else row[1] or 0)
+        balance += amount if movement_type == "DEBIT" else -amount
+    return round(balance, 2)
+
+
+def _next_document_number(conn: DBConn, document_kind: str) -> str:
+    prefix = {
+        "RECIBO_X": "RX",
+        "PRESUPUESTO": "PR",
+        "NOTA_DEBITO": "ND",
+        "NOTA_CREDITO": "NC",
+    }.get(document_kind, "CP")
+    row = conn.execute(
+        "SELECT COUNT(*) AS count FROM account_documents WHERE document_kind = ?",
+        (document_kind,),
+    ).fetchone()
+    current = int(row["count"] if isinstance(row, dict) else row[0] or 0)
+    return f"{prefix}-{current + 1:08d}"
+
+
+def _account_customer_identity(row: Any) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    if isinstance(row, dict):
+        email = str(row.get("customer_email") or "").strip().lower() or None
+        phone = str(row.get("customer_phone") or "").strip() or None
+        name = str(row.get("customer_name") or "").strip() or None
+    else:
+        email = str(row[0] or "").strip().lower() or None
+        phone = str(row[1] or "").strip() or None
+        name = str(row[2] or "").strip() or None
+    return email, phone, name
+
+
+def _safe_parse_datetime(value: Any) -> Optional[datetime]:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        try:
+            return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return None
+
+
+def _customer_current_balance_from_rows(rows: list[Any]) -> float:
+    balance = 0.0
+    for row in rows:
+        movement_type = str(row["movement_type"] if isinstance(row, dict) else row[0]).upper()
+        amount = float(row["amount"] if isinstance(row, dict) else row[1] or 0)
+        balance += amount if movement_type == "DEBIT" else -amount
+    return round(balance, 2)
+
+
+def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, Any]:
+    debits: list[dict[str, Any]] = []
+    credits: list[dict[str, Any]] = []
+    for row in rows:
+        movement_type = str(row["movement_type"] if isinstance(row, dict) else row["movement_type"]).upper()
+        amount = float(row["amount"] if isinstance(row, dict) else row["amount"] or 0)
+        created_at = _safe_parse_datetime(row["created_at"] if isinstance(row, dict) else row["created_at"])
+        due_at_raw = row.get("due_date") if isinstance(row, dict) else None
+        due_at = _safe_parse_datetime(due_at_raw) if due_at_raw else None
+        payload = {
+            "id": int(row["id"] if isinstance(row, dict) else row["id"]),
+            "amount": amount,
+            "remaining": amount,
+            "created_at": created_at,
+            "due_date": due_at or ((created_at or datetime.utcnow()) + timedelta(days=terms_days)),
+            "reference": row["reference"] if isinstance(row, dict) else row.get("reference"),
+            "invoice_id": row["invoice_id"] if isinstance(row, dict) else row.get("invoice_id"),
+        }
+        if movement_type == "DEBIT":
+            debits.append(payload)
+        else:
+            credits.append(payload)
+
+    debits.sort(key=lambda item: (item["due_date"] or datetime.utcnow(), item["id"]))
+    for credit in credits:
+        remaining_credit = float(credit["amount"] or 0)
+        for debit in debits:
+            if remaining_credit <= 0:
+                break
+            available = float(debit["remaining"] or 0)
+            if available <= 0:
+                continue
+            consumed = min(available, remaining_credit)
+            debit["remaining"] = round(available - consumed, 2)
+            remaining_credit = round(remaining_credit - consumed, 2)
+
+    today = datetime.utcnow().date()
+    buckets = {"current": 0.0, "d1_30": 0.0, "d31_60": 0.0, "d61_90": 0.0, "d90_plus": 0.0}
+    open_items: list[dict[str, Any]] = []
+    for debit in debits:
+        remaining = float(debit["remaining"] or 0)
+        if remaining <= 0:
+            continue
+        due_date = debit["due_date"].date() if isinstance(debit["due_date"], datetime) else today
+        overdue_days = (today - due_date).days
+        if overdue_days <= 0:
+            bucket = "current"
+        elif overdue_days <= 30:
+            bucket = "d1_30"
+        elif overdue_days <= 60:
+            bucket = "d31_60"
+        elif overdue_days <= 90:
+            bucket = "d61_90"
+        else:
+            bucket = "d90_plus"
+        buckets[bucket] += remaining
+        open_items.append(
+            {
+                "invoice_id": debit["invoice_id"],
+                "reference": debit["reference"],
+                "remaining": round(remaining, 2),
+                "due_date": due_date.isoformat(),
+                "bucket": bucket,
+            }
+        )
+    return {
+        **{key: round(value, 2) for key, value in buckets.items()},
+        "open_items": open_items,
+        "total": round(sum(buckets.values()), 2),
+    }
+
+
+def _normalize_image_entries(payload: dict) -> list[str]:
+    entries: list[str] = []
+    primary = str(payload.get("image_path") or payload.get("image_url") or "").strip()
+    if primary:
+        entries.append(primary)
+    extra_images = payload.get("image_urls")
+    if isinstance(extra_images, list):
+        for raw in extra_images:
+            value = str(raw or "").strip()
+            if value:
+                entries.append(value)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in entries:
+        if value not in seen:
+            seen.add(value)
+            normalized.append(value)
+    return normalized
+
+
+def _replace_product_images(conn: DBConn, product_id: int, image_values: list[str]) -> None:
+    _ensure_product_images_table(conn)
+    column = _product_images_column(conn)
+    if not column:
+        return
+    conn.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
+    secondary_images = image_values[1:]
+    if not secondary_images:
+        return
+    for index, image_value in enumerate(secondary_images):
+        conn.execute(
+            f"INSERT INTO product_images (product_id, {column}, sort_order) VALUES (?, ?, ?)",
+            (product_id, image_value, index),
+        )
+
+
 def _sync_from_source() -> dict:
     if DB_IS_POSTGRES:
         raise RuntimeError("Sync no disponible en Postgres")
@@ -794,6 +1154,117 @@ def _sync_from_source() -> dict:
     with sqlite3.connect(source) as src, sqlite3.connect(dest) as dst:
         src.backup(dst)
     return {"status": "ok", "source": str(source), "dest": str(dest)}
+
+
+SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
+    "customers": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("name", "TEXT", "TEXT"),
+        ("email", "TEXT", "TEXT"),
+        ("phone", "TEXT", "TEXT"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+        ("sale_mode", "TEXT", "TEXT"),
+        ("locality", "TEXT", "TEXT"),
+        ("address", "TEXT", "TEXT"),
+        ("tax_condition", "TEXT", "TEXT"),
+        ("cuit", "TEXT", "TEXT"),
+        ("external_ref", "TEXT", "TEXT"),
+        ("is_active", "INTEGER", "INTEGER"),
+        ("deleted_at", "TEXT", "TIMESTAMP"),
+    ],
+    "invoices": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("customer_id", "INTEGER", "INTEGER"),
+        ("total", "REAL", "NUMERIC(12, 2)"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+        ("seller_id", "INTEGER", "INTEGER"),
+        ("document_type", "TEXT", "TEXT"),
+        ("commission_amount", "REAL", "NUMERIC(12, 2)"),
+        ("sale_mode", "TEXT", "TEXT"),
+        ("price_list", "INTEGER", "INTEGER"),
+        ("external_ref", "TEXT", "TEXT"),
+        ("due_date", "TEXT", "TIMESTAMP"),
+        ("notes", "TEXT", "TEXT"),
+    ],
+    "invoice_items": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("invoice_id", "INTEGER", "INTEGER"),
+        ("product_id", "INTEGER", "INTEGER"),
+        ("quantity", "INTEGER", "INTEGER"),
+        ("unit_price", "REAL", "NUMERIC(12, 2)"),
+    ],
+    "account_movements": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("customer_id", "INTEGER", "INTEGER"),
+        ("invoice_id", "INTEGER", "INTEGER"),
+        ("amount", "REAL", "NUMERIC(12, 2)"),
+        ("movement_type", "TEXT", "TEXT"),
+        ("reference", "TEXT", "TEXT"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+        ("payment_method", "TEXT", "TEXT"),
+    ],
+}
+
+
+def _ensure_syncable_tables(conn: DBConn) -> None:
+    for table_name, columns in SYNC_TABLE_SCHEMAS.items():
+        if not _has_table(conn, table_name):
+            definitions = ", ".join(
+                f"{name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+                for name, sqlite_type, pg_type in columns
+            )
+            conn.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({definitions})")
+            continue
+        for name, sqlite_type, pg_type in columns:
+            if _has_column(conn, table_name, name):
+                continue
+            conn.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+            )
+    conn.commit()
+
+
+def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
+    columns = [name for name, _, _ in SYNC_TABLE_SCHEMAS[table_name]]
+    placeholders = ", ".join(["?"] * len(columns))
+    update_columns = [name for name in columns if name != "id"]
+    updates = ", ".join(
+        f"{name} = {'EXCLUDED' if DB_IS_POSTGRES else 'excluded'}.{name}"
+        for name in update_columns
+    )
+    sql = (
+        f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders}) "
+        f"ON CONFLICT(id) DO UPDATE SET {updates}"
+    )
+    processed = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        conn.execute(sql, [row.get(column) for column in columns])
+        processed += 1
+    return processed
+
+
+def _reset_sync_sequence(conn: DBConn, table_name: str) -> None:
+    if not DB_IS_POSTGRES:
+        return
+    row = conn.execute(
+        "SELECT pg_get_serial_sequence(?, 'id') AS seq_name",
+        (table_name,),
+    ).fetchone()
+    seq_name = row["seq_name"] if isinstance(row, dict) else row[0]
+    if not seq_name:
+        return
+    conn.execute(
+        """
+        SELECT setval(
+            ?::regclass,
+            GREATEST(COALESCE((SELECT MAX(id) FROM """ + table_name + """), 0), 1),
+            true
+        )
+        """,
+        (seq_name,),
+    )
 
 
 class CartItemPayload(BaseModel):
@@ -981,21 +1452,54 @@ def sync_products(
     }
 
 
+@app.post("/admin/sync/table")
+def sync_backoffice_table(
+    request: Request,
+    payload: dict = Body(...),
+) -> dict:
+    _require_sync_token(request)
+    table_name = str(payload.get("table") or "").strip()
+    rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
+    replace = bool(payload.get("replace"))
+    finalize = bool(payload.get("finalize"))
+    if table_name not in SYNC_TABLE_SCHEMAS:
+        raise HTTPException(status_code=400, detail="Tabla no soportada")
+
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        if replace:
+            conn.execute(f"DELETE FROM {table_name}")
+        processed = _upsert_sync_rows(conn, table_name, rows)
+        if finalize:
+            _reset_sync_sequence(conn, table_name)
+        conn.commit()
+        return {
+            "status": "ok",
+            "table": table_name,
+            "processed": processed,
+            "replace": replace,
+            "finalize": finalize,
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/products")
 def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
     conn = _connect()
     try:
-        # Optimización: evitamos llamar a checks de esquema repetitivos
-        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
-        has_is_active = _get_has_column(conn, "products", "is_active")
-        has_created_at = _get_has_column(conn, "products", "created_at")
-        has_updated_at = _get_has_column(conn, "products", "updated_at")
-        has_price_list_1 = _get_has_column(conn, "products", "price_list_1")
-        has_description = _get_has_column(conn, "products", "description")
-        featured_enabled = _get_has_column(conn, "products", "is_featured")
-        offer_enabled = _get_has_column(conn, "products", "is_offer")
-        recommended_enabled = _get_has_column(conn, "products", "is_recommended")
-        
+        _ensure_product_images_table(conn)
+        _ensure_products_cost_column(conn)
+        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        has_is_active = _has_column(conn, "products", "is_active")
+        has_created_at = _has_column(conn, "products", "created_at")
+        has_updated_at = _has_column(conn, "products", "updated_at")
+        has_price_list_1 = _has_column(conn, "products", "price_list_1")
+        has_description = _has_column(conn, "products", "description")
+        featured_enabled = _has_column(conn, "products", "is_featured")
+        offer_enabled = _has_column(conn, "products", "is_offer")
+        recommended_enabled = _has_column(conn, "products", "is_recommended")
         select_fields = [
             "p.id",
             "p.name",
@@ -1007,6 +1511,7 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
         ]
         select_fields.append("p.price_list_1" if has_price_list_1 else "NULL AS price_list_1")
         select_fields.append("p.description" if has_description else "NULL AS description")
+        select_fields.append("p.cost")
         select_fields.append("p.is_active" if has_is_active else "NULL AS is_active")
         select_fields.append("p.is_featured" if featured_enabled else "NULL AS is_featured")
         select_fields.append("p.is_offer" if offer_enabled else "NULL AS is_offer")
@@ -1016,9 +1521,22 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             conditions.append("p.deleted_at IS NULL")
         if has_is_active:
             conditions.append("p.is_active = 1")
+        base_conditions = []
+        if has_deleted_at:
+            base_conditions.append("deleted_at IS NULL")
+        if has_is_active:
+            base_conditions.append("is_active = 1")
+        dedupe_source = "products"
+        if base_conditions:
+            dedupe_source += f" WHERE {' AND '.join(base_conditions)}"
         query = f"""
             SELECT {", ".join(select_fields)}
             FROM products p
+            INNER JOIN (
+                SELECT MAX(id) AS id
+                FROM {dedupe_source}
+                GROUP BY LOWER(TRIM(name))
+            ) latest ON latest.id = p.id
             LEFT JOIN categories c ON c.id = p.category_id
         """
         if conditions:
@@ -1028,14 +1546,7 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             query += " AND (p.name LIKE ? OR p.sku LIKE ?)" if conditions else " WHERE (p.name LIKE ? OR p.sku LIKE ?)"
             like = f"%{q}%"
             params.extend([like, like])
-        if has_created_at and has_updated_at:
-            order_by = "COALESCE(p.created_at, p.updated_at) DESC, p.id DESC"
-        elif has_created_at:
-            order_by = "p.created_at DESC, p.id DESC"
-        elif has_updated_at:
-            order_by = "p.updated_at DESC, p.id DESC"
-        else:
-            order_by = "p.id DESC"
+        order_by = "LOWER(p.name) ASC, p.id ASC"
         query += f" ORDER BY {order_by} LIMIT ?"
         params.append(limit)
         rows = conn.execute(query, params).fetchall()
@@ -1050,6 +1561,7 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             "name": row["name"],
             "sku": row["sku"],
             "price": _pick_price(row),
+            "cost": float(row["cost"] or 0),
             "stock": int(row["stock"] or 0),
             "category": row["category"] or "General",
             "description": row["description"],
@@ -1195,9 +1707,8 @@ def admin_list_orders(
     status: str = "PENDING",
     limit: int = 200,
     include_items: bool = True,
-    session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> list[dict]:
-    _require_admin(session)
+    _require_sync_token(request)
     status_value = (status or "PENDING").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED"}:
         status_value = "PENDING"
@@ -1254,7 +1765,7 @@ def admin_list_orders(
                         {
                             "product_id": int(item.get("product_id") or 0),
                             "sku": item.get("sku"),
-                            "product_name": item.get("product_name"),
+                            "name": item.get("product_name"),
                             "quantity": int(item.get("quantity") or 0),
                             "unit_price": float(item.get("unit_price") or 0.0),
                         }
@@ -1265,7 +1776,7 @@ def admin_list_orders(
                         {
                             "product_id": int(item[1]),
                             "sku": item[5],
-                            "product_name": item[4],
+                            "name": item[4],
                             "quantity": int(item[2] or 0),
                             "unit_price": float(item[3] or 0.0),
                         }
@@ -1285,9 +1796,8 @@ def admin_update_order_status(
     order_id: int,
     request: Request,
     payload: OrderStatusPayload = Body(...),
-    session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
-    _require_admin(session)
+    _require_sync_token(request)
     status_value = (payload.status or "").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "DELETED"}:
         raise HTTPException(status_code=400, detail="Estado invalido")
@@ -1335,15 +1845,15 @@ def admin_update_order_status(
 def featured_products(limit: int = 6) -> list[dict]:
     conn = _connect()
     try:
-        # Optimización: SCHEMA_CACHE
-        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
-        has_is_active = _get_has_column(conn, "products", "is_active")
-        has_updated_at = _get_has_column(conn, "products", "updated_at")
-        has_price_list_1 = _get_has_column(conn, "products", "price_list_1")
-        has_description = _get_has_column(conn, "products", "description")
-        featured_enabled = _get_has_column(conn, "products", "is_featured")
-        offer_enabled = _get_has_column(conn, "products", "is_offer")
-        recommended_enabled = _get_has_column(conn, "products", "is_recommended")
+        _ensure_product_images_table(conn)
+        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        has_is_active = _has_column(conn, "products", "is_active")
+        has_updated_at = _has_column(conn, "products", "updated_at")
+        has_price_list_1 = _has_column(conn, "products", "price_list_1")
+        has_description = _has_column(conn, "products", "description")
+        featured_enabled = _has_column(conn, "products", "is_featured")
+        offer_enabled = _has_column(conn, "products", "is_offer")
+        recommended_enabled = _has_column(conn, "products", "is_recommended")
         select_fields = [
             "p.id",
             "p.name",
@@ -1368,9 +1878,26 @@ def featured_products(limit: int = 6) -> list[dict]:
             conditions.append("p.is_featured = 1")
         else:
             conditions.append("p.stock > 0")
+        base_conditions = []
+        if has_deleted_at:
+            base_conditions.append("deleted_at IS NULL")
+        if has_is_active:
+            base_conditions.append("is_active = 1")
+        if featured_enabled:
+            base_conditions.append("is_featured = 1")
+        else:
+            base_conditions.append("stock > 0")
+        dedupe_source = "products"
+        if base_conditions:
+            dedupe_source += f" WHERE {' AND '.join(base_conditions)}"
         query = f"""
             SELECT {", ".join(select_fields)}
             FROM products p
+            INNER JOIN (
+                SELECT MAX(id) AS id
+                FROM {dedupe_source}
+                GROUP BY LOWER(TRIM(name))
+            ) latest ON latest.id = p.id
             LEFT JOIN categories c ON c.id = p.category_id
             WHERE {' AND '.join(conditions)}
             ORDER BY {"p.updated_at DESC" if has_updated_at else "p.id DESC"}
@@ -1445,6 +1972,7 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     conn = _connect()
     try:
         _ensure_users_table(conn)
+        _ensure_bootstrap_admin(conn)
         row = conn.execute(
             "SELECT id, username, password_hash, role, active FROM users WHERE username = ?",
             (username,),
@@ -1467,8 +1995,8 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
             value=token,
             max_age=SESSION_TTL_SECONDS,
             httponly=True,
-            samesite="none",
             secure=True,
+            samesite="none",
         )
     return {"username": row["username"], "role": row["role"]}
 
@@ -1476,14 +2004,12 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
     if response is not None:
-        response.delete_cookie(SESSION_COOKIE, samesite="none", secure=True)
+        response.delete_cookie(SESSION_COOKIE)
     return {"status": "ok"}
 
 
 @app.get("/auth/me")
 def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
-    if not session:
-        LOGGER.warning("Solicitud /auth/me sin cookie %s", SESSION_COOKIE)
     payload = _verify_session(session or "")
     if not payload:
         raise HTTPException(status_code=401, detail="No autenticado")
@@ -1564,8 +2090,10 @@ def admin_list_products(
     
     conn = _connect()
     try:
-        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
-        has_is_active = _get_has_column(conn, "products", "is_active")
+        _ensure_product_images_table(conn)
+        _ensure_products_cost_column(conn)
+        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        has_is_active = _has_column(conn, "products", "is_active")
         
         conditions = []
         params: list = []
@@ -1588,11 +2116,11 @@ def admin_list_products(
         
         rows = conn.execute(
             f"""
-            SELECT id, name, sku, price, price_list_1, stock, 
+            SELECT id, name, sku, price, price_list_1, cost, stock, 
                    image_path, category_id, is_active, is_featured, is_offer
             FROM products
             {where_clause}
-            ORDER BY id DESC
+            ORDER BY LOWER(TRIM(name)) ASC, id ASC
             LIMIT ? OFFSET ?
             """,
             params + [limit, offset],
@@ -1602,6 +2130,7 @@ def admin_list_products(
             f"SELECT COUNT(*) as count FROM products {where_clause}",
             params,
         ).fetchone()
+        images_map = _fetch_product_images(conn, [int(row["id"]) for row in rows])
         
         return [
             {
@@ -1609,12 +2138,19 @@ def admin_list_products(
                 "name": row["name"],
                 "sku": row["sku"],
                 "price": float(row["price_list_1"] or row["price"] or 0),
+                "cost": float(row["cost"] or 0),
                 "stock": int(row["stock"] or 0),
                 "category_id": int(row["category_id"]) if row["category_id"] else None,
                 "is_active": bool(row["is_active"]) if has_is_active else True,
                 "is_featured": bool(row["is_featured"]),
                 "is_offer": bool(row["is_offer"]),
                 "image_path": row["image_path"],
+                "imageUrl": (
+                    images_map.get(int(row["id"])) or []
+                )[0]
+                if images_map.get(int(row["id"]))
+                else _public_image_url(row["image_path"], int(row["id"])),
+                "image_urls": images_map.get(int(row["id"])) or [],
             }
             for row in rows
         ]
@@ -1634,7 +2170,10 @@ def admin_create_product(
     name = str(payload.get("name") or "").strip()
     sku = str(payload.get("sku") or "").strip()
     price = float(payload.get("price") or 0)
+    cost = float(payload.get("cost") or 0)
     stock = int(payload.get("stock") or 0)
+    image_values = _normalize_image_entries(payload)
+    primary_image = image_values[0] if image_values else None
     
     if not name:
         raise HTTPException(status_code=400, detail="Nombre requerido")
@@ -1643,24 +2182,30 @@ def admin_create_product(
     
     conn = _connect()
     try:
+        _ensure_products_cost_column(conn)
         conn.execute(
             """
-            INSERT INTO products (name, sku, price, stock, is_active)
-            VALUES (?, ?, ?, ?, 1)
+            INSERT INTO products (name, sku, price, cost, stock, image_path, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
             """,
-            (name, sku, price, stock),
+            (name, sku, price, cost, stock, primary_image),
         )
         conn.commit()
         
         row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
         product_id = int(row["id"] if isinstance(row, dict) else row[0])
+        _replace_product_images(conn, product_id, image_values)
+        conn.commit()
         
         return {
             "id": product_id,
             "name": name,
             "sku": sku,
             "price": price,
+            "cost": cost,
             "stock": stock,
+            "image_path": primary_image,
+            "image_urls": image_values[1:],
         }
     finally:
         conn.close()
@@ -1678,6 +2223,7 @@ def admin_update_product(
     
     conn = _connect()
     try:
+        _ensure_products_cost_column(conn)
         row = conn.execute(
             "SELECT id FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
@@ -1698,9 +2244,17 @@ def admin_update_product(
         if "price" in payload:
             updates.append("price = ?")
             params.append(float(payload["price"]))
+        if "cost" in payload:
+            updates.append("cost = ?")
+            params.append(float(payload["cost"]))
         if "stock" in payload:
             updates.append("stock = ?")
             params.append(int(payload["stock"]))
+        if "image_path" in payload or "image_url" in payload or "image_urls" in payload:
+            image_values = _normalize_image_entries(payload)
+            updates.append("image_path = ?")
+            params.append(image_values[0] if image_values else None)
+            _replace_product_images(conn, product_id, image_values)
         if "is_featured" in payload:
             updates.append("is_featured = ?")
             params.append(1 if payload["is_featured"] else 0)
@@ -1718,58 +2272,6 @@ def admin_update_product(
         return {"id": product_id, "message": "Producto actualizado"}
     finally:
         conn.close()
-
-
-@app.post("/admin/products/{product_id}/image")
-async def admin_upload_product_image(
-    product_id: int,
-    file: UploadFile = File(...),
-    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
-) -> dict:
-    """Sube imagen del producto a Supabase Storage y actualiza image_path."""
-    _require_admin(session_token)
-
-    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        raise HTTPException(status_code=500, detail="Supabase Storage no configurado")
-
-    # Leer contenido del archivo
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Archivo vacío")
-
-    # Determinar extensión y content type
-    filename = file.filename or f"product_{product_id}.jpg"
-    safe_filename = filename.replace(" ", "_")
-    content_type = file.content_type or "image/jpeg"
-
-    # Subir a Supabase Storage via REST API
-    upload_url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_STORAGE_BUCKET}/{safe_filename}"
-    req = Request(upload_url, data=content)
-    req.add_header("Authorization", f"Bearer {SUPABASE_SERVICE_KEY}")
-    req.add_header("Content-Type", content_type)
-    req.add_header("x-upsert", "true")
-    req.get_method = lambda: "POST"
-
-    try:
-        urlopen(req, timeout=30)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error subiendo imagen: {exc}") from exc
-
-    # Construir URL pública
-    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{safe_filename}"
-
-    # Actualizar image_path en la DB
-    conn = _connect()
-    try:
-        conn.execute(
-            "UPDATE products SET image_path = ? WHERE id = ?",
-            (public_url, product_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return {"image_url": public_url, "product_id": product_id}
 
 
 @app.delete("/admin/products/{product_id}")
@@ -1814,175 +2316,1109 @@ def admin_list_customers(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    """Lista clientes de la tabla oficial cruzados con pedidos web. Requiere sesión admin."""
+    """Lista clientes únicos de pedidos web. Requiere sesión admin."""
     _require_admin(session_token)
     
     conn = _connect()
     try:
-        _ensure_web_order_tables(conn)
         conditions = []
         params: list = []
         
         if q:
             conditions.append(
-                "(c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.cuit LIKE ?)"
+                "(customer_name LIKE ? OR customer_email LIKE ? OR customer_phone LIKE ?)"
             )
             like = f"%{q}%"
-            params.extend([like, like, like, like])
+            params.extend([like, like, like])
         
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         
-        # SQL robusto para Postgres y SQLite (usando agregados para las columnas no agrupadas)
-        query = f"""
-            SELECT 
-                c.id, c.name, c.email, c.phone, 
-                c.created_at,
-                COALESCE(c.locality, '') as locality,
-                COALESCE(c.address, '') as address,
-                COALESCE(c.tax_condition, 'CONSUMIDOR_FINAL') as tax_condition,
-                COALESCE(c.cuit, '') as cuit,
-                COALESCE(w.order_count, 0) as web_order_count,
-                COALESCE(w.total_spent, 0) as web_total_spent,
-                w.last_order
-            FROM customers c
-            LEFT JOIN (
-                SELECT 
-                    customer_email,
-                    COUNT(*) as order_count,
-                    SUM(total) as total_spent,
-                    MAX(created_at) as last_order
-                FROM web_orders
-                GROUP BY customer_email
-            ) w ON c.email = w.customer_email
+        rows = conn.execute(
+            f"""
+            SELECT DISTINCT 
+                   customer_name, customer_email, customer_phone,
+                   COUNT(*) as order_count,
+                   MIN(created_at) as first_order,
+                   MAX(created_at) as last_order
+            FROM web_orders
             {where_clause}
-            ORDER BY c.name ASC
+            GROUP BY customer_email
+            ORDER BY last_order DESC
             LIMIT ? OFFSET ?
-        """
-        
-        rows = conn.execute(query, params + [limit, offset]).fetchall()
+            """,
+            params + [limit, offset],
+        ).fetchall()
         
         return [
             {
-                "id": row["id"],
+                "name": row["customer_name"] or "Sin nombre",
+                "email": row["customer_email"],
+                "phone": row["customer_phone"],
+                "order_count": int(row["order_count"]),
+                "first_order": row["first_order"],
+                "last_order": row["last_order"],
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/admin/account-customers")
+def admin_account_customers(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    q: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        params: list = []
+        where_clause = ""
+        if q:
+            like = f"%{q.strip()}%"
+            where_clause = """
+            WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? OR tax_id LIKE ?
+            """
+            params.extend([like, like, like, like])
+        rows = conn.execute(
+            f"""
+            SELECT id, name, email, phone, tax_id, tax_condition, address, city, notes, created_at, updated_at
+            FROM account_customers
+            {where_clause}
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
                 "name": row["name"],
                 "email": row["email"],
                 "phone": row["phone"],
-                "locality": row["locality"],
-                "address": row["address"],
+                "tax_id": row["tax_id"],
                 "tax_condition": row["tax_condition"],
-                "cuit": row["cuit"],
-                "order_count": int(row["web_order_count"]),
-                "total_spent": float(row["web_total_spent"]),
-                "last_order": str(row["last_order"]) if row["last_order"] else None,
-                "created_at": str(row["created_at"])
+                "address": row["address"],
+                "city": row["city"],
+                "notes": row["notes"],
+                "balance": _customer_balance(conn, int(row["id"])),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
             }
             for row in rows
         ]
     finally:
         conn.close()
 
-@app.put("/admin/customers/{customer_id}")
-def admin_update_customer(
+
+@app.post("/admin/account-customers")
+def admin_create_account_customer(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        conn.execute(
+            """
+            INSERT INTO account_customers
+                (name, email, phone, tax_id, tax_condition, address, city, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (
+                name,
+                str(payload.get("email") or "").strip() or None,
+                str(payload.get("phone") or "").strip() or None,
+                str(payload.get("tax_id") or "").strip() or None,
+                str(payload.get("tax_condition") or "").strip() or None,
+                str(payload.get("address") or "").strip() or None,
+                str(payload.get("city") or "").strip() or None,
+                str(payload.get("notes") or "").strip() or None,
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT id
+            FROM account_customers
+            WHERE name = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (name,),
+        ).fetchone()
+        customer_id = int(row["id"] if isinstance(row, dict) else row[0])
+        return {"id": customer_id, "name": name}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/account-customers/sync-web-orders")
+def admin_sync_account_customers_from_orders(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    created = 0
+    updated = 0
+    skipped = 0
+    try:
+        _ensure_accounting_tables(conn)
+        if not _has_table(conn, "web_orders"):
+            return {"created": 0, "updated": 0, "skipped": 0, "total": 0}
+        rows = conn.execute(
+            """
+            SELECT customer_email, customer_phone, customer_name
+            FROM web_orders
+            WHERE COALESCE(TRIM(customer_name), '') <> ''
+               OR COALESCE(TRIM(customer_email), '') <> ''
+               OR COALESCE(TRIM(customer_phone), '') <> ''
+            ORDER BY created_at DESC
+            """
+        ).fetchall()
+        for row in rows:
+            email, phone, name = _account_customer_identity(row)
+            if not (email or phone or name):
+                skipped += 1
+                continue
+            existing = None
+            if email:
+                existing = conn.execute(
+                    "SELECT id, name, email, phone FROM account_customers WHERE LOWER(COALESCE(email, '')) = ? LIMIT 1",
+                    (email,),
+                ).fetchone()
+            if existing is None and phone:
+                existing = conn.execute(
+                    "SELECT id, name, email, phone FROM account_customers WHERE phone = ? LIMIT 1",
+                    (phone,),
+                ).fetchone()
+            if existing is None and name:
+                existing = conn.execute(
+                    "SELECT id, name, email, phone FROM account_customers WHERE name = ? LIMIT 1",
+                    (name,),
+                ).fetchone()
+
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO account_customers (name, email, phone, tax_condition, updated_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (name or phone or email or "Cliente web", email, phone, "Consumidor Final"),
+                )
+                created += 1
+                continue
+
+            next_name = name or (existing["name"] if isinstance(existing, dict) else existing[1])
+            next_email = email or (existing["email"] if isinstance(existing, dict) else existing[2])
+            next_phone = phone or (existing["phone"] if isinstance(existing, dict) else existing[3])
+            conn.execute(
+                """
+                UPDATE account_customers
+                   SET name = ?, email = ?, phone = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?
+                """,
+                (
+                    next_name,
+                    next_email,
+                    next_phone,
+                    int(existing["id"] if isinstance(existing, dict) else existing[0]),
+                ),
+            )
+            updated += 1
+        conn.commit()
+        return {
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "total": len(rows),
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/cc/overview")
+def admin_cc_overview(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        if not _has_table(conn, "customers") or not _has_table(conn, "account_movements"):
+            return {"customers": [], "summary": {"customers": 0, "debit": 0, "credit": 0, "balance": 0}}
+        customer_rows = conn.execute(
+            """
+            SELECT id, name, email, phone, sale_mode, locality, address, tax_condition, cuit
+            FROM customers
+            WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            ORDER BY name COLLATE NOCASE ASC
+            """
+        ).fetchall()
+        movement_rows = conn.execute(
+            """
+            SELECT id, customer_id, amount, movement_type, reference, invoice_id, created_at, payment_method
+            FROM account_movements
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+        movements_by_customer: dict[int, list[Any]] = {}
+        for row in movement_rows:
+            customer_id = int(row["customer_id"] if isinstance(row, dict) else row[1])
+            movements_by_customer.setdefault(customer_id, []).append(row)
+        customers: list[dict[str, Any]] = []
+        total_debit = 0.0
+        total_credit = 0.0
+        total_balance = 0.0
+        for row in customer_rows:
+            customer_id = int(row["id"])
+            customer_movements = movements_by_customer.get(customer_id, [])
+            if not customer_movements and str(row["sale_mode"] or "").strip().upper() != "CUENTA_CORRIENTE":
+                continue
+            debit = sum(
+                float(item["amount"] or 0)
+                for item in customer_movements
+                if str(item["movement_type"] or "").upper() == "DEBIT"
+            )
+            credit = sum(
+                float(item["amount"] or 0)
+                for item in customer_movements
+                if str(item["movement_type"] or "").upper() == "CREDIT"
+            )
+            balance = round(debit - credit, 2)
+            aging = _aging_from_movements(customer_movements)
+            total_debit += debit
+            total_credit += credit
+            total_balance += balance
+            last_movement = customer_movements[-1]["created_at"] if customer_movements else None
+            customers.append(
+                {
+                    "id": customer_id,
+                    "name": row["name"],
+                    "email": row["email"],
+                    "phone": row["phone"],
+                    "sale_mode": row["sale_mode"],
+                    "locality": row["locality"],
+                    "address": row["address"],
+                    "tax_condition": row["tax_condition"],
+                    "cuit": row["cuit"],
+                    "debit": round(debit, 2),
+                    "credit": round(credit, 2),
+                    "balance": balance,
+                    "aging": aging,
+                    "last_movement": last_movement,
+                }
+            )
+        customers.sort(key=lambda item: ((item["name"] or "").lower(), item["id"]))
+        return {
+            "customers": customers,
+            "summary": {
+                "customers": len(customers),
+                "debit": round(total_debit, 2),
+                "credit": round(total_credit, 2),
+                "balance": round(total_balance, 2),
+            },
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/cc/{customer_id}")
+def admin_cc_customer_detail(
     customer_id: int,
-    data: dict = Body(...),
+    request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
-):
-    """Actualiza datos de un cliente. Requiere sesión admin."""
+) -> dict:
     _require_admin(session_token)
-    
-    fields = ["name", "email", "phone", "locality", "address", "tax_condition", "cuit"]
-    updates = []
-    params = []
-    
-    for field in fields:
-        if field in data:
-            updates.append(f"{field} = ?")
-            params.append(data[field])
-            
-    if not updates:
-        return {"message": "Nada que actualizar"}
-        
     conn = _connect()
     try:
-        query = f"UPDATE customers SET {', '.join(updates)} WHERE id = ?"
-        conn.execute(query, params + [customer_id])
-        conn.commit()
-        return {"message": "Cliente actualizado correctamente"}
+        customer = conn.execute(
+            """
+            SELECT id, name, email, phone, sale_mode, locality, address, tax_condition, cuit
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        movements = conn.execute(
+            """
+            SELECT am.id, am.customer_id, am.amount, am.movement_type, am.reference, am.invoice_id,
+                   am.created_at, am.payment_method, i.document_type, i.total, i.due_date
+            FROM account_movements am
+            LEFT JOIN invoices i ON i.id = am.invoice_id
+            WHERE am.customer_id = ?
+            ORDER BY am.created_at ASC, am.id ASC
+            """,
+            (customer_id,),
+        ).fetchall()
+        serialized = []
+        running_balance = 0.0
+        for row in movements:
+            movement_type = str(row["movement_type"] or "").upper()
+            amount = float(row["amount"] or 0)
+            signed = amount if movement_type == "DEBIT" else -amount
+            running_balance = round(running_balance + signed, 2)
+            serialized.append(
+                {
+                    "id": int(row["id"]),
+                    "movement_type": movement_type,
+                    "amount": amount,
+                    "signed_amount": signed,
+                    "reference": row["reference"],
+                    "invoice_id": row["invoice_id"],
+                    "created_at": row["created_at"],
+                    "payment_method": row["payment_method"],
+                    "document_type": row["document_type"],
+                    "invoice_total": float(row["total"] or 0) if row["total"] is not None else None,
+                    "due_date": row["due_date"],
+                    "running_balance": running_balance,
+                }
+            )
+        return {
+            "customer": {
+                "id": int(customer["id"]),
+                "name": customer["name"],
+                "email": customer["email"],
+                "phone": customer["phone"],
+                "sale_mode": customer["sale_mode"],
+                "locality": customer["locality"],
+                "address": customer["address"],
+                "tax_condition": customer["tax_condition"],
+                "cuit": customer["cuit"],
+            },
+            "balance": _customer_current_balance_from_rows(movements),
+            "aging": _aging_from_movements(movements),
+            "movements": serialized,
+        }
     finally:
         conn.close()
 
-@app.post("/admin/customers")
-def admin_create_customer(
-    data: dict = Body(...),
+
+@app.get("/admin/invoices")
+def admin_list_invoices(
+    request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
-):
-    """Crea un nuevo cliente. Requiere sesión admin."""
+    limit: int = 200,
+    customer_id: Optional[int] = None,
+) -> list[dict]:
     _require_admin(session_token)
-    
-    fields = ["name", "email", "phone", "locality", "address", "tax_condition", "cuit"]
-    valid_data = {f: data.get(f) for f in fields if f in data}
-    
-    if not valid_data.get("name"):
-        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
-        
     conn = _connect()
     try:
-        columns = ", ".join(valid_data.keys())
-        placeholders = ", ".join(["?" for _ in valid_data])
-        query = f"INSERT INTO customers ({columns}) VALUES ({placeholders})"
-        conn.execute(query, list(valid_data.values()))
-        conn.commit()
-        return {"message": "Cliente creado correctamente"}
-    finally:
-        conn.close()
-
-
-@app.get("/admin/products/low-stock")
-def admin_low_stock_products(
-    limit: int = 100,
-    threshold: int = 10,
-    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
-):
-    """Lista productos con stock inferior al umbral (default 10). Requiere sesión admin."""
-    _require_admin(session_token)
-    
-    conn = _connect()
-    try:
-        # Buscamos columnas disponibles para evitar fallos si el esquema varía levemente
-        has_is_active = _get_has_column(conn, "products", "is_active")
-        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
-        
-        conditions = ["p.stock < ?"]
-        params = [threshold]
-        
-        if has_is_active:
-            conditions.append("p.is_active = 1")
-        if has_deleted_at:
-            conditions.append("p.deleted_at IS NULL")
-            
-        where_clause = f" WHERE {' AND '.join(conditions)}"
-        
-        query = f"""
-            SELECT p.id, p.name, p.sku, p.stock, p.price, c.name as category
-            FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            {where_clause}
-            ORDER BY p.stock ASC
+        params: list[Any] = []
+        where = ""
+        if customer_id:
+            where = "WHERE i.customer_id = ?"
+            params.append(int(customer_id))
+        rows = conn.execute(
+            f"""
+            SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, i.sale_mode,
+                   i.due_date, i.notes, c.name AS customer_name
+            FROM invoices i
+            LEFT JOIN customers c ON c.id = i.customer_id
+            {where}
+            ORDER BY i.created_at DESC, i.id DESC
             LIMIT ?
-        """
-        rows = conn.execute(query, params + [limit]).fetchall()
-        
+            """,
+            params + [limit],
+        ).fetchall()
         return [
             {
-                "id": row["id"],
-                "name": row["name"],
-                "sku": row["sku"],
-                "stock": int(row["stock"] or 0),
-                "price": float(row["price"] or 0),
-                "category": row["category"] or "General"
+                "id": int(row["id"]),
+                "customer_id": int(row["customer_id"]) if row["customer_id"] is not None else None,
+                "customer_name": row["customer_name"] or "Sin cliente",
+                "total": float(row["total"] or 0),
+                "created_at": row["created_at"],
+                "document_type": row["document_type"],
+                "sale_mode": row["sale_mode"],
+                "due_date": row["due_date"],
+                "notes": row["notes"],
             }
             for row in rows
         ]
+    finally:
+        conn.close()
+
+
+@app.get("/admin/invoices/{invoice_id}")
+def admin_invoice_detail(
+    invoice_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        invoice = conn.execute(
+            """
+            SELECT i.id, i.customer_id, i.total, i.created_at, i.seller_id, i.document_type,
+                   i.commission_amount, i.sale_mode, i.price_list, i.external_ref, i.due_date,
+                   i.notes, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                   c.sale_mode AS customer_sale_mode, c.locality, c.address, c.tax_condition, c.cuit
+            FROM invoices i
+            LEFT JOIN customers c ON c.id = i.customer_id
+            WHERE i.id = ?
+            """,
+            (invoice_id,),
+        ).fetchone()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+        items = conn.execute(
+            """
+            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.image_path
+            FROM invoice_items ii
+            LEFT JOIN products p ON p.id = ii.product_id
+            WHERE ii.invoice_id = ?
+            ORDER BY ii.id ASC
+            """,
+            (invoice_id,),
+        ).fetchall()
+        payments = conn.execute(
+            """
+            SELECT id, customer_id, invoice_id, amount, movement_type, reference, created_at, payment_method
+            FROM account_movements
+            WHERE invoice_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (invoice_id,),
+        ).fetchall()
+        serialized_items = []
+        subtotal = 0.0
+        for row in items:
+            quantity = int(row["quantity"] or 0)
+            unit_price = float(row["unit_price"] or 0)
+            line_total = round(quantity * unit_price, 2)
+            subtotal += line_total
+            serialized_items.append(
+                {
+                    "id": int(row["id"]),
+                    "product_id": int(row["product_id"]) if row["product_id"] is not None else None,
+                    "product_name": row["product_name"] or f"Producto {row['product_id']}",
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "line_total": line_total,
+                    "image_path": row["image_path"],
+                }
+            )
+        serialized_payments = []
+        total_payments = 0.0
+        for row in payments:
+            movement_type = str(row["movement_type"] or "").upper()
+            amount = float(row["amount"] or 0)
+            signed_amount = amount if movement_type == "DEBIT" else -amount
+            if movement_type == "CREDIT":
+                total_payments += amount
+            serialized_payments.append(
+                {
+                    "id": int(row["id"]),
+                    "customer_id": int(row["customer_id"]) if row["customer_id"] is not None else None,
+                    "invoice_id": int(row["invoice_id"]) if row["invoice_id"] is not None else None,
+                    "amount": amount,
+                    "signed_amount": signed_amount,
+                    "movement_type": movement_type,
+                    "reference": row["reference"],
+                    "created_at": row["created_at"],
+                    "payment_method": row["payment_method"],
+                }
+            )
+        balance_due = round(float(invoice["total"] or 0) - total_payments, 2)
+        return {
+            "invoice": {
+                "id": int(invoice["id"]),
+                "customer_id": int(invoice["customer_id"]) if invoice["customer_id"] is not None else None,
+                "customer_name": invoice["customer_name"] or "Sin cliente",
+                "customer_email": invoice["customer_email"],
+                "customer_phone": invoice["customer_phone"],
+                "customer_sale_mode": invoice["customer_sale_mode"],
+                "locality": invoice["locality"],
+                "address": invoice["address"],
+                "tax_condition": invoice["tax_condition"],
+                "cuit": invoice["cuit"],
+                "total": float(invoice["total"] or 0),
+                "created_at": invoice["created_at"],
+                "seller_id": int(invoice["seller_id"]) if invoice["seller_id"] is not None else None,
+                "document_type": invoice["document_type"],
+                "commission_amount": float(invoice["commission_amount"] or 0),
+                "sale_mode": invoice["sale_mode"],
+                "price_list": int(invoice["price_list"]) if invoice["price_list"] is not None else None,
+                "external_ref": invoice["external_ref"],
+                "due_date": invoice["due_date"],
+                "notes": invoice["notes"],
+            },
+            "items": serialized_items,
+            "payments": serialized_payments,
+            "summary": {
+                "items": len(serialized_items),
+                "subtotal": round(subtotal, 2),
+                "payments_total": round(total_payments, 2),
+                "balance_due": balance_due,
+            },
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/admin/cc/{customer_id}/movements")
+def admin_cc_create_movement(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    movement_type = str(payload.get("movement_type") or "").strip().upper()
+    if movement_type not in {"DEBIT", "CREDIT"}:
+        raise HTTPException(status_code=400, detail="Tipo de movimiento invalido")
+    amount = round(float(payload.get("amount") or 0), 2)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Importe invalido")
+    invoice_id = payload.get("invoice_id")
+    parsed_invoice_id = int(invoice_id) if invoice_id not in (None, "", 0, "0") else None
+    created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
+    reference = str(payload.get("reference") or "").strip() or None
+    payment_method = str(payload.get("payment_method") or "").strip() or None
+
+    conn = _connect()
+    try:
+        customer = conn.execute(
+            """
+            SELECT id
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        if parsed_invoice_id is not None:
+            invoice = conn.execute(
+                """
+                SELECT id, customer_id
+                FROM invoices
+                WHERE id = ?
+                """,
+                (parsed_invoice_id,),
+            ).fetchone()
+            if invoice is None:
+                raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+            if int(invoice["customer_id"] or 0) != customer_id:
+                raise HTTPException(status_code=400, detail="El comprobante no pertenece al cliente")
+        conn.execute(
+            """
+            INSERT INTO account_movements (customer_id, invoice_id, amount, movement_type, reference, created_at, payment_method)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (customer_id, parsed_invoice_id, amount, movement_type, reference, created_at, payment_method),
+        )
+        conn.commit()
+        balance_row = conn.execute(
+            """
+            SELECT amount, movement_type
+            FROM account_movements
+            WHERE customer_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (customer_id,),
+        ).fetchall()
+        return {
+            "customer_id": customer_id,
+            "invoice_id": parsed_invoice_id,
+            "balance": _customer_current_balance_from_rows(balance_row),
+            "message": "Movimiento registrado",
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/reports/overview")
+def admin_reports_overview(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        products = conn.execute(
+            """
+            SELECT id, name, stock, price, cost, reorder_point
+            FROM products
+            WHERE deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+            """
+        ).fetchall()
+        invoices = conn.execute(
+            """
+            SELECT id, customer_id, total, created_at, document_type, sale_mode
+            FROM invoices
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+        invoice_items = conn.execute(
+            """
+            SELECT ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at
+            FROM invoice_items ii
+            LEFT JOIN invoices i ON i.id = ii.invoice_id
+            """
+        ).fetchall()
+        cc_rows = conn.execute(
+            """
+            SELECT customer_id, amount, movement_type, created_at
+            FROM account_movements
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+
+        total_stock_units = sum(int(row["stock"] or 0) for row in products)
+        cost_by_product = {int(row["id"]): float(row["cost"] or 0) for row in products}
+        stock_value_cost = round(sum(float(row["cost"] or 0) * int(row["stock"] or 0) for row in products), 2)
+        stock_value_sale = round(sum(float(row["price"] or 0) * int(row["stock"] or 0) for row in products), 2)
+        low_stock = [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "stock": int(row["stock"] or 0),
+                "reorder_point": int(row["reorder_point"] or 0),
+            }
+            for row in products
+            if int(row["stock"] or 0) <= max(0, int(row["reorder_point"] or 0))
+        ][:20]
+
+        monthly_map: dict[str, dict[str, Any]] = {}
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            bucket = created.strftime("%Y-%m")
+            entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0})
+            entry["sales"] += float(row["total"] or 0)
+            entry["count"] += 1
+        monthly_sales = [monthly_map[key] for key in sorted(monthly_map.keys())][-12:]
+
+        top_products_map: dict[int, dict[str, Any]] = {}
+        for row in invoice_items:
+            product_id = int(row["product_id"] or 0)
+            if product_id <= 0:
+                continue
+            entry = top_products_map.setdefault(
+                product_id,
+                {"product_id": product_id, "quantity": 0, "revenue": 0.0},
+            )
+            quantity = int(row["quantity"] or 0)
+            unit_price = float(row["unit_price"] or 0)
+            entry["quantity"] += quantity
+            entry["revenue"] += quantity * unit_price
+        product_names = {int(row["id"]): row["name"] for row in products}
+        top_products = sorted(
+            [
+                {
+                    **payload,
+                    "name": product_names.get(product_id, f"Producto {product_id}"),
+                    "revenue": round(payload["revenue"], 2),
+                }
+                for product_id, payload in top_products_map.items()
+            ],
+            key=lambda item: (-item["quantity"], item["name"].lower()),
+        )[:10]
+
+        customer_balance_map: dict[int, float] = {}
+        for row in cc_rows:
+            customer_id = int(row["customer_id"] or 0)
+            if customer_id <= 0:
+                continue
+            amount = float(row["amount"] or 0)
+            signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
+            customer_balance_map[customer_id] = round(customer_balance_map.get(customer_id, 0.0) + signed, 2)
+        customer_names = {
+            int(row["id"]): row["name"]
+            for row in conn.execute("SELECT id, name FROM customers WHERE deleted_at IS NULL").fetchall()
+        }
+        top_debtors = sorted(
+            [
+                {"customer_id": customer_id, "name": customer_names.get(customer_id, f"Cliente {customer_id}"), "balance": balance}
+                for customer_id, balance in customer_balance_map.items()
+                if balance > 0
+            ],
+            key=lambda item: (-item["balance"], item["name"].lower()),
+        )[:10]
+
+        total_sales = round(sum(float(row["total"] or 0) for row in invoices), 2)
+        total_margin = round(
+            sum(
+                int(row["quantity"] or 0)
+                * max(0.0, float(row["unit_price"] or 0) - cost_by_product.get(int(row["product_id"] or 0), 0.0))
+                for row in invoice_items
+            ),
+            2,
+        )
+        return {
+            "summary": {
+                "products": len(products),
+                "stock_units": total_stock_units,
+                "stock_value_cost": stock_value_cost,
+                "stock_value_sale": stock_value_sale,
+                "sales_count": len(invoices),
+                "sales_total": total_sales,
+                "estimated_margin": total_margin,
+                "cc_open_balance": round(sum(customer_balance_map.values()), 2),
+            },
+            "monthly_sales": monthly_sales,
+            "top_products": top_products,
+            "top_debtors": top_debtors,
+            "low_stock": low_stock,
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/account-customers/{customer_id}")
+def admin_account_customer_detail(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        row = conn.execute(
+            """
+            SELECT id, name, email, phone, tax_id, tax_condition, address, city, notes, created_at, updated_at
+            FROM account_customers
+            WHERE id = ?
+            """,
+            (customer_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        documents = conn.execute(
+            """
+            SELECT id, document_kind, document_number, issue_date, total, created_at
+            FROM account_documents
+            WHERE customer_id = ?
+            ORDER BY issue_date DESC, id DESC
+            LIMIT 20
+            """,
+            (customer_id,),
+        ).fetchall()
+        return {
+            "id": int(row["id"]),
+            "name": row["name"],
+            "email": row["email"],
+            "phone": row["phone"],
+            "tax_id": row["tax_id"],
+            "tax_condition": row["tax_condition"],
+            "address": row["address"],
+            "city": row["city"],
+            "notes": row["notes"],
+            "balance": _customer_balance(conn, customer_id),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "documents": [
+                {
+                    "id": int(item["id"]),
+                    "document_kind": item["document_kind"],
+                    "document_number": item["document_number"],
+                    "issue_date": item["issue_date"],
+                    "total": float(item["total"] or 0),
+                    "created_at": item["created_at"],
+                }
+                for item in documents
+            ],
+        }
+    finally:
+        conn.close()
+
+
+@app.put("/admin/account-customers/{customer_id}")
+def admin_update_account_customer(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        row = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Nombre requerido")
+        conn.execute(
+            """
+            UPDATE account_customers
+               SET name = ?, email = ?, phone = ?, tax_id = ?, tax_condition = ?,
+                   address = ?, city = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?
+            """,
+            (
+                name,
+                str(payload.get("email") or "").strip() or None,
+                str(payload.get("phone") or "").strip() or None,
+                str(payload.get("tax_id") or "").strip() or None,
+                str(payload.get("tax_condition") or "").strip() or None,
+                str(payload.get("address") or "").strip() or None,
+                str(payload.get("city") or "").strip() or None,
+                str(payload.get("notes") or "").strip() or None,
+                customer_id,
+            ),
+        )
+        conn.commit()
+        return {"id": customer_id, "message": "Cliente actualizado"}
+    finally:
+        conn.close()
+
+
+@app.get("/admin/account-customers/{customer_id}/movements")
+def admin_account_customer_movements(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        rows = conn.execute(
+            """
+            SELECT id, customer_id, movement_type, amount, description, document_type, document_number, due_date, created_at
+            FROM account_movements
+            WHERE customer_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (customer_id,),
+        ).fetchall()
+        running_balance = _customer_balance(conn, customer_id)
+        return {
+            "balance": running_balance,
+            "items": [
+                {
+                    "id": int(row["id"]),
+                    "movement_type": row["movement_type"],
+                    "amount": float(row["amount"] or 0),
+                    "signed_amount": _movement_signed_amount(row),
+                    "description": row["description"],
+                    "document_type": row["document_type"],
+                    "document_number": row["document_number"],
+                    "due_date": row["due_date"],
+                    "created_at": row["created_at"],
+                }
+                for row in rows
+            ],
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/admin/account-customers/{customer_id}/movements")
+def admin_create_account_movement(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    movement_type = str(payload.get("movement_type") or "").strip().upper()
+    if movement_type not in {"DEBIT", "CREDIT"}:
+        raise HTTPException(status_code=400, detail="Tipo de movimiento invalido")
+    amount = float(payload.get("amount") or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Importe invalido")
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        row = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        conn.execute(
+            """
+            INSERT INTO account_movements
+                (customer_id, movement_type, amount, description, document_type, document_number, due_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                customer_id,
+                movement_type,
+                amount,
+                str(payload.get("description") or "").strip() or None,
+                str(payload.get("document_type") or "").strip() or None,
+                str(payload.get("document_number") or "").strip() or None,
+                str(payload.get("due_date") or "").strip() or None,
+            ),
+        )
+        conn.execute(
+            "UPDATE account_customers SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (customer_id,),
+        )
+        conn.commit()
+        return {"customer_id": customer_id, "balance": _customer_balance(conn, customer_id)}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/account-documents")
+def admin_create_account_document(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    customer_id = int(payload.get("customer_id") or 0)
+    document_kind = str(payload.get("document_kind") or "RECIBO_X").strip().upper()
+    if document_kind not in {"RECIBO_X", "PRESUPUESTO", "NOTA_DEBITO", "NOTA_CREDITO"}:
+        document_kind = "RECIBO_X"
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=400, detail="Agrega items al comprobante")
+    normalized_items = []
+    total = 0.0
+    for raw in items:
+        description = str((raw or {}).get("description") or "").strip()
+        quantity = float((raw or {}).get("quantity") or 0)
+        unit_price = float((raw or {}).get("unit_price") or 0)
+        if not description or quantity <= 0 or unit_price < 0:
+            raise HTTPException(status_code=400, detail="Items invalidos")
+        subtotal = round(quantity * unit_price, 2)
+        total += subtotal
+        normalized_items.append(
+            {
+                "description": description,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "subtotal": subtotal,
+            }
+        )
+    issue_date = str(payload.get("issue_date") or datetime.utcnow().date().isoformat()).strip()
+    notes = str(payload.get("notes") or "").strip() or None
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        row = conn.execute(
+            """
+            SELECT id, name, tax_id, tax_condition, address, city
+            FROM account_customers
+            WHERE id = ?
+            """,
+            (customer_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        document_number = _next_document_number(conn, document_kind)
+        customer_address = " - ".join(
+            [part for part in [row["address"], row["city"]] if part]
+        ) or None
+        conn.execute(
+            """
+            INSERT INTO account_documents
+                (customer_id, document_kind, document_number, issue_date, total, customer_name,
+                 customer_tax_id, customer_tax_condition, customer_address, notes, items_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                customer_id,
+                document_kind,
+                document_number,
+                issue_date,
+                round(total, 2),
+                row["name"],
+                row["tax_id"],
+                row["tax_condition"],
+                customer_address,
+                notes,
+                json.dumps(normalized_items, ensure_ascii=True),
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO account_movements
+                (customer_id, movement_type, amount, description, document_type, document_number, due_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                customer_id,
+                "DEBIT" if document_kind != "NOTA_CREDITO" else "CREDIT",
+                round(total, 2),
+                notes or f"Comprobante {document_number}",
+                document_kind,
+                document_number,
+                issue_date,
+            ),
+        )
+        conn.execute(
+            "UPDATE account_customers SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (customer_id,),
+        )
+        conn.commit()
+        row = conn.execute(
+            """
+            SELECT id
+            FROM account_documents
+            WHERE document_number = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (document_number,),
+        ).fetchone()
+        document_id = int(row["id"] if isinstance(row, dict) else row[0])
+        return {
+            "id": document_id,
+            "document_number": document_number,
+            "document_kind": document_kind,
+            "total": round(total, 2),
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/account-documents/{document_id}")
+def admin_account_document_detail(
+    document_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        row = conn.execute(
+            """
+            SELECT id, customer_id, document_kind, document_number, issue_date, total, customer_name,
+                   customer_tax_id, customer_tax_condition, customer_address, notes, items_json, created_at
+            FROM account_documents
+            WHERE id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+        items = json.loads(row["items_json"] or "[]")
+        return {
+            "id": int(row["id"]),
+            "customer_id": int(row["customer_id"]),
+            "document_kind": row["document_kind"],
+            "document_number": row["document_number"],
+            "issue_date": row["issue_date"],
+            "total": float(row["total"] or 0),
+            "customer_name": row["customer_name"],
+            "customer_tax_id": row["customer_tax_id"],
+            "customer_tax_condition": row["customer_tax_condition"],
+            "customer_address": row["customer_address"],
+            "notes": row["notes"],
+            "items": items,
+            "created_at": row["created_at"],
+        }
     finally:
         conn.close()
 
@@ -1990,49 +3426,6 @@ def admin_low_stock_products(
 # ============================================================================
 # ADMIN ENDPOINTS - ÓRDENES (mejoras)
 # ============================================================================
-
-
-@app.get("/admin/stats")
-def admin_stats(session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
-    """Retorna estadísticas para el dashboard administrativo."""
-    _require_admin(session_token)
-    conn = _connect()
-    try:
-        # 1. Total productos (excluyendo borrados si el campo existe)
-        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
-        where_p = "WHERE deleted_at IS NULL" if has_deleted_at else ""
-        row_p = conn.execute(f"SELECT COUNT(*) as count FROM products {where_p}").fetchone()
-        products_count = row_p["count"] if row_p and row_p["count"] is not None else 0
-
-        # 2. Pedidos pendientes
-        row_o = conn.execute("SELECT COUNT(*) as count FROM web_orders WHERE status = 'PENDING'").fetchone()
-        pending_orders = row_o["count"] if row_o and row_o["count"] is not None else 0
-
-        # 3. Total clientes (registrados en la tabla customers)
-        customers_count = 0
-        if _get_has_table(conn, "customers"):
-            row_c = conn.execute("SELECT COUNT(*) as count FROM customers").fetchone()
-            customers_count = row_c["count"] if row_c and row_c["count"] is not None else 0
-
-        # 4. Ventas de hoy (CONFIRMED)
-        today = datetime.utcnow().strftime('%Y-%m-%d')
-        if DB_IS_POSTGRES:
-            sql_sales = "SELECT SUM(total) as total FROM web_orders WHERE status = 'CONFIRMED' AND confirmed_at::date = %s"
-        else:
-            sql_sales = "SELECT SUM(total) as total FROM web_orders WHERE status = 'CONFIRMED' AND date(confirmed_at) = ?"
-        
-        row_s = conn.execute(sql_sales, (today,)).fetchone()
-        sales_today = row_s["total"] if row_s and row_s["total"] is not None else 0.0
-
-        return {
-            "products": int(products_count),
-            "pending_orders": int(pending_orders),
-            "customers": int(customers_count),
-            "sales_today": float(sales_today)
-        }
-    finally:
-        conn.close()
-
 
 @app.get("/admin/orders-with-items")
 def admin_list_orders_detailed(
@@ -2119,7 +3512,7 @@ def admin_list_sales(
     
     conn = _connect()
     try:
-        has_sales_table = _get_has_table(conn, "sales")
+        has_sales_table = _has_table(conn, "sales")
         
         if not has_sales_table:
             return []
@@ -2179,7 +3572,7 @@ def admin_create_sale(
     conn = _connect()
     try:
         # Crear tabla si no existe
-        if not _get_has_table(conn, "sales"):
+        if not _has_table(conn, "sales"):
             conn.execute(
                 """
                 CREATE TABLE sales (
@@ -2229,7 +3622,7 @@ def admin_list_purchases(
     
     conn = _connect()
     try:
-        has_purchases_table = _get_has_table(conn, "purchases")
+        has_purchases_table = _has_table(conn, "purchases")
         
         if not has_purchases_table:
             return []
@@ -2293,7 +3686,7 @@ def admin_create_purchase(
     conn = _connect()
     try:
         # Crear tabla si no existe
-        if not _get_has_table(conn, "purchases"):
+        if not _has_table(conn, "purchases"):
             conn.execute(
                 """
                 CREATE TABLE purchases (
@@ -2341,7 +3734,7 @@ def admin_list_categories(
     
     conn = _connect()
     try:
-        has_categories_table = _get_has_table(conn, "categories")
+        has_categories_table = _has_table(conn, "categories")
         
         if not has_categories_table:
             return []
@@ -2382,7 +3775,7 @@ def admin_create_category(
     conn = _connect()
     try:
         # Asegurarse que la tabla existe
-        if not _get_has_table(conn, "categories"):
+        if not _has_table(conn, "categories"):
             conn.execute(
                 """
                 CREATE TABLE categories (
@@ -2523,7 +3916,7 @@ def admin_list_expenses(
     
     conn = _connect()
     try:
-        has_expenses_table = _get_has_table(conn, "expenses")
+        has_expenses_table = _has_table(conn, "expenses")
         
         if not has_expenses_table:
             return []
@@ -2586,7 +3979,7 @@ def admin_create_expense(
     conn = _connect()
     try:
         # Crear tabla si no existe
-        if not _get_has_table(conn, "expenses"):
+        if not _has_table(conn, "expenses"):
             conn.execute(
                 """
                 CREATE TABLE expenses (

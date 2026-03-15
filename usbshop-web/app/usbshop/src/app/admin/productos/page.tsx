@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useAdminSession } from '@/hooks/useAdminSession';
 import Link from 'next/link';
+import { useAdminSession } from '@/hooks/useAdminSession';
+import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ProductForm } from './components/ProductForm';
-import { getApiBaseUrl } from '@/lib/api';
 import styles from './productos.module.css';
 
 interface Product {
@@ -13,26 +13,51 @@ interface Product {
   name: string;
   sku: string;
   price: number;
+  cost: number;
   stock: number;
+  imageUrl?: string | null;
   category_id: number | null;
   is_active: boolean;
   is_featured: boolean;
   is_offer: boolean;
+  image_path?: string | null;
+  image_urls?: string[];
 }
 
+const PAGE_SIZE = 100;
+
+const normalizeSearchValue = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const buildSearchTokens = (value: string) => {
+  const base = normalizeSearchValue(value);
+  if (!base) return [];
+  const tokens = base.split(/\s+/).filter(Boolean);
+  const expanded = new Set<string>();
+  for (const token of tokens) {
+    expanded.add(token);
+    if (token.endsWith('es') && token.length > 4) expanded.add(token.slice(0, -2));
+    if (token.endsWith('s') && token.length > 3) expanded.add(token.slice(0, -1));
+  }
+  return Array.from(expanded);
+};
+
 export default function ProductosPage() {
-  const API_BASE = getApiBaseUrl();
   const { user } = useAdminSession();
   const searchParams = useSearchParams();
   const editId = searchParams?.get('edit');
-  
+
   const [products, setProducts] = useState<Product[]>([]);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [limit, setLimit] = useState(50);
-  const [offset, setOffset] = useState(0);
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const loadProducts = async () => {
     try {
@@ -40,18 +65,26 @@ export default function ProductosPage() {
       setError('');
 
       const params = new URLSearchParams();
-      params.append('limit', String(limit));
-      params.append('offset', String(offset));
-      if (search) params.append('q', search);
+      params.append('limit', '1000');
 
-      const res = await fetch(`${API_BASE}/admin/products?${params}`, {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
         credentials: 'include',
       });
 
       if (!res.ok) throw new Error('No se pudieron cargar los productos');
 
       const data = await res.json();
-      setProducts(data);
+      const sorted = Array.isArray(data)
+        ? [...data].sort(
+            (a, b) =>
+              String(a.name || '').localeCompare(String(b.name || ''), 'es', {
+                sensitivity: 'base',
+                numeric: true,
+              }) || a.id - b.id
+          )
+        : [];
+      setProducts(sorted);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando productos');
     } finally {
@@ -61,36 +94,62 @@ export default function ProductosPage() {
 
   useEffect(() => {
     loadProducts();
-  }, [offset, limit]);
+  }, []);
 
-  // Cargar producto cuando se activa edit mode
   useEffect(() => {
     if (editId && products.length > 0) {
-      const product = products.find((p) => p.id === parseInt(editId));
+      const product = products.find((item) => item.id === Number.parseInt(editId, 10));
       setEditProduct(product || null);
     } else {
       setEditProduct(null);
     }
   }, [editId, products]);
 
+  const filteredProducts = useMemo(() => {
+    const tokens = buildSearchTokens(submittedSearch);
+    if (tokens.length === 0) {
+      return products;
+    }
+    return products.filter((product) => {
+      const haystack = normalizeSearchValue(
+        [product.name, product.sku, product.image_path || '', ...(product.image_urls || [])].join(' ')
+      );
+      return tokens.every((token) => haystack.includes(token));
+    });
+  }, [products, submittedSearch]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const visibleProducts = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filteredProducts.slice(start, start + PAGE_SIZE);
+  }, [filteredProducts, page]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setOffset(0);
-    loadProducts();
+    setPage(1);
+    setSubmittedSearch(search);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('¿Eliminar este producto?')) return;
+    if (!confirm('Eliminar este producto?')) return;
 
     try {
-      const res = await fetch(`${API_BASE}/admin/products/${id}`, {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/products/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (!res.ok) throw new Error('No se pudo eliminar');
 
-      setProducts(products.filter((p) => p.id !== id));
+      setProducts((current) => current.filter((product) => product.id !== id));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error eliminando producto');
     }
@@ -98,7 +157,8 @@ export default function ProductosPage() {
 
   const toggleFeatured = async (product: Product) => {
     try {
-      const res = await fetch(`${API_BASE}/admin/products/${product.id}`, {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/products/${product.id}`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -107,9 +167,9 @@ export default function ProductosPage() {
 
       if (!res.ok) throw new Error('No se pudo actualizar');
 
-      setProducts(
-        products.map((p) =>
-          p.id === product.id ? { ...p, is_featured: !p.is_featured } : p
+      setProducts((current) =>
+        current.map((item) =>
+          item.id === product.id ? { ...item, is_featured: !item.is_featured } : item
         )
       );
     } catch (err) {
@@ -122,16 +182,15 @@ export default function ProductosPage() {
       <div className={styles.header}>
         <div>
           <h1>Productos</h1>
-          <p>Gestiona el catálogo de productos</p>
+          <p>Gestiona el catalogo de productos</p>
         </div>
         <Link href="/admin/productos/nueva" className={styles.btnNew}>
-          ➕ Nuevo Producto
+          + Nuevo producto
         </Link>
       </div>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error ? <div className={styles.error}>{error}</div> : null}
 
-      {/* Search Bar */}
       <form onSubmit={handleSearch} className={styles.searchForm}>
         <input
           type="text"
@@ -141,27 +200,34 @@ export default function ProductosPage() {
           className={styles.searchInput}
         />
         <button type="submit" className={styles.btnSearch}>
-          🔍 Buscar
+          Buscar
         </button>
       </form>
 
-      {/* Products Table */}
+      <div className={styles.pagination}>
+        <span>
+          {filteredProducts.length} productos{submittedSearch ? ` para "${submittedSearch}"` : ''} |
+          {' '}orden alfabetico
+        </span>
+      </div>
+
       <div className={styles.tableWrapper}>
         {loading ? (
           <div className={styles.loading}>Cargando...</div>
-        ) : products.length === 0 ? (
+        ) : visibleProducts.length === 0 ? (
           <div className={styles.empty}>
-            <p>No hay productos</p>
-            <Link href="/admin/productos/nueva">Crear el primero</Link>
+            <p>No hay productos para ese filtro</p>
           </div>
         ) : (
           <table className={styles.table}>
             <thead>
               <tr>
                 <th>ID</th>
+                <th>Imagen</th>
                 <th>Nombre</th>
                 <th>SKU</th>
                 <th>Precio</th>
+                <th>Costo</th>
                 <th>Stock</th>
                 <th>Destacado</th>
                 <th>Oferta</th>
@@ -169,49 +235,45 @@ export default function ProductosPage() {
               </tr>
             </thead>
             <tbody>
-              {products.map((product) => (
+              {visibleProducts.map((product) => (
                 <tr key={product.id}>
                   <td>{product.id}</td>
+                  <td>
+                    {product.imageUrl ? (
+                      <img src={product.imageUrl} alt={product.name} className={styles.productThumb} />
+                    ) : (
+                      <span className={styles.noImage}>Sin imagen</span>
+                    )}
+                  </td>
                   <td className={styles.name}>{product.name}</td>
                   <td>{product.sku}</td>
                   <td className={styles.price}>${product.price.toFixed(2)}</td>
+                  <td className={styles.price}>${product.cost.toFixed(2)}</td>
                   <td>
-                    <span
-                      className={
-                        product.stock > 0 ? styles.inStock : styles.outOfStock
-                      }
-                    >
+                    <span className={product.stock > 0 ? styles.inStock : styles.outOfStock}>
                       {product.stock}
                     </span>
                   </td>
                   <td>
                     <button
-                      className={`${styles.toggle} ${
-                        product.is_featured ? styles.active : ''
-                      }`}
+                      className={`${styles.toggle} ${product.is_featured ? styles.active : ''}`}
                       onClick={() => toggleFeatured(product)}
-                      title="Toggle destacado"
+                      title="Cambiar destacado"
                     >
-                      {product.is_featured ? '⭐' : '☆'}
+                      {product.is_featured ? 'Si' : 'No'}
                     </button>
                   </td>
                   <td>
                     <span className={product.is_offer ? styles.badge : ''}>
-                      {product.is_offer ? 'Sí' : 'No'}
+                      {product.is_offer ? 'Si' : 'No'}
                     </span>
                   </td>
                   <td className={styles.actions}>
-                    <Link
-                      href={`/admin/productos?edit=${product.id}`}
-                      className={styles.btnEdit}
-                    >
-                      ✏️
+                    <Link href={`/admin/productos?edit=${product.id}`} className={styles.btnEdit}>
+                      Editar
                     </Link>
-                    <button
-                      className={styles.btnDelete}
-                      onClick={() => handleDelete(product.id)}
-                    >
-                      🗑️
+                    <button className={styles.btnDelete} onClick={() => handleDelete(product.id)}>
+                      Eliminar
                     </button>
                   </td>
                 </tr>
@@ -221,81 +283,67 @@ export default function ProductosPage() {
         )}
       </div>
 
-      {/* Pagination */}
-      {products.length > 0 && (
+      {filteredProducts.length > 0 ? (
         <div className={styles.pagination}>
           <button
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - limit))}
+            disabled={page === 1}
+            onClick={() => setPage(Math.max(1, page - 1))}
             className={styles.btnPagination}
           >
-            ← Anterior
+            Anterior
           </button>
           <span>
-            Página {Math.floor(offset / limit) + 1} | Mostrando {products.length}
+            Pagina {page} de {totalPages} | Mostrando {visibleProducts.length} de {filteredProducts.length}
           </span>
           <button
-            disabled={products.length < limit}
-            onClick={() => setOffset(offset + limit)}
+            disabled={page >= totalPages}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             className={styles.btnPagination}
           >
-            Siguiente →
+            Siguiente
           </button>
         </div>
-      )}
+      ) : null}
 
-      {/* Edit Modal */}
-      {editProduct && (
+      {editProduct ? (
         <div className={styles.modal}>
           <div className={styles.modalContent}>
             <button
               className={styles.modalClose}
               onClick={() => window.history.pushState(null, '', '/admin/productos')}
             >
-              ✕
+              x
             </button>
             <ProductForm
-              initialData={editProduct}
-              title="Editar Producto"
+              initialData={{
+                ...editProduct,
+                image_path: editProduct.image_path || '',
+                image_urls_text: Array.isArray(editProduct.image_urls)
+                  ? editProduct.image_urls.join('\n')
+                  : '',
+              }}
+              title="Editar producto"
               onSubmit={async (data) => {
-                const { image, ...productData } = data;
-
-                const res = await fetch(`${API_BASE}/admin/products/${editProduct.id}`, {
+                await loadRuntimeConfig();
+                const res = await fetch(`${getApiBaseUrl()}/admin/products/${editProduct.id}`, {
                   method: 'PUT',
                   credentials: 'include',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(productData),
+                  body: JSON.stringify(data),
                 });
 
                 if (!res.ok) {
-                  const error = await res.json();
-                  throw new Error(error.detail || 'Error actualizando producto');
+                  const responseError = await res.json();
+                  throw new Error(responseError.detail || 'Error actualizando producto');
                 }
 
-                // Subir imagen si se seleccionó una nueva
-                if (image) {
-                  const formData = new FormData();
-                  formData.append('file', image);
-
-                  const imgRes = await fetch(`${API_BASE}/admin/products/${editProduct.id}/image`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: formData,
-                  });
-
-                  if (!imgRes.ok) {
-                    console.error('Error subiendo imagen');
-                  }
-                }
-                
-                // Cerrar modal y recargar
                 window.history.pushState(null, '', '/admin/productos');
                 loadProducts();
               }}
             />
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

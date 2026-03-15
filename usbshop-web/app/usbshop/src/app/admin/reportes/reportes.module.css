@@ -1,142 +1,25 @@
-.container {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.header {
-  margin-bottom: 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header h1 {
-  font-size: 2rem;
-  color: #1a1a1a;
-}
-
-.controls {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  background: white;
-  padding: 1rem;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.dateInput {
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 0.875rem;
-}
-
-.summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2.5rem;
-}
-
-.card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  display: flex;
-  flex-direction: column;
-}
-
-.cardTitle {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
-  margin-bottom: 0.5rem;
-}
-
-.cardValue {
-  font-size: 1.875rem;
-  font-weight: 700;
-  color: #1a1a1a;
-}
-
-.cardSubtitle {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-top: 0.25rem;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-
-.section {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.section h2 {
-  font-size: 1.25rem;
-  color: #1a1a1a;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 0.75rem;
-}
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.table th {
-  text-align: left;
-  font-size: 0.75rem;
-  color: #64748b;
-  padding: 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.table td {
-  padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #f8fafc;
-  font-size: 0.875rem;
-}
-
-.statusBadge {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.loading {
-  text-align: center;
-  padding: 4rem;
-  color: #64748b;
-}
-
-@media (max-width: 1024px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-  .controls {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-}
+.page { display: flex; flex-direction: column; gap: 20px; }
+.header h1 { margin: 0; color: var(--ink); }
+.header p { margin: 6px 0 0; color: var(--muted); }
+.kpiGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.kpi, .panel { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; box-shadow: 0 4px 16px var(--shadow); }
+.kpi { padding: 16px; display: grid; gap: 8px; }
+.kpi span { color: var(--muted); font-size: 13px; }
+.kpi strong { color: var(--ink); font-size: 24px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.panel { padding: 18px; display: flex; flex-direction: column; gap: 16px; }
+.panelHeader h2 { margin: 0; color: var(--ink); font-size: 18px; }
+.chart { display: grid; grid-template-columns: repeat(auto-fit, minmax(56px, 1fr)); gap: 12px; align-items: flex-end; min-height: 280px; }
+.barItem { display: grid; gap: 8px; align-items: flex-end; }
+.barValue, .barLabel { font-size: 12px; color: var(--muted); text-align: center; }
+.barTrack { background: linear-gradient(180deg, rgba(132,204,22,.08), rgba(99,102,241,.08)); border-radius: 12px; height: 180px; padding: 6px; display: flex; align-items: flex-end; }
+.barFill { width: 100%; background: linear-gradient(180deg, var(--lime), var(--purple)); border-radius: 8px; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+.listRow { display: flex; justify-content: space-between; gap: 12px; align-items: center; border: 1px solid var(--bg-soft); border-radius: 12px; padding: 12px; }
+.listRow strong { color: var(--ink); }
+.listRow span { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; }
+.listRow em { font-style: normal; font-weight: 700; color: var(--purple); }
+.empty, .error { padding: 14px; border-radius: 12px; }
+.empty { background: var(--bg); color: var(--muted); }
+.error { background: rgba(220,38,38,.1); color: #b91c1c; border: 1px solid rgba(220,38,38,.25); }
+@media (max-width: 1100px) { .kpiGrid, .grid { grid-template-columns: 1fr; } }

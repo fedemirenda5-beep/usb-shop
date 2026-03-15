@@ -17,7 +17,7 @@ export function middleware(request: NextRequest) {
 
     if (!sessionCookie) {
       // Redirigir a login con return URL
-      const loginUrl = new URL('/(auth)/login', request.url);
+      const loginUrl = new URL('/login', request.url);
       loginUrl.searchParams.set('from', pathname);
       return NextResponse.redirect(loginUrl);
     }

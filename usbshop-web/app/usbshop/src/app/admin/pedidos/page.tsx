@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, Fragment, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl } from '@/lib/api';
 import styles from './pedidos.module.css';
 
 interface OrderItem {
@@ -39,29 +38,25 @@ const statusOptions = [
   { value: 'CANCELLED', label: 'Cancelado' },
 ];
 
-function PedidosContent() {
-  const API_BASE = getApiBaseUrl();
-  const searchParams = useSearchParams();
-  const initialSearch = searchParams.get('search') || '';
-
+export default function PedidosPage() {
   const { user } = useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('PENDING');
-  const [searchTerm, setSearchTerm] = useState(initialSearch);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
 
-  const loadOrders = async (status: string, q = '') => {
+  const loadOrders = async (status: string) => {
     try {
       setLoading(true);
       setError('');
 
-      let url = `${API_BASE}/admin/orders?status=${status}&limit=200&include_items=true`;
-      if (q) url += `&q=${encodeURIComponent(q)}`;
-
-      const res = await fetch(url, { credentials: 'include' });
+      await loadRuntimeConfig();
+      const res = await fetch(
+        `${getApiBaseUrl()}/admin/orders?status=${status}&limit=200&include_items=true`,
+        { credentials: 'include' }
+      );
 
       if (!res.ok) throw new Error('No se pudieron cargar los pedidos');
 
@@ -75,15 +70,13 @@ function PedidosContent() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadOrders(selectedStatus, searchTerm);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [selectedStatus, searchTerm]);
+    loadOrders(selectedStatus);
+  }, [selectedStatus]);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
     try {
-      const res = await fetch(`${API_BASE}/admin/orders/${orderId}/status`, {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderId}/status`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -97,95 +90,6 @@ function PedidosContent() {
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error actualizando estado');
     }
-  };
-
-  const generateRemito = (order: Order) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const itemsHtml = order.items.map(item => `
-      <tr>
-        <td style="border-bottom: 1px solid #eee; padding: 8px;">${item.product_name}</td>
-        <td style="border-bottom: 1px solid #eee; padding: 8px; text-align: center;">${item.quantity}</td>
-        <td style="border-bottom: 1px solid #eee; padding: 8px; text-align: right;">$${item.unit_price.toFixed(2)}</td>
-        <td style="border-bottom: 1px solid #eee; padding: 8px; text-align: right;">$${(item.quantity * item.unit_price).toFixed(2)}</td>
-      </tr>
-    `).join('');
-
-    const html = `
-      <html>
-        <head>
-          <title>Remito #${order.id} - ${order.customer_name}</title>
-          <style>
-            body { font-family: sans-serif; padding: 40px; color: #333; }
-            .header { display: flex; justify-content: space-between; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-            .store-name { font-size: 24px; font-weight: bold; }
-            .doc-type { font-size: 20px; font-weight: bold; color: #666; }
-            .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-bottom: 40px; }
-            .section-title { font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #ccc; }
-            table { width: 100%; border-collapse: collapse; }
-            th { background: #f4f4f4; padding: 10px; text-align: left; }
-            .total-row { font-size: 18px; font-weight: bold; text-align: right; margin-top: 30px; }
-            @media print { .no-print { display: none; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div class="store-name">USB SHOP</div>
-            <div class="doc-type">REMITO / NOTA DE PEDIDO</div>
-          </div>
-          
-          <div class="info-grid">
-            <div>
-              <div class="section-title">CLIENTE</div>
-              <div>${order.customer_name}</div>
-              <div>${order.customer_email}</div>
-              <div>${order.customer_phone || '-'}</div>
-            </div>
-            <div style="text-align: right;">
-              <div class="section-title">DETALLES</div>
-              <div>Número: #${order.id}</div>
-              <div>Fecha: ${formatDate(order.created_at)}</div>
-              <div>Estado: ${order.status}</div>
-            </div>
-          </div>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Producto</th>
-                <th style="text-align: center;">Cant.</th>
-                <th style="text-align: right;">Precio Un.</th>
-                <th style="text-align: right;">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml}
-            </tbody>
-          </table>
-
-          <div class="total-row">
-            TOTAL: $${order.total.toFixed(2)}
-          </div>
-
-          ${order.notes ? `<div style="margin-top: 40px;"><div class="section-title">NOTAS</div><div>${order.notes}</div></div>` : ''}
-
-          <div style="margin-top: 100px; text-align: center; font-size: 12px; color: #999;">
-            ¡Gracias por su compra! - USB SHOP
-          </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-              setTimeout(() => { window.close(); }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(html);
-    printWindow.document.close();
   };
 
   const formatDate = (dateStr: string) => {
@@ -212,27 +116,17 @@ function PedidosContent() {
 
       {/* Status Filter */}
       <div className={styles.filterBar}>
-        <div className={styles.statusFilters}>
-          {statusOptions.map((opt) => (
-            <button
-              key={opt.value}
-              className={`${styles.filterBtn} ${selectedStatus === opt.value ? styles.active : ''}`}
-              onClick={() => setSelectedStatus(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-
-        <div className={styles.searchBox}>
-          <input
-            type="text"
-            placeholder="Buscar por cliente o ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className={styles.searchInput}
-          />
-        </div>
+        {statusOptions.map((opt) => (
+          <button
+            key={opt.value}
+            className={`${styles.filterBtn} ${
+              selectedStatus === opt.value ? styles.active : ''
+            }`}
+            onClick={() => setSelectedStatus(opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {/* Orders Table */}
@@ -260,7 +154,7 @@ function PedidosContent() {
               {orders.map((order) => {
                 const color = statusColors[order.status];
                 return (
-                  <Fragment key={order.id}>
+                  <tbody key={order.id}>
                     <tr className={styles.orderRow}>
                       <td>#{order.id}</td>
                       <td className={styles.name}>{order.customer_name}</td>
@@ -277,16 +171,8 @@ function PedidosContent() {
                       </td>
                       <td className={styles.actions}>
                         <button
-                          className={styles.btnRemito}
-                          onClick={() => generateRemito(order)}
-                          title="Generar Remito PDF"
-                        >
-                          📄
-                        </button>
-                        <button
                           className={styles.btnDetails}
                           onClick={() => setDetailOrder(detailOrder?.id === order.id ? null : order)}
-                          title="Ver detalles"
                         >
                           📋
                         </button>
@@ -371,7 +257,7 @@ function PedidosContent() {
                         </td>
                       </tr>
                     )}
-                  </Fragment>
+                  </tbody>
                 );
               })}
             </tbody>
@@ -379,12 +265,5 @@ function PedidosContent() {
         )}
       </div>
     </div>
-  );
-}
-export default function PedidosPage() {
-  return (
-    <Suspense fallback={<div>Cargando pedidos...</div>}>
-      <PedidosContent />
-    </Suspense>
   );
 }

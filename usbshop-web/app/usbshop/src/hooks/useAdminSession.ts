@@ -4,8 +4,6 @@ import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 
-const TOKEN_KEY = 'usbshop_admin_token';
-
 interface AdminUser {
   username: string;
   role: string;
@@ -19,14 +17,13 @@ export function useAdminSession() {
 
   // Verificar sesión al montar
   useEffect(() => {
-    // Asegurar que la configuración de runtime esté cargada antes de verificar sesión
-    loadRuntimeConfig().then(() => {
-        verifySessionOnLoad();
-    });
+    // Verificar si hay sesión activa (cookie)
+    verifySessionOnLoad();
   }, []);
 
   const verifySessionOnLoad = async () => {
     try {
+      await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
         credentials: 'include'
       });
@@ -50,8 +47,7 @@ export function useAdminSession() {
     setIsLoading(true);
     setError(null);
     try {
-      // Nos aseguramos que la config esté cargada (raro que no lo esté a este punto pero por seguridad)
-      await loadRuntimeConfig(); 
+      await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
         method: 'POST',
         credentials: 'include',
@@ -81,6 +77,7 @@ export function useAdminSession() {
 
   const logout = useCallback(async () => {
     try {
+      await loadRuntimeConfig();
       await fetch(`${getApiBaseUrl()}/auth/logout`, {
         method: 'POST',
         credentials: 'include'
@@ -93,18 +90,12 @@ export function useAdminSession() {
     }
   }, [router]);
 
-  const getToken = useCallback(() => {
-    // Token se maneja via cookies httponly, no disponible en JS
-    return user ? 'authenticated' : null;
-  }, [user]);
-
   return {
     user,
     isLoading,
     error,
     login,
     logout,
-    getToken,
     isAuthenticated: !!user
   };
 }

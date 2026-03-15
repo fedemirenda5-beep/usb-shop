@@ -1,4 +1,12 @@
-const DEFAULT_API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || "https://usbshop-api.onrender.com").trim();
+const DEFAULT_API_BASE_URL = (() => {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return "https://usbshop-api.onrender.com";
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+})();
 const DEFAULT_ORDER_SECRET = process.env.NEXT_PUBLIC_ORDER_SECRET || "";
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;

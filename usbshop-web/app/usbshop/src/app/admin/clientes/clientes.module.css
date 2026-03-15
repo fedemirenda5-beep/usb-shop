@@ -1,233 +1,341 @@
-.container {
-  padding: 2rem;
-  max-width: 1400px;
-  margin: 0 auto;
+.page {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 20px;
 }
 
-.header {
-  margin-bottom: 2rem;
+.sidebar,
+.panel {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+}
+
+.sidebar {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: fit-content;
+}
+
+.sidebarHeader,
+.panelHeader,
+.documentCard,
+.printHeader,
+.printFooter,
+.printActions {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-.addBtn {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
+.sidebarActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
-.addBtn:hover {
-  background: #2563eb;
+.sidebarHeader h1,
+.panelHeader h2,
+.panelHeader h3,
+.printHeader h1 {
+  margin: 0;
+  color: #132238;
 }
 
-.header h1 {
-  font-size: 2rem;
-  color: #1a1a1a;
-  margin-bottom: 0.5rem;
+.sidebarHeader p,
+.panelHeader p,
+.printMuted,
+.notice,
+.customerCard span,
+.documentCard span {
+  margin: 4px 0 0;
+  color: #64748b;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.searchBar,
+.formGrid,
+.documentForm {
+  display: grid;
+  gap: 14px;
 }
 
 .searchBar {
-  margin-bottom: 2rem;
+  grid-template-columns: 1fr auto;
 }
 
-.searchInput {
+.searchBar input,
+.formGrid input,
+.formGrid select,
+.formGrid textarea,
+.itemRow input,
+.documentForm textarea,
+.documentForm select {
   width: 100%;
-  max-width: 500px;
-  padding: 0.75rem 1rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 1rem;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.searchInput:focus {
-  border-color: #3b82f6;
-}
-
-.tableContainer {
-  background: white;
+  border: 1px solid #d7dee7;
   border-radius: 12px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-  overflow: auto;
+  padding: 10px 12px;
+  font: inherit;
+  background: #fff;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
+.customerList,
+.documentList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.customerCard {
+  border: 1px solid #dbe4ee;
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px;
   text-align: left;
-}
-
-.table th {
-  padding: 1rem;
-  background: #f8fafc;
-  color: #64748b;
-  font-weight: 600;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.table td {
-  padding: 1rem;
-  border-bottom: 1px solid #e2e8f0;
-  vertical-align: middle;
-}
-
-.customerInfo, .taxInfo, .locationInfo, .statsInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.customerName {
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-.customerEmail, .customerPhone, .cuit, .taxCondition, .locality, .address {
-  font-size: 0.8125rem;
-  color: #64748b;
-}
-
-.badge {
-  display: inline-flex;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: #f1f5f9;
-  color: #475569;
-  width: fit-content;
-}
-
-.total {
-  font-weight: 700;
-  color: #059669;
-}
-
-.actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.actionsHeader {
-  width: 100px;
-}
-
-.editBtn, .ordersBtn {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 0.5rem;
   cursor: pointer;
-  transition: all 0.2s;
-  text-decoration: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  gap: 6px;
 }
 
-.editBtn:hover {
-  background: #eff6ff;
-  border-color: #3b82f6;
+.customerCardActive {
+  border-color: #0f766e;
+  background: #f0fdfa;
 }
 
-.ordersBtn:hover {
-  background: #f0fdf4;
-  border-color: #22c55e;
+.customerCard em,
+.documentCard em {
+  font-style: normal;
+  font-weight: 700;
 }
 
-/* Modal Styles */
-.modalOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
-}
-
-.modal {
-  background: white;
-  padding: 2rem;
-  border-radius: 12px;
-  width: 100%;
-  max-width: 600px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-}
-
-.modal h2 {
-  margin-bottom: 1.5rem;
-  font-size: 1.5rem;
-}
-
-.formGroup {
-  margin-bottom: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.panel {
+  padding: 18px;
 }
 
 .formGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.formGrid label,
+.documentForm label {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-.formGroup label {
-  font-size: 0.875rem;
+  gap: 6px;
+  color: #334155;
   font-weight: 600;
-  color: #475569;
 }
 
-.formGroup input, .formGroup select {
-  padding: 0.625rem;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 0.875rem;
+.fullWidth {
+  grid-column: 1 / -1;
 }
 
-.modalActions {
-  margin-top: 2rem;
+.formActions,
+.documentActions {
   display: flex;
   justify-content: flex-end;
-  gap: 1rem;
+  gap: 10px;
 }
 
-.modalActions button {
-  padding: 0.625rem 1.25rem;
-  border-radius: 6px;
-  font-weight: 600;
+.primaryButton,
+.secondaryButton,
+.ghostButton {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font: inherit;
   cursor: pointer;
-  border: 1px solid #ddd;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, #0f766e, #1d4ed8);
+  color: white;
+}
+
+.secondaryButton {
+  background: #e2e8f0;
+  color: #132238;
+}
+
+.ghostButton {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.itemRow {
+  display: grid;
+  grid-template-columns: 1.6fr 0.6fr 0.8fr auto;
+  gap: 10px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table,
+.printTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td,
+.printTable th,
+.printTable td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.metaLine {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.documentCard {
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.documentCardRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.debt {
+  color: #b91c1c;
+}
+
+.credit {
+  color: #047857;
+}
+
+.errorBox,
+.notice {
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.errorBox {
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
+}
+
+.notice {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.printShell {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.printDocument {
   background: white;
+  color: #111827;
+  border-radius: 18px;
+  padding: 28px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
 }
 
-.saveBtn {
-  background: #3b82f6 !important;
-  color: white !important;
-  border-color: #2563eb !important;
+.printEyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+  color: #64748b;
+  margin: 0 0 8px;
 }
 
-.saveBtn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+.printMeta,
+.printCustomer {
+  display: grid;
+  gap: 6px;
 }
 
-@media (max-width: 1024px) {
-  .taxInfo, .locationInfo {
+.printCustomer {
+  margin: 18px 0;
+  padding: 14px 0;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.printTotalBox {
+  min-width: 220px;
+  margin-left: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.printNotes {
+  margin-top: 16px;
+}
+
+@media (max-width: 1100px) {
+  .page,
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .formGrid,
+  .searchBar,
+  .itemRow {
+    grid-template-columns: 1fr;
+  }
+
+  .documentCard,
+  .sidebarHeader,
+  .panelHeader,
+  .documentActions,
+  .sidebarActions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media print {
+  .printActions {
     display: none;
+  }
+
+  .printShell {
+    padding: 0;
+  }
+
+  .printDocument {
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
   }
 }
