@@ -20,9 +20,8 @@ interface Customer {
   created_at: string;
 }
 
-const API_BASE = getApiBaseUrl();
-
 export default function ClientesPage() {
+  const API_BASE = getApiBaseUrl();
   const { user } = useAdminSession();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);

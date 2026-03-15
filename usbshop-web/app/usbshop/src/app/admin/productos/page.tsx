@@ -20,9 +20,8 @@ interface Product {
   is_offer: boolean;
 }
 
-const API_BASE = getApiBaseUrl();
-
 export default function ProductosPage() {
+  const API_BASE = getApiBaseUrl();
   const { user } = useAdminSession();
   const searchParams = useSearchParams();
   const editId = searchParams?.get('edit');

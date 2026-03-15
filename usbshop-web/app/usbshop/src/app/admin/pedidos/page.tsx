@@ -27,8 +27,6 @@ interface Order {
   items: OrderItem[];
 }
 
-const API_BASE = getApiBaseUrl();
-
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
   PENDING: { bg: 'rgba(249, 115, 22, 0.1)', text: '#ea580c', label: 'Pendiente' },
   CONFIRMED: { bg: 'rgba(132, 204, 22, 0.1)', text: '#3f7d2a', label: 'Confirmado' },
@@ -42,6 +40,7 @@ const statusOptions = [
 ];
 
 function PedidosContent() {
+  const API_BASE = getApiBaseUrl();
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get('search') || '';
 

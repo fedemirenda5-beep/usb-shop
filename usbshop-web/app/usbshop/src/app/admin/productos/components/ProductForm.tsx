@@ -22,9 +22,8 @@ interface ProductFormProps {
 
 import { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = getApiBaseUrl();
-
 export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) {
+  const API_BASE = getApiBaseUrl();
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormData>(
     initialData || {

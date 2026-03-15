@@ -5,9 +5,8 @@ import { ProductForm } from '../components/ProductForm';
 
 import { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = getApiBaseUrl();
-
 export default function NuevaProductoPage() {
+  const API_BASE = getApiBaseUrl();
   const router = useRouter();
 
   const handleSubmit = async (data: any) => {

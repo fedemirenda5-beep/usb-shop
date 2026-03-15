@@ -28,9 +28,8 @@ interface LowStockProduct {
   category: string;
 }
 
-const API_BASE = getApiBaseUrl();
-
 export default function ReportesPage() {
+  const API_BASE = getApiBaseUrl();
   const { user } = useAdminSession();
   const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<LowStockProduct[]>([]);
