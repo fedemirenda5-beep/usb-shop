@@ -27,8 +27,20 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [editingCustomer, setEditingCustomer] = useState<Partial<Customer> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const emptyCustomer: Partial<Customer> = {
+    name: '',
+    email: '',
+    phone: '',
+    locality: '',
+    address: '',
+    tax_condition: 'CONSUMIDOR_FINAL',
+    cuit: '',
+    order_count: 0,
+    total_spent: 0
+  };
 
   const loadCustomers = async (query = '') => {
     try {
@@ -66,20 +78,28 @@ export default function ClientesPage() {
     });
   };
 
-  const handleUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editingCustomer) return;
 
     try {
       setIsSaving(true);
-      const res = await fetch(`${API_BASE}/admin/customers/${editingCustomer.id}`, {
-        method: 'PUT',
+      const isNew = !editingCustomer.id;
+      const url = isNew 
+        ? `${API_BASE}/admin/customers`
+        : `${API_BASE}/admin/customers/${editingCustomer.id}`;
+      
+      const res = await fetch(url, {
+        method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingCustomer),
         credentials: 'include'
       });
 
-      if (!res.ok) throw new Error('Error al actualizar cliente');
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Error al guardar cliente');
+      }
       
       setEditingCustomer(null);
       loadCustomers(search);
@@ -93,8 +113,16 @@ export default function ClientesPage() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1>Clientes</h1>
-        <p>Listado de clientes que han realizado pedidos web</p>
+        <div>
+          <h1>Clientes</h1>
+          <p>Listado de clientes que han realizado pedidos web</p>
+        </div>
+        <button 
+          className={styles.addBtn}
+          onClick={() => setEditingCustomer(emptyCustomer)}
+        >
+          + Nuevo Cliente
+        </button>
       </div>
 
       <div className={styles.searchBar}>
@@ -179,8 +207,8 @@ export default function ClientesPage() {
       {editingCustomer && (
         <div className={styles.modalOverlay}>
           <div className={styles.modal}>
-            <h2>Editar Cliente</h2>
-            <form onSubmit={handleUpdate}>
+            <h2>{editingCustomer.id ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
+            <form onSubmit={handleSubmit}>
               <div className={styles.formGroup}>
                 <label>Nombre</label>
                 <input 

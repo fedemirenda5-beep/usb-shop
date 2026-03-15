@@ -1891,6 +1891,31 @@ def admin_update_customer(
     finally:
         conn.close()
 
+@app.post("/admin/customers")
+def admin_create_customer(
+    data: dict = Body(...),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+):
+    """Crea un nuevo cliente. Requiere sesión admin."""
+    _require_admin(session_token)
+    
+    fields = ["name", "email", "phone", "locality", "address", "tax_condition", "cuit"]
+    valid_data = {f: data.get(f) for f in fields if f in data}
+    
+    if not valid_data.get("name"):
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+        
+    conn = _connect()
+    try:
+        columns = ", ".join(valid_data.keys())
+        placeholders = ", ".join(["?" for _ in valid_data])
+        query = f"INSERT INTO customers ({columns}) VALUES ({placeholders})"
+        conn.execute(query, list(valid_data.values()))
+        conn.commit()
+        return {"message": "Cliente creado correctamente"}
+    finally:
+        conn.close()
+
 
 # ============================================================================
 # ADMIN ENDPOINTS - ÓRDENES (mejoras)
