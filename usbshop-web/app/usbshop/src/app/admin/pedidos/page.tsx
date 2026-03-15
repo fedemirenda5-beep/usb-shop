@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './pedidos.module.css';
 
@@ -153,7 +153,7 @@ export default function PedidosPage() {
               {orders.map((order) => {
                 const color = statusColors[order.status];
                 return (
-                  <tbody key={order.id}>
+                  <Fragment key={order.id}>
                     <tr className={styles.orderRow}>
                       <td>#{order.id}</td>
                       <td className={styles.name}>{order.customer_name}</td>
@@ -256,7 +256,7 @@ export default function PedidosPage() {
                         </td>
                       </tr>
                     )}
-                  </tbody>
+                  </Fragment>
                 );
               })}
             </tbody>
