@@ -2,9 +2,9 @@
 
 import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 
 const TOKEN_KEY = 'usbshop_admin_token';
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 interface AdminUser {
   username: string;
@@ -19,13 +19,15 @@ export function useAdminSession() {
 
   // Verificar sesión al montar
   useEffect(() => {
-    // Verificar si hay sesión activa (cookie)
-    verifySessionOnLoad();
+    // Asegurar que la configuración de runtime esté cargada antes de verificar sesión
+    loadRuntimeConfig().then(() => {
+        verifySessionOnLoad();
+    });
   }, []);
 
   const verifySessionOnLoad = async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
+      const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
         credentials: 'include'
       });
 
@@ -48,7 +50,9 @@ export function useAdminSession() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      // Nos aseguramos que la config esté cargada (raro que no lo esté a este punto pero por seguridad)
+      await loadRuntimeConfig(); 
+      const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -77,7 +81,7 @@ export function useAdminSession() {
 
   const logout = useCallback(async () => {
     try {
-      await fetch(`${API_BASE}/auth/logout`, {
+      await fetch(`${getApiBaseUrl()}/auth/logout`, {
         method: 'POST',
         credentials: 'include'
       });

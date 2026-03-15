@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { getApiBaseUrl } from '@/lib/api';
 import styles from './reportes.module.css';
 
 interface OrderItem {
@@ -19,11 +20,20 @@ interface Order {
   items: OrderItem[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+interface LowStockProduct {
+  id: number;
+  name: string;
+  sku: string;
+  stock: number;
+  category: string;
+}
+
+const API_BASE = getApiBaseUrl();
 
 export default function ReportesPage() {
   const { user } = useAdminSession();
   const [allOrders, setAllOrders] = useState<Order[]>([]);
+  const [lowStockProducts, setLowStockProducts] = useState<LowStockProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -54,6 +64,13 @@ export default function ReportesPage() {
       }
       
       setAllOrders(collected.sort((a, b) => b.id - a.id));
+
+      // Fetch low stock products
+      const lowStockRes = await fetch(`${API_BASE}/admin/products/low-stock?threshold=10`, { credentials: 'include' });
+      if (lowStockRes.ok) {
+        const lowStockData = await lowStockRes.json();
+        setLowStockProducts(lowStockData);
+      }
     } catch (err) {
       setError('No se pudieron cargar los datos para los reportes');
     } finally {
@@ -206,6 +223,33 @@ export default function ReportesPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className={styles.section} style={{marginTop: '2rem'}}>
+        <h2>Productos con Bajo Stock (Menos de 10)</h2>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>SKU</th>
+              <th>Categoría</th>
+              <th>Stock actual</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lowStockProducts.map((p) => (
+              <tr key={p.id}>
+                <td>{p.name}</td>
+                <td style={{ fontSize: '0.85rem', color: '#6b7280' }}>{p.sku}</td>
+                <td>{p.category}</td>
+                <td style={{ fontWeight: 600, color: p.stock <= 2 ? '#ef4444' : '#f59e0b' }}>
+                  {p.stock} units
+                </td>
+              </tr>
+            ))}
+            {lowStockProducts.length === 0 && <tr><td colSpan={4}>No hay productos con stock crítico</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

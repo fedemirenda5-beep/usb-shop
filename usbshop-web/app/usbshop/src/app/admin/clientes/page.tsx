@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { getApiBaseUrl } from '@/lib/api';
 import styles from './clientes.module.css';
 
 interface Customer {
@@ -19,7 +20,7 @@ interface Customer {
   created_at: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = getApiBaseUrl();
 
 export default function ClientesPage() {
   const { user } = useAdminSession();

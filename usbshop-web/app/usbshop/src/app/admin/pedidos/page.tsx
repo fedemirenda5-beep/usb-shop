@@ -3,6 +3,7 @@
 import { useState, useEffect, Fragment, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { getApiBaseUrl } from '@/lib/api';
 import styles from './pedidos.module.css';
 
 interface OrderItem {
@@ -26,7 +27,7 @@ interface Order {
   items: OrderItem[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = getApiBaseUrl();
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
   PENDING: { bg: 'rgba(249, 115, 22, 0.1)', text: '#ea580c', label: 'Pendiente' },

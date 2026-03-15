@@ -1917,6 +1917,56 @@ def admin_create_customer(
         conn.close()
 
 
+@app.get("/admin/products/low-stock")
+def admin_low_stock_products(
+    limit: int = 100,
+    threshold: int = 10,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+):
+    """Lista productos con stock inferior al umbral (default 10). Requiere sesión admin."""
+    _require_admin(session_token)
+    
+    conn = _connect()
+    try:
+        # Buscamos columnas disponibles para evitar fallos si el esquema varía levemente
+        has_is_active = _has_column(conn, "products", "is_active")
+        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        
+        conditions = ["p.stock < ?"]
+        params = [threshold]
+        
+        if has_is_active:
+            conditions.append("p.is_active = 1")
+        if has_deleted_at:
+            conditions.append("p.deleted_at IS NULL")
+            
+        where_clause = f" WHERE {' AND '.join(conditions)}"
+        
+        query = f"""
+            SELECT p.id, p.name, p.sku, p.stock, p.price, c.name as category
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            {where_clause}
+            ORDER BY p.stock ASC
+            LIMIT ?
+        """
+        rows = conn.execute(query, params + [limit]).fetchall()
+        
+        return [
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "sku": row["sku"],
+                "stock": int(row["stock"] or 0),
+                "price": float(row["price"] or 0),
+                "category": row["category"] or "General"
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
 # ============================================================================
 # ADMIN ENDPOINTS - ÓRDENES (mejoras)
 # ============================================================================

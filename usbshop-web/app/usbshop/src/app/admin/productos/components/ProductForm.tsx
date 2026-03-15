@@ -11,6 +11,7 @@ interface ProductFormData {
   stock: number;
   is_featured: boolean;
   is_offer: boolean;
+  image?: File | null;
 }
 
 interface ProductFormProps {
@@ -19,7 +20,9 @@ interface ProductFormProps {
   onSubmit: (data: ProductFormData) => Promise<void>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+import { getApiBaseUrl } from '@/lib/api';
+
+const API_BASE = getApiBaseUrl();
 
 export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) {
   const router = useRouter();
@@ -35,9 +38,19 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type, checked, files } = e.target;
+    
+    if (type === 'file' && files && files[0]) {
+      const file = files[0];
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+      return;
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]:
@@ -68,7 +81,7 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
         throw new Error('Stock no puede ser negativo');
       }
 
-      await onSubmit(formData);
+      await onSubmit({ ...formData, image: selectedFile });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando producto');
     } finally {
@@ -147,6 +160,28 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
               className={styles.input}
             />
           </div>
+        </div>
+
+        {/* Imagen */}
+        <div className={styles.field}>
+          <label htmlFor="image">Imagen del Producto</label>
+          <div className={styles.imageUpload}>
+            {previewUrl && (
+              <div className={styles.preview}>
+                <img src={previewUrl} alt="Vista previa" />
+              </div>
+            )}
+            <input
+              id="image"
+              type="file"
+              name="image"
+              accept="image/*"
+              onChange={handleChange}
+              disabled={loading}
+              className={styles.fileInput}
+            />
+          </div>
+          <small className="help-text">JPG, PNG o WEBP. Se subirá a Supabase Storage.</small>
         </div>
 
         {/* Checkboxes */}
