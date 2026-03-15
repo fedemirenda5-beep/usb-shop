@@ -1236,7 +1236,7 @@ def admin_list_orders(
                         {
                             "product_id": int(item.get("product_id") or 0),
                             "sku": item.get("sku"),
-                            "name": item.get("product_name"),
+                            "product_name": item.get("product_name"),
                             "quantity": int(item.get("quantity") or 0),
                             "unit_price": float(item.get("unit_price") or 0.0),
                         }
@@ -1247,7 +1247,7 @@ def admin_list_orders(
                         {
                             "product_id": int(item[1]),
                             "sku": item[5],
-                            "name": item[4],
+                            "product_name": item[4],
                             "quantity": int(item[2] or 0),
                             "unit_price": float(item[3] or 0.0),
                         }
