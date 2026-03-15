@@ -415,6 +415,7 @@ def _verify_session(token: str) -> Optional[dict]:
         return None
     exp = payload.get("exp")
     if not isinstance(exp, (int, float)) or exp < time.time():
+        LOGGER.warning("Sesion expirada o exp invalido: %s", exp)
         return None
     return payload
 
@@ -573,6 +574,22 @@ def _has_column(conn: DBConn, table: str, column: str) -> bool:
     return any(row[1] == column for row in info)
 
 
+
+SCHEMA_CACHE: dict[str, bool] = {}
+
+def _get_has_column(conn: DBConn, table: str, column: str) -> bool:
+    key = f"col_{table}_{column}_{'pg' if DB_IS_POSTGRES else 'sl'}"
+    if key not in SCHEMA_CACHE:
+        SCHEMA_CACHE[key] = _has_column(conn, table, column)
+    return SCHEMA_CACHE[key]
+
+def _get_has_table(conn: DBConn, table: str) -> bool:
+    key = f"tab_{table}_{'pg' if DB_IS_POSTGRES else 'sl'}"
+    if key not in SCHEMA_CACHE:
+        SCHEMA_CACHE[key] = _has_table(conn, table)
+    return SCHEMA_CACHE[key]
+
+
 def _has_table(conn: DBConn, table: str) -> bool:
     if DB_IS_POSTGRES:
         row = conn.execute(
@@ -602,7 +619,7 @@ def _require_sync_token(request: Request) -> None:
 
 
 def _ensure_category_id(conn: DBConn, name: str) -> Optional[int]:
-    if not name or not _has_table(conn, "categories"):
+    if not name or not _get_has_table(conn, "categories"):
         return None
     row = conn.execute(
         "SELECT id FROM categories WHERE name = ?",
@@ -684,17 +701,17 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
 
 
 def _product_images_column(conn: DBConn) -> Optional[str]:
-    if not _has_table(conn, "product_images"):
+    if not _get_has_table(conn, "product_images"):
         return None
-    if _has_column(conn, "product_images", "image_path"):
+    if _get_has_column(conn, "product_images", "image_path"):
         return "image_path"
-    if _has_column(conn, "product_images", "image_url"):
+    if _get_has_column(conn, "product_images", "image_url"):
         return "image_url"
     return None
 
 
 def _ensure_product_images_table(conn: DBConn) -> None:
-    if _has_table(conn, "product_images"):
+    if _get_has_table(conn, "product_images"):
         return
     if DB_IS_POSTGRES:
         conn.execute(
@@ -968,16 +985,17 @@ def sync_products(
 def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
     conn = _connect()
     try:
-        _ensure_product_images_table(conn)
-        has_deleted_at = _has_column(conn, "products", "deleted_at")
-        has_is_active = _has_column(conn, "products", "is_active")
-        has_created_at = _has_column(conn, "products", "created_at")
-        has_updated_at = _has_column(conn, "products", "updated_at")
-        has_price_list_1 = _has_column(conn, "products", "price_list_1")
-        has_description = _has_column(conn, "products", "description")
-        featured_enabled = _has_column(conn, "products", "is_featured")
-        offer_enabled = _has_column(conn, "products", "is_offer")
-        recommended_enabled = _has_column(conn, "products", "is_recommended")
+        # Optimización: evitamos llamar a checks de esquema repetitivos
+        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
+        has_is_active = _get_has_column(conn, "products", "is_active")
+        has_created_at = _get_has_column(conn, "products", "created_at")
+        has_updated_at = _get_has_column(conn, "products", "updated_at")
+        has_price_list_1 = _get_has_column(conn, "products", "price_list_1")
+        has_description = _get_has_column(conn, "products", "description")
+        featured_enabled = _get_has_column(conn, "products", "is_featured")
+        offer_enabled = _get_has_column(conn, "products", "is_offer")
+        recommended_enabled = _get_has_column(conn, "products", "is_recommended")
+        
         select_fields = [
             "p.id",
             "p.name",
@@ -1317,15 +1335,15 @@ def admin_update_order_status(
 def featured_products(limit: int = 6) -> list[dict]:
     conn = _connect()
     try:
-        _ensure_product_images_table(conn)
-        has_deleted_at = _has_column(conn, "products", "deleted_at")
-        has_is_active = _has_column(conn, "products", "is_active")
-        has_updated_at = _has_column(conn, "products", "updated_at")
-        has_price_list_1 = _has_column(conn, "products", "price_list_1")
-        has_description = _has_column(conn, "products", "description")
-        featured_enabled = _has_column(conn, "products", "is_featured")
-        offer_enabled = _has_column(conn, "products", "is_offer")
-        recommended_enabled = _has_column(conn, "products", "is_recommended")
+        # Optimización: SCHEMA_CACHE
+        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
+        has_is_active = _get_has_column(conn, "products", "is_active")
+        has_updated_at = _get_has_column(conn, "products", "updated_at")
+        has_price_list_1 = _get_has_column(conn, "products", "price_list_1")
+        has_description = _get_has_column(conn, "products", "description")
+        featured_enabled = _get_has_column(conn, "products", "is_featured")
+        offer_enabled = _get_has_column(conn, "products", "is_offer")
+        recommended_enabled = _get_has_column(conn, "products", "is_recommended")
         select_fields = [
             "p.id",
             "p.name",
@@ -1464,6 +1482,8 @@ def auth_logout(response: Response, request: Request) -> dict:
 
 @app.get("/auth/me")
 def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
+    if not session:
+        LOGGER.warning("Solicitud /auth/me sin cookie %s", SESSION_COOKIE)
     payload = _verify_session(session or "")
     if not payload:
         raise HTTPException(status_code=401, detail="No autenticado")
@@ -1544,8 +1564,8 @@ def admin_list_products(
     
     conn = _connect()
     try:
-        has_deleted_at = _has_column(conn, "products", "deleted_at")
-        has_is_active = _has_column(conn, "products", "is_active")
+        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
+        has_is_active = _get_has_column(conn, "products", "is_active")
         
         conditions = []
         params: list = []
@@ -1929,8 +1949,8 @@ def admin_low_stock_products(
     conn = _connect()
     try:
         # Buscamos columnas disponibles para evitar fallos si el esquema varía levemente
-        has_is_active = _has_column(conn, "products", "is_active")
-        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        has_is_active = _get_has_column(conn, "products", "is_active")
+        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
         
         conditions = ["p.stock < ?"]
         params = [threshold]
@@ -1970,6 +1990,49 @@ def admin_low_stock_products(
 # ============================================================================
 # ADMIN ENDPOINTS - ÓRDENES (mejoras)
 # ============================================================================
+
+
+@app.get("/admin/stats")
+def admin_stats(session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
+    """Retorna estadísticas para el dashboard administrativo."""
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        # 1. Total productos (excluyendo borrados si el campo existe)
+        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        where_p = "WHERE deleted_at IS NULL" if has_deleted_at else ""
+        row_p = conn.execute(f"SELECT COUNT(*) as count FROM products {where_p}").fetchone()
+        products_count = row_p["count"] if row_p and isinstance(row_p, dict) else (row_p[0] if row_p else 0)
+
+        # 2. Pedidos pendientes
+        row_o = conn.execute("SELECT COUNT(*) as count FROM web_orders WHERE status = 'PENDING'").fetchone()
+        pending_orders = row_o["count"] if row_o and isinstance(row_o, dict) else (row_o[0] if row_o else 0)
+
+        # 3. Total clientes (registrados en la tabla customers)
+        customers_count = 0
+        if _get_has_table(conn, "customers"):
+            row_c = conn.execute("SELECT COUNT(*) as count FROM customers").fetchone()
+            customers_count = row_c["count"] if row_c and isinstance(row_c, dict) else (row_c[0] if row_c else 0)
+
+        # 4. Ventas de hoy (CONFIRMED)
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        if DB_IS_POSTGRES:
+            sql_sales = "SELECT SUM(total) as total FROM web_orders WHERE status = 'CONFIRMED' AND confirmed_at::date = %s"
+        else:
+            sql_sales = "SELECT SUM(total) as total FROM web_orders WHERE status = 'CONFIRMED' AND date(confirmed_at) = ?"
+        
+        row_s = conn.execute(sql_sales, (today,)).fetchone()
+        sales_today = (row_s["total"] if row_s and isinstance(row_s, dict) and row_s["total"] else (row_s[0] if row_s and row_s[0] else 0.0))
+
+        return {
+            "products": int(products_count),
+            "pending_orders": int(pending_orders),
+            "customers": int(customers_count),
+            "sales_today": float(sales_today)
+        }
+    finally:
+        conn.close()
+
 
 @app.get("/admin/orders-with-items")
 def admin_list_orders_detailed(
@@ -2056,7 +2119,7 @@ def admin_list_sales(
     
     conn = _connect()
     try:
-        has_sales_table = _has_table(conn, "sales")
+        has_sales_table = _get_has_table(conn, "sales")
         
         if not has_sales_table:
             return []
@@ -2116,7 +2179,7 @@ def admin_create_sale(
     conn = _connect()
     try:
         # Crear tabla si no existe
-        if not _has_table(conn, "sales"):
+        if not _get_has_table(conn, "sales"):
             conn.execute(
                 """
                 CREATE TABLE sales (
@@ -2166,7 +2229,7 @@ def admin_list_purchases(
     
     conn = _connect()
     try:
-        has_purchases_table = _has_table(conn, "purchases")
+        has_purchases_table = _get_has_table(conn, "purchases")
         
         if not has_purchases_table:
             return []
@@ -2230,7 +2293,7 @@ def admin_create_purchase(
     conn = _connect()
     try:
         # Crear tabla si no existe
-        if not _has_table(conn, "purchases"):
+        if not _get_has_table(conn, "purchases"):
             conn.execute(
                 """
                 CREATE TABLE purchases (
@@ -2278,7 +2341,7 @@ def admin_list_categories(
     
     conn = _connect()
     try:
-        has_categories_table = _has_table(conn, "categories")
+        has_categories_table = _get_has_table(conn, "categories")
         
         if not has_categories_table:
             return []
@@ -2319,7 +2382,7 @@ def admin_create_category(
     conn = _connect()
     try:
         # Asegurarse que la tabla existe
-        if not _has_table(conn, "categories"):
+        if not _get_has_table(conn, "categories"):
             conn.execute(
                 """
                 CREATE TABLE categories (
@@ -2460,7 +2523,7 @@ def admin_list_expenses(
     
     conn = _connect()
     try:
-        has_expenses_table = _has_table(conn, "expenses")
+        has_expenses_table = _get_has_table(conn, "expenses")
         
         if not has_expenses_table:
             return []
@@ -2523,7 +2586,7 @@ def admin_create_expense(
     conn = _connect()
     try:
         # Crear tabla si no existe
-        if not _has_table(conn, "expenses"):
+        if not _get_has_table(conn, "expenses"):
             conn.execute(
                 """
                 CREATE TABLE expenses (
