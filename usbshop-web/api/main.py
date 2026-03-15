@@ -1999,20 +1999,20 @@ def admin_stats(session_token: Optional[str] = Cookie(default=None, alias=SESSIO
     conn = _connect()
     try:
         # 1. Total productos (excluyendo borrados si el campo existe)
-        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        has_deleted_at = _get_has_column(conn, "products", "deleted_at")
         where_p = "WHERE deleted_at IS NULL" if has_deleted_at else ""
         row_p = conn.execute(f"SELECT COUNT(*) as count FROM products {where_p}").fetchone()
-        products_count = row_p["count"] if row_p and isinstance(row_p, dict) else (row_p[0] if row_p else 0)
+        products_count = row_p["count"] if row_p and row_p["count"] is not None else 0
 
         # 2. Pedidos pendientes
         row_o = conn.execute("SELECT COUNT(*) as count FROM web_orders WHERE status = 'PENDING'").fetchone()
-        pending_orders = row_o["count"] if row_o and isinstance(row_o, dict) else (row_o[0] if row_o else 0)
+        pending_orders = row_o["count"] if row_o and row_o["count"] is not None else 0
 
         # 3. Total clientes (registrados en la tabla customers)
         customers_count = 0
         if _get_has_table(conn, "customers"):
             row_c = conn.execute("SELECT COUNT(*) as count FROM customers").fetchone()
-            customers_count = row_c["count"] if row_c and isinstance(row_c, dict) else (row_c[0] if row_c else 0)
+            customers_count = row_c["count"] if row_c and row_c["count"] is not None else 0
 
         # 4. Ventas de hoy (CONFIRMED)
         today = datetime.utcnow().strftime('%Y-%m-%d')
@@ -2022,7 +2022,7 @@ def admin_stats(session_token: Optional[str] = Cookie(default=None, alias=SESSIO
             sql_sales = "SELECT SUM(total) as total FROM web_orders WHERE status = 'CONFIRMED' AND date(confirmed_at) = ?"
         
         row_s = conn.execute(sql_sales, (today,)).fetchone()
-        sales_today = (row_s["total"] if row_s and isinstance(row_s, dict) and row_s["total"] else (row_s[0] if row_s and row_s[0] else 0.0))
+        sales_today = row_s["total"] if row_s and row_s["total"] is not None else 0.0
 
         return {
             "products": int(products_count),
