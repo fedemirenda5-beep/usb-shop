@@ -153,6 +153,7 @@
   align-items: center;
 }
 
+.btnRemito,
 .btnDetails {
   background: none;
   border: none;
@@ -162,6 +163,7 @@
   transition: transform 0.2s ease;
 }
 
+.btnRemito:hover,
 .btnDetails:hover {
   transform: scale(1.2);
 }

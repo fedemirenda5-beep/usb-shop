@@ -61,17 +61,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <a href="/admin/clientes" className={styles.navItem}>
             👥 Clientes
           </a>
-          <a href="/admin/ventas" className={styles.navItem}>
-            💰 Ventas
-          </a>
-          <a href="/admin/compras" className={styles.navItem}>
-            📥 Compras
-          </a>
           <a href="/admin/reportes" className={styles.navItem}>
             📈 Reportes
-          </a>
-          <a href="/admin/gastos" className={styles.navItem}>
-            💸 Gastos
           </a>
         </nav>
 

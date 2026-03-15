@@ -1813,9 +1813,10 @@ def admin_list_customers(
         
         rows = conn.execute(
             f"""
-            SELECT DISTINCT 
+            SELECT 
                    customer_name, customer_email, customer_phone,
                    COUNT(*) as order_count,
+                   SUM(total) as total_spent,
                    MIN(created_at) as first_order,
                    MAX(created_at) as last_order
             FROM web_orders
@@ -1833,6 +1834,7 @@ def admin_list_customers(
                 "email": row["customer_email"],
                 "phone": row["customer_phone"],
                 "order_count": int(row["order_count"]),
+                "total_spent": float(row["total_spent"] or 0.0),
                 "first_order": row["first_order"],
                 "last_order": row["last_order"],
             }
