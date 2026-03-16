@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { ProductForm } from './components/ProductForm';
 import styles from './productos.module.css';
 
@@ -23,6 +23,13 @@ interface Product {
   image_path?: string | null;
   image_urls?: string[];
 }
+
+const calculateMargin = (cost: number, price: number) => {
+  if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(price)) {
+    return null;
+  }
+  return ((price - cost) / cost) * 100;
+};
 
 const PAGE_SIZE = 100;
 
@@ -56,7 +63,6 @@ export default function ProductosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [submittedSearch, setSubmittedSearch] = useState('');
   const [page, setPage] = useState(1);
 
   const loadProducts = async () => {
@@ -106,7 +112,7 @@ export default function ProductosPage() {
   }, [editId, products]);
 
   const filteredProducts = useMemo(() => {
-    const tokens = buildSearchTokens(submittedSearch);
+    const tokens = buildSearchTokens(search);
     if (tokens.length === 0) {
       return products;
     }
@@ -116,7 +122,7 @@ export default function ProductosPage() {
       );
       return tokens.every((token) => haystack.includes(token));
     });
-  }, [products, submittedSearch]);
+  }, [products, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
 
@@ -131,11 +137,7 @@ export default function ProductosPage() {
     return filteredProducts.slice(start, start + PAGE_SIZE);
   }, [filteredProducts, page]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPage(1);
-    setSubmittedSearch(search);
-  };
+  const baseUrl = getApiBaseUrl();
 
   const handleDelete = async (id: number) => {
     if (!confirm('Eliminar este producto?')) return;
@@ -191,22 +193,22 @@ export default function ProductosPage() {
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
-      <form onSubmit={handleSearch} className={styles.searchForm}>
+      <div className={styles.searchForm}>
         <input
           type="text"
           placeholder="Buscar por nombre o SKU..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           className={styles.searchInput}
         />
-        <button type="submit" className={styles.btnSearch}>
-          Buscar
-        </button>
-      </form>
+      </div>
 
       <div className={styles.pagination}>
         <span>
-          {filteredProducts.length} productos{submittedSearch ? ` para "${submittedSearch}"` : ''} |
+          {filteredProducts.length} productos{search ? ` para "${search}"` : ''} |
           {' '}orden alfabetico
         </span>
       </div>
@@ -228,6 +230,7 @@ export default function ProductosPage() {
                 <th>SKU</th>
                 <th>Precio</th>
                 <th>Costo</th>
+                <th>Margen</th>
                 <th>Stock</th>
                 <th>Destacado</th>
                 <th>Oferta</th>
@@ -235,49 +238,56 @@ export default function ProductosPage() {
               </tr>
             </thead>
             <tbody>
-              {visibleProducts.map((product) => (
-                <tr key={product.id}>
-                  <td>{product.id}</td>
-                  <td>
-                    {product.imageUrl ? (
-                      <img src={product.imageUrl} alt={product.name} className={styles.productThumb} />
-                    ) : (
-                      <span className={styles.noImage}>Sin imagen</span>
-                    )}
-                  </td>
-                  <td className={styles.name}>{product.name}</td>
-                  <td>{product.sku}</td>
-                  <td className={styles.price}>${product.price.toFixed(2)}</td>
-                  <td className={styles.price}>${product.cost.toFixed(2)}</td>
-                  <td>
-                    <span className={product.stock > 0 ? styles.inStock : styles.outOfStock}>
-                      {product.stock}
-                    </span>
-                  </td>
-                  <td>
-                    <button
-                      className={`${styles.toggle} ${product.is_featured ? styles.active : ''}`}
-                      onClick={() => toggleFeatured(product)}
-                      title="Cambiar destacado"
-                    >
-                      {product.is_featured ? 'Si' : 'No'}
-                    </button>
-                  </td>
-                  <td>
-                    <span className={product.is_offer ? styles.badge : ''}>
-                      {product.is_offer ? 'Si' : 'No'}
-                    </span>
-                  </td>
-                  <td className={styles.actions}>
-                    <Link href={`/admin/productos?edit=${product.id}`} className={styles.btnEdit}>
-                      Editar
-                    </Link>
-                    <button className={styles.btnDelete} onClick={() => handleDelete(product.id)}>
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {visibleProducts.map((product) => {
+                const productImageUrl = resolveImageUrl(product.imageUrl, baseUrl);
+                const margin = calculateMargin(product.cost, product.price);
+                return (
+                  <tr key={product.id}>
+                    <td>{product.id}</td>
+                    <td>
+                      {productImageUrl ? (
+                        <img src={productImageUrl} alt={product.name} className={styles.productThumb} />
+                      ) : (
+                        <span className={styles.noImage}>Sin imagen</span>
+                      )}
+                    </td>
+                    <td className={styles.name}>{product.name}</td>
+                    <td>{product.sku}</td>
+                    <td className={styles.price}>${product.price.toFixed(2)}</td>
+                    <td className={styles.price}>${product.cost.toFixed(2)}</td>
+                    <td className={styles.margin}>
+                      {margin === null ? <span className={styles.marginEmpty}>Sin costo</span> : `${margin.toFixed(1)}%`}
+                    </td>
+                    <td>
+                      <span className={product.stock > 0 ? styles.inStock : styles.outOfStock}>
+                        {product.stock}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        className={`${styles.toggle} ${product.is_featured ? styles.active : ''}`}
+                        onClick={() => toggleFeatured(product)}
+                        title="Cambiar destacado"
+                      >
+                        {product.is_featured ? 'Si' : 'No'}
+                      </button>
+                    </td>
+                    <td>
+                      <span className={product.is_offer ? styles.badge : ''}>
+                        {product.is_offer ? 'Si' : 'No'}
+                      </span>
+                    </td>
+                    <td className={styles.actions}>
+                      <Link href={`/admin/productos?edit=${product.id}`} className={styles.btnEdit}>
+                        Editar
+                      </Link>
+                      <button className={styles.btnDelete} onClick={() => handleDelete(product.id)}>
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

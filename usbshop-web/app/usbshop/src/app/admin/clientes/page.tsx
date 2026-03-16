@@ -148,8 +148,11 @@ export default function ClientesPage() {
   };
 
   useEffect(() => {
-    loadCustomers();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadCustomers(search);
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
 
   useEffect(() => {
     if (selectedCustomerId) {
@@ -247,15 +250,14 @@ export default function ClientesPage() {
           </div>
         </div>
 
-        <form className={styles.searchBar} onSubmit={(e) => { e.preventDefault(); void loadCustomers(search); }}>
+        <div className={styles.searchBar}>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nombre, email, telefono o CUIT"
           />
-          <button type="submit" className={styles.primaryButton}>Buscar</button>
-        </form>
+        </div>
 
         <div className={styles.customerList}>
           {loading ? <p>Cargando clientes...</p> : null}

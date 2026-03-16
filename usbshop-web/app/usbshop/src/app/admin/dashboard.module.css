@@ -2,6 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  width: 100%;
+  min-width: 0;
 }
 
 .header {
@@ -64,6 +66,8 @@
 .heroCard strong {
   font-family: var(--font-head);
   font-size: clamp(24px, 4vw, 34px);
+  line-height: 1.1;
+  overflow-wrap: anywhere;
 }
 
 .heroCard p {
@@ -131,6 +135,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panelHeader {
@@ -165,6 +171,7 @@
 .listRow strong,
 .listRow span {
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 
 .empty {

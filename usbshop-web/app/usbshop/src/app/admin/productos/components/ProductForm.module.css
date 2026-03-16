@@ -84,6 +84,31 @@
   color: #6b7280;
 }
 
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(132, 204, 22, 0.12), rgba(124, 58, 237, 0.08));
+  border: 1px solid rgba(132, 204, 22, 0.24);
+}
+
+.summaryLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #4b5563;
+}
+
+.summaryValue {
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--ink);
+}
+
 .fieldRow {
   display: grid;
   grid-template-columns: 1fr 1fr;

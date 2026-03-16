@@ -128,6 +128,7 @@
   display: flex;
   flex-direction: column;
   margin-left: 260px;
+  min-width: 0;
 }
 
 /* Navbar */
@@ -175,8 +176,16 @@
 .content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
   background: linear-gradient(180deg, rgba(233, 238, 244, 0.98) 0%, rgba(219, 226, 235, 0.98) 100%);
+}
+
+.contentInner {
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  min-width: 0;
 }
 
 .loading {

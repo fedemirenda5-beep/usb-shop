@@ -152,6 +152,17 @@
   color: var(--purple);
 }
 
+.margin {
+  font-weight: 700;
+  color: #0f766e;
+  white-space: nowrap;
+}
+
+.marginEmpty {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .productThumb {
   width: 52px;
   height: 52px;

@@ -22,6 +22,15 @@ type Summary = {
 type MonthPoint = { month: string; sales: number; count: number };
 type Debtor = { customer_id: number; name: string; balance: number };
 type LowStock = { id: number; name: string; stock: number; reorder_point: number };
+type YearProjection = {
+  year: number;
+  current_ytd_sales: number;
+  previous_ytd_sales: number;
+  previous_full_year_sales: number;
+  growth_projection: number;
+  trend_projection: number;
+  recent_window_months: number;
+};
 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
@@ -34,11 +43,24 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-AR');
 };
 
+const buildLinePath = (points: number[], width: number, height: number) => {
+  if (points.length === 0) return '';
+  const max = Math.max(1, ...points);
+  return points
+    .map((value, index) => {
+      const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
+      const y = height - (value / max) * height;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+};
+
 export default function BalancesPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [monthly, setMonthly] = useState<MonthPoint[]>([]);
   const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
+  const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -52,6 +74,7 @@ export default function BalancesPage() {
         setMonthly(data.monthly_sales || []);
         setDebtors(data.top_debtors || []);
         setLowStock(data.low_stock || []);
+        setYearProjection(data.year_projection || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando balances');
       }
@@ -72,6 +95,22 @@ export default function BalancesPage() {
     if (!summary) return 0;
     return summary.stock_value_cost + summary.cc_open_balance;
   }, [summary]);
+  const composition = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: 'Stock a costo', value: summary.stock_value_cost, tone: 'var(--lime)' },
+      { label: 'Cuenta corriente', value: summary.cc_open_balance, tone: '#2563eb' },
+      { label: 'Margen estimado', value: summary.estimated_margin, tone: '#7c3aed' },
+    ];
+  }, [summary]);
+  const compositionTotal = useMemo(
+    () => composition.reduce((acc, item) => acc + Math.max(0, item.value), 0),
+    [composition]
+  );
+  const monthlyPath = useMemo(
+    () => buildLinePath(monthly.map((item) => item.sales || 0), 520, 150),
+    [monthly]
+  );
 
   return (
     <div className={styles.page}>
@@ -144,6 +183,12 @@ export default function BalancesPage() {
                   </strong>
                 </div>
               </div>
+              <div className={styles.chartBox}>
+                <svg viewBox="0 0 520 180" className={styles.lineChart} aria-hidden="true">
+                  <path d="M 0 150 L 520 150" className={styles.chartBaseline} />
+                  {monthlyPath ? <path d={monthlyPath} className={styles.linePrimary} /> : null}
+                </svg>
+              </div>
               <div className={styles.monthList}>
                 {monthly.slice(-6).reverse().map((item) => (
                   <div key={item.month} className={styles.monthRow}>
@@ -176,6 +221,62 @@ export default function BalancesPage() {
                   ))
                 )}
               </div>
+            </article>
+
+            <article className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2>Composicion del balance</h2>
+              </div>
+              <div className={styles.stackBar}>
+                {composition.map((item) => (
+                  <div
+                    key={item.label}
+                    className={styles.stackSegment}
+                    style={{
+                      width: `${compositionTotal > 0 ? (Math.max(0, item.value) / compositionTotal) * 100 : 0}%`,
+                      background: item.tone,
+                    }}
+                  />
+                ))}
+              </div>
+              <div className={styles.compositionList}>
+                {composition.map((item) => (
+                  <div key={item.label} className={styles.compositionRow}>
+                    <span className={styles.compositionDot} style={{ background: item.tone }} />
+                    <div>
+                      <strong>{item.label}</strong>
+                      <p>{money(item.value)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2>Proyección anual</h2>
+              </div>
+              {yearProjection ? (
+                <div className={styles.projectionGrid}>
+                  <div className={styles.projectionCard}>
+                    <span>Ventas YTD</span>
+                    <strong>{money(yearProjection.current_ytd_sales)}</strong>
+                    <p>Mismo periodo anterior: {money(yearProjection.previous_ytd_sales)}</p>
+                  </div>
+                  <div className={styles.projectionCard}>
+                    <span>Crecimiento sobre cierre previo</span>
+                    <strong>{money(yearProjection.growth_projection)}</strong>
+                    <p>Basado en ventas del año {yearProjection.year - 1}.</p>
+                  </div>
+                  <div className={styles.projectionCard}>
+                    <span>Tendencia real</span>
+                    <strong>{money(yearProjection.trend_projection)}</strong>
+                    <p>Ventana reciente: {yearProjection.recent_window_months || 1} meses.</p>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.empty}>Sin datos suficientes para proyectar el año.</div>
+              )}
             </article>
 
             <article className={styles.panel}>

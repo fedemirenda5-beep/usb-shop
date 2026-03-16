@@ -548,9 +548,11 @@ def _as_existing_local_image_path(image_value: Optional[str]) -> Optional[Path]:
     try:
         expanded = Path(raw).expanduser()
         candidates.append(expanded)
+        basename = expanded.name.strip()
         if not expanded.is_absolute():
             candidates.append(BASE_DIR / expanded)
-            candidates.append(CATALOG_ASSETS_DIR / expanded.name)
+        if basename:
+            candidates.append(CATALOG_ASSETS_DIR / basename)
     except Exception:
         return None
     for path in candidates:
@@ -580,6 +582,38 @@ def _first_product_image_candidate(conn: DBConn, product_id: int) -> Optional[st
         return None
     value = row[column] if isinstance(row, dict) else row[0]
     return str(value).strip() if value else None
+
+
+def _product_image_candidates(conn: DBConn, product_id: int, primary_image: Optional[str]) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidate(value: Optional[str]) -> None:
+        if not value:
+            return
+        normalized = str(value).strip()
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        candidates.append(normalized)
+
+    add_candidate(primary_image)
+    column = _product_images_column(conn)
+    if not column:
+        return candidates
+    rows = conn.execute(
+        f"""
+        SELECT {column}
+        FROM product_images
+        WHERE product_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (int(product_id),),
+    ).fetchall()
+    for row in rows:
+        value = row[column] if isinstance(row, dict) else row[0]
+        add_candidate(value)
+    return candidates
 
 
 def _normalize_thumbnail_params(
@@ -2120,6 +2154,7 @@ def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE))
 @app.get("/products/{product_id}/image")
 def product_image(
     product_id: int,
+    i: Optional[int] = Query(default=0),
     w: Optional[int] = Query(default=None),
     h: Optional[int] = Query(default=None),
     q: Optional[int] = Query(default=72),
@@ -2131,15 +2166,16 @@ def product_image(
             "SELECT image_path FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
         ).fetchone()
-        fallback_image = _first_product_image_candidate(conn, product_id)
+        primary_image = str(row["image_path"]).strip() if row and row["image_path"] else ""
+        image_candidates = _product_image_candidates(conn, product_id, primary_image)
     finally:
         conn.close()
 
     if row is None:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
 
-    primary_image = str(row["image_path"]).strip() if row["image_path"] else ""
-    image_value = primary_image or (fallback_image or "").strip()
+    image_index = max(0, int(i or 0))
+    image_value = image_candidates[image_index] if image_index < len(image_candidates) else ""
     if not image_value:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
     if image_value.startswith("http://") or image_value.startswith("https://"):
@@ -3561,9 +3597,15 @@ def admin_reports_overview(
     try:
         products = conn.execute(
             """
-            SELECT id, name, stock, price, cost, reorder_point
+            SELECT id, name, stock, price, cost, reorder_point, category_id
             FROM products
             WHERE deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+            """
+        ).fetchall()
+        categories = conn.execute(
+            """
+            SELECT id, name
+            FROM categories
             """
         ).fetchall()
         invoices = conn.execute(
@@ -3590,6 +3632,8 @@ def admin_reports_overview(
 
         total_stock_units = sum(int(row["stock"] or 0) for row in products)
         cost_by_product = {int(row["id"]): float(row["cost"] or 0) for row in products}
+        category_by_product = {int(row["id"]): int(row["category_id"] or 0) for row in products}
+        category_names = {int(row["id"]): row["name"] for row in categories if row["id"] is not None}
         stock_value_cost = round(sum(float(row["cost"] or 0) * int(row["stock"] or 0) for row in products), 2)
         stock_value_sale = round(sum(float(row["price"] or 0) * int(row["stock"] or 0) for row in products), 2)
         low_stock = [
@@ -3609,12 +3653,13 @@ def admin_reports_overview(
             if created is None:
                 continue
             bucket = created.strftime("%Y-%m")
-            entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0})
+            entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
             entry["sales"] += float(row["total"] or 0)
             entry["count"] += 1
-        monthly_sales = [monthly_map[key] for key in sorted(monthly_map.keys())][-12:]
 
         top_products_map: dict[int, dict[str, Any]] = {}
+        category_sales_map: dict[str, float] = {}
+        customer_sales_map: dict[int, dict[str, Any]] = {}
         for row in invoice_items:
             product_id = int(row["product_id"] or 0)
             if product_id <= 0:
@@ -3625,8 +3670,26 @@ def admin_reports_overview(
             )
             quantity = int(row["quantity"] or 0)
             unit_price = float(row["unit_price"] or 0)
+            revenue = quantity * unit_price
+            margin_value = quantity * max(0.0, unit_price - cost_by_product.get(product_id, 0.0))
             entry["quantity"] += quantity
-            entry["revenue"] += quantity * unit_price
+            entry["revenue"] += revenue
+            created = _safe_parse_datetime(row["created_at"])
+            if created is not None:
+                bucket = created.strftime("%Y-%m")
+                monthly_entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
+                monthly_entry["margin"] += margin_value
+            category_name = category_names.get(category_by_product.get(product_id, 0), "Sin rubro")
+            category_sales_map[category_name] = round(category_sales_map.get(category_name, 0.0) + revenue, 2)
+            customer_id = int(row["customer_id"] or 0)
+            if customer_id > 0:
+                customer_entry = customer_sales_map.setdefault(
+                    customer_id,
+                    {"customer_id": customer_id, "quantity": 0, "revenue": 0.0},
+                )
+                customer_entry["quantity"] += quantity
+                customer_entry["revenue"] += revenue
+        monthly_sales = [monthly_map[key] for key in sorted(monthly_map.keys())][-12:]
         product_names = {int(row["id"]): row["name"] for row in products}
         top_products = sorted(
             [
@@ -3652,6 +3715,12 @@ def admin_reports_overview(
             int(row["id"]): row["name"]
             for row in conn.execute("SELECT id, name FROM customers WHERE deleted_at IS NULL").fetchall()
         }
+        customer_invoice_counts: dict[int, int] = {}
+        for row in invoices:
+            customer_id = int(row["customer_id"] or 0)
+            if customer_id <= 0:
+                continue
+            customer_invoice_counts[customer_id] = customer_invoice_counts.get(customer_id, 0) + 1
         top_debtors = sorted(
             [
                 {"customer_id": customer_id, "name": customer_names.get(customer_id, f"Cliente {customer_id}"), "balance": balance}
@@ -3660,6 +3729,25 @@ def admin_reports_overview(
             ],
             key=lambda item: (-item["balance"], item["name"].lower()),
         )[:10]
+        top_customers = sorted(
+            [
+                {
+                    **payload,
+                    "name": customer_names.get(customer_id, f"Cliente {customer_id}"),
+                    "invoice_count": customer_invoice_counts.get(customer_id, 0),
+                    "revenue": round(float(payload["revenue"] or 0), 2),
+                }
+                for customer_id, payload in customer_sales_map.items()
+            ],
+            key=lambda item: (-item["revenue"], item["name"].lower()),
+        )[:10]
+        sales_by_category = sorted(
+            [
+                {"category": category, "revenue": round(value, 2)}
+                for category, value in category_sales_map.items()
+            ],
+            key=lambda item: (-item["revenue"], item["category"].lower()),
+        )[:8]
 
         total_sales = round(sum(float(row["total"] or 0) for row in invoices), 2)
         total_margin = round(
@@ -3670,6 +3758,37 @@ def admin_reports_overview(
             ),
             2,
         )
+        now_dt = datetime.utcnow()
+        current_year = now_dt.year
+        current_month = now_dt.month
+        current_year_months = [item for item in monthly_sales if str(item["month"]).startswith(f"{current_year}-")]
+        previous_year_months = [item for item in monthly_sales if str(item["month"]).startswith(f"{current_year - 1}-")]
+        current_ytd_sales = round(sum(float(item["sales"] or 0) for item in current_year_months), 2)
+        previous_ytd_sales = round(
+            sum(
+                float(item["sales"] or 0)
+                for item in previous_year_months
+                if 1 <= int(str(item["month"]).split("-")[1]) <= current_month
+            ),
+            2,
+        )
+        previous_full_year_sales = round(sum(float(item["sales"] or 0) for item in previous_year_months), 2)
+        if previous_ytd_sales > 0:
+            growth_projection = round(previous_full_year_sales * (current_ytd_sales / previous_ytd_sales), 2)
+        else:
+            growth_projection = round(current_ytd_sales, 2)
+        recent_complete_months = [
+            item
+            for item in current_year_months
+            if int(str(item["month"]).split("-")[1]) < current_month
+        ][-3:]
+        if recent_complete_months:
+            trend_projection = round(
+                (sum(float(item["sales"] or 0) for item in recent_complete_months) / len(recent_complete_months)) * 12,
+                2,
+            )
+        else:
+            trend_projection = round((current_ytd_sales / max(current_month, 1)) * 12, 2)
         return {
             "summary": {
                 "products": len(products),
@@ -3687,8 +3806,19 @@ def admin_reports_overview(
             },
             "monthly_sales": monthly_sales,
             "top_products": top_products,
+            "top_customers": top_customers,
+            "sales_by_category": sales_by_category,
             "top_debtors": top_debtors,
             "low_stock": low_stock,
+            "year_projection": {
+                "year": current_year,
+                "current_ytd_sales": current_ytd_sales,
+                "previous_ytd_sales": previous_ytd_sales,
+                "previous_full_year_sales": previous_full_year_sales,
+                "growth_projection": growth_projection,
+                "trend_projection": trend_projection,
+                "recent_window_months": len(recent_complete_months) if recent_complete_months else max(current_month - 1, 0),
+            },
         }
     finally:
         conn.close()

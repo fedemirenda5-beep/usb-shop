@@ -2,6 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  min-width: 0;
 }
 
 .header h1 {
@@ -22,7 +26,7 @@
 }
 
 .heroGrid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
 .heroCard,
@@ -55,6 +59,7 @@
 .metricCard strong {
   font-size: 30px;
   line-height: 1.1;
+  word-break: break-word;
 }
 
 .heroCard p,
@@ -64,7 +69,7 @@
 }
 
 .metricGrid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
 }
 
 .metricCard {
@@ -85,10 +90,11 @@
 
 .metricCard p {
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .panel {
@@ -96,6 +102,15 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
 }
 
 .panelHeader h2 {
@@ -123,12 +138,115 @@
   color: var(--ink);
 }
 
+.chartBox {
+  padding: 12px 10px 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(241,245,249,.72));
+  border: 1px solid var(--bg-soft);
+}
+
+.lineChart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chartBaseline {
+  stroke: rgba(148, 163, 184, 0.35);
+  stroke-width: 1.5;
+}
+
+.linePrimary {
+  fill: none;
+  stroke: #0f766e;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .monthList,
 .list,
 .notes {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.stackBar {
+  width: 100%;
+  height: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.14);
+  display: flex;
+}
+
+.stackSegment {
+  height: 100%;
+  min-width: 6px;
+}
+
+.compositionList {
+  display: grid;
+  gap: 12px;
+}
+
+.compositionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.compositionDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  flex: 0 0 14px;
+}
+
+.compositionRow strong,
+.compositionRow p {
+  margin: 0;
+}
+
+.compositionRow p {
+  color: var(--muted);
+}
+
+.projectionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.projectionCard {
+  border: 1px solid var(--bg-soft);
+  border-radius: 12px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(248,250,252,.95), rgba(255,255,255,1));
+  display: grid;
+  gap: 8px;
+}
+
+.projectionCard span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.projectionCard strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.projectionCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .monthRow,
@@ -140,11 +258,14 @@
   border: 1px solid var(--bg-soft);
   border-radius: 12px;
   padding: 12px;
+  min-width: 0;
 }
 
 .monthRow strong,
 .listRow strong {
   color: var(--ink);
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .monthRow em,
@@ -152,6 +273,8 @@
   font-style: normal;
   font-weight: 700;
   color: var(--purple);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .positive {
@@ -185,19 +308,16 @@
 }
 
 @media (max-width: 1100px) {
-  .heroGrid,
-  .metricGrid,
-  .grid {
-    grid-template-columns: 1fr;
-  }
+  .grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 720px) {
+  .page { gap: 16px; }
+  .heroCard, .metricCard, .panel { padding: 14px; }
+  .heroGrid, .metricGrid { grid-template-columns: 1fr; }
   .highlight,
   .monthRow,
-  .listRow {
-    grid-template-columns: 1fr;
-    flex-direction: column;
-    align-items: flex-start;
-  }
+  .listRow { flex-direction: column; align-items: flex-start; }
+  .monthRow em,
+  .listRow em { text-align: left; }
 }
