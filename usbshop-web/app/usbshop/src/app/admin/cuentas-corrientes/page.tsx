@@ -19,6 +19,12 @@ type CustomerOverview = {
   email?: string | null;
   phone?: string | null;
   sale_mode?: string | null;
+  locality?: string | null;
+  address?: string | null;
+  tax_condition?: string | null;
+  cuit?: string | null;
+  debit?: number;
+  credit?: number;
   balance: number;
   aging: Aging;
   last_movement?: string | null;
@@ -106,6 +112,12 @@ export default function CuentasCorrientesPage() {
       email: typeof row.email === 'string' ? row.email : null,
       phone: typeof row.phone === 'string' ? row.phone : null,
       sale_mode: 'CUENTA_CORRIENTE',
+      locality: typeof row.city === 'string' ? row.city : null,
+      address: typeof row.address === 'string' ? row.address : null,
+      tax_condition: typeof row.tax_condition === 'string' ? row.tax_condition : null,
+      cuit: typeof row.tax_id === 'string' ? row.tax_id : null,
+      debit: Number(row.balance || 0) > 0 ? Number(row.balance || 0) : 0,
+      credit: Number(row.balance || 0) < 0 ? Math.abs(Number(row.balance || 0)) : 0,
       balance: Number(row.balance || 0),
       aging: { ...emptyAging(), total: Number(row.balance || 0) },
       last_movement: typeof row.updated_at === 'string' ? row.updated_at : null,
@@ -144,17 +156,19 @@ export default function CuentasCorrientesPage() {
           typeof item.document_type === 'string' && typeof item.document_number === 'string'
             ? `${item.document_type} ${item.document_number}`.trim()
             : typeof item.document_type === 'string'
-            ? item.document_type
-            : null,
+              ? item.document_type
+              : null,
         due_date: typeof item.due_date === 'string' ? item.due_date : null,
         running_balance: 0,
       }))
       .reverse();
     let runningBalance = 0;
-    const movements = signedAscending.map((item) => {
-      runningBalance += item.signed_amount;
-      return { ...item, running_balance: runningBalance };
-    }).reverse();
+    const movements = signedAscending
+      .map((item) => {
+        runningBalance += item.signed_amount;
+        return { ...item, running_balance: runningBalance };
+      })
+      .reverse();
     const balance = Number(movementsPayload.balance || customer.balance || 0);
     return {
       customer: {
@@ -242,7 +256,7 @@ export default function CuentasCorrientesPage() {
         setLoading(false);
       }
     };
-    load();
+    void load();
   }, []);
 
   useEffect(() => {
@@ -254,7 +268,7 @@ export default function CuentasCorrientesPage() {
         setError(err instanceof Error ? err.message : 'Error cargando el detalle');
       }
     };
-    loadSelectedCustomer();
+    void loadSelectedCustomer();
   }, [selectedId]);
 
   const submitMovement = async (event: FormEvent<HTMLFormElement>) => {
@@ -306,9 +320,30 @@ export default function CuentasCorrientesPage() {
     const needle = search.trim().toLowerCase();
     if (!needle) return customers;
     return customers.filter((customer) =>
-      [customer.name, customer.email || '', customer.phone || ''].join(' ').toLowerCase().includes(needle)
+      [customer.name, customer.email || '', customer.phone || '', customer.cuit || '', customer.locality || '']
+        .join(' ')
+        .toLowerCase()
+        .includes(needle)
     );
   }, [customers, search]);
+
+  const selectedOverview = useMemo(
+    () => customers.find((customer) => customer.id === selectedId) || null,
+    [customers, selectedId]
+  );
+
+  const movementSummary = useMemo(() => {
+    if (!detail) return { debits: 0, credits: 0, movements: 0 };
+    return detail.movements.reduce(
+      (acc, movement) => {
+        if (movement.movement_type === 'DEBIT') acc.debits += movement.amount;
+        if (movement.movement_type === 'CREDIT') acc.credits += movement.amount;
+        acc.movements += 1;
+        return acc;
+      },
+      { debits: 0, credits: 0, movements: 0 }
+    );
+  }, [detail]);
 
   return (
     <div className={styles.page}>
@@ -332,10 +367,14 @@ export default function CuentasCorrientesPage() {
         <aside className={styles.sidebar}>
           <input
             className={styles.search}
-            placeholder="Buscar cliente..."
+            placeholder="Buscar cliente, CUIT o localidad..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          <div className={styles.sidebarHint}>
+            <span>{filteredCustomers.length} clientes visibles</span>
+            <span>{money(filteredCustomers.reduce((sum, customer) => sum + customer.balance, 0))}</span>
+          </div>
           <div className={styles.customerList}>
             {loading ? <p>Cargando...</p> : null}
             {filteredCustomers.map((customer) => (
@@ -345,11 +384,15 @@ export default function CuentasCorrientesPage() {
                 className={`${styles.customerItem} ${selectedId === customer.id ? styles.active : ''}`}
                 onClick={() => setSelectedId(customer.id)}
               >
-                <div>
+                <div className={styles.customerMain}>
                   <strong>{customer.name}</strong>
-                  <span>{customer.email || customer.phone || 'Sin dato'}</span>
+                  <span>{customer.email || customer.phone || customer.cuit || 'Sin dato'}</span>
+                  <small>{customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : 'Sin movimientos recientes'}</small>
                 </div>
-                <em>{money(customer.balance)}</em>
+                <div className={styles.customerAmounts}>
+                  <em>{money(customer.balance)}</em>
+                  <small>{money(customer.aging.d90_plus)} vencido</small>
+                </div>
               </button>
             ))}
           </div>
@@ -372,12 +415,35 @@ export default function CuentasCorrientesPage() {
                 </div>
               </div>
 
+              <div className={styles.infoGrid}>
+                <article className={styles.infoCard}>
+                  <span>Contacto</span>
+                  <strong>{detail.customer.phone || detail.customer.email || 'Sin dato'}</strong>
+                  <small>{detail.customer.email && detail.customer.phone ? detail.customer.email : selectedOverview?.locality || 'Sin localidad'}</small>
+                </article>
+                <article className={styles.infoCard}>
+                  <span>Modo</span>
+                  <strong>{detail.customer.sale_mode || 'Sin definir'}</strong>
+                  <small>{selectedOverview?.last_movement ? `Ultimo movimiento ${formatDate(selectedOverview.last_movement)}` : 'Sin historial reciente'}</small>
+                </article>
+                <article className={styles.infoCard}>
+                  <span>Debe acumulado</span>
+                  <strong>{money(selectedOverview?.debit || movementSummary.debits)}</strong>
+                  <small>{money(selectedOverview?.credit || movementSummary.credits)} cobrado</small>
+                </article>
+                <article className={styles.infoCard}>
+                  <span>Movimientos</span>
+                  <strong>{movementSummary.movements}</strong>
+                  <small>{money(detail.aging.total)} total en cartera</small>
+                </article>
+              </div>
+
               <div className={styles.agingGrid}>
                 <div><span>Al dia</span><strong>{money(detail.aging.current)}</strong></div>
                 <div><span>1-30</span><strong>{money(detail.aging.d1_30)}</strong></div>
                 <div><span>31-60</span><strong>{money(detail.aging.d31_60)}</strong></div>
                 <div><span>61-90</span><strong>{money(detail.aging.d61_90)}</strong></div>
-                <div><span>90+</span><strong>{money(detail.aging.d90_plus)}</strong></div>
+                <div className={styles.overdueCard}><span>90+</span><strong>{money(detail.aging.d90_plus)}</strong></div>
               </div>
 
               <form className={styles.formCard} onSubmit={submitMovement}>
@@ -472,7 +538,7 @@ export default function CuentasCorrientesPage() {
                           <td className={movement.signed_amount >= 0 ? styles.debit : styles.credit}>
                             {money(movement.signed_amount)}
                           </td>
-                          <td>{money(movement.running_balance)}</td>
+                          <td className={styles.balanceCell}>{money(movement.running_balance)}</td>
                         </tr>
                       ))
                     )}
