@@ -9,15 +9,23 @@ export default function NuevaProductoPage() {
 
   const handleSubmit = async (data: any) => {
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/products`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${getApiBaseUrl()}/admin/products`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+    } catch {
+      throw new Error('No se pudo conectar con la API para crear el producto');
+    }
 
     if (!res.ok) {
-      const error = await res.json();
+      const error = await res.json().catch(async () => {
+        const detail = await res.text().catch(() => '');
+        return { detail };
+      });
       throw new Error(error.detail || 'Error creando producto');
     }
 

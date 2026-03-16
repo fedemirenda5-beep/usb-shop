@@ -2311,6 +2311,8 @@ def admin_create_product(
     price = float(payload.get("price") or 0)
     cost = float(payload.get("cost") or 0)
     stock = int(payload.get("stock") or 0)
+    is_featured = 1 if bool(payload.get("is_featured")) else 0
+    is_offer = 1 if bool(payload.get("is_offer")) else 0
     image_values = _normalize_image_entries(payload)
     primary_image = image_values[0] if image_values else None
     
@@ -2322,12 +2324,32 @@ def admin_create_product(
     conn = _connect()
     try:
         _ensure_products_cost_column(conn)
+        if conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone():
+            raise HTTPException(status_code=400, detail="Ya existe un producto con ese SKU")
+
+        columns = ["name", "sku", "price", "stock"]
+        values: list[Any] = [name, sku, price, stock]
+
+        if _has_column(conn, "products", "cost"):
+            columns.append("cost")
+            values.append(cost)
+        if _has_column(conn, "products", "image_path"):
+            columns.append("image_path")
+            values.append(primary_image)
+        if _has_column(conn, "products", "is_active"):
+            columns.append("is_active")
+            values.append(1)
+        if _has_column(conn, "products", "is_featured"):
+            columns.append("is_featured")
+            values.append(is_featured)
+        if _has_column(conn, "products", "is_offer"):
+            columns.append("is_offer")
+            values.append(is_offer)
+
+        placeholders = ", ".join(["?"] * len(columns))
         conn.execute(
-            """
-            INSERT INTO products (name, sku, price, cost, stock, image_path, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, 1)
-            """,
-            (name, sku, price, cost, stock, primary_image),
+            f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})",
+            values,
         )
         conn.commit()
         
@@ -2344,6 +2366,8 @@ def admin_create_product(
             "cost": cost,
             "stock": stock,
             "image_path": primary_image,
+            "is_featured": bool(is_featured),
+            "is_offer": bool(is_offer),
             "image_urls": image_values[1:],
         }
     finally:
