@@ -142,6 +142,7 @@ export default function ComprobantesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
+  const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -608,8 +609,15 @@ export default function ComprobantesPage() {
         </section>
       ) : null}
 
-      <div className={styles.layout}>
+      <div className={`${styles.layout} ${detailOnly ? styles.detailOnlyLayout : ''}`}>
         <div className={styles.tablePane}>
+          {detailOnly ? (
+            <div className={styles.listBackBar}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
+                Volver al listado
+              </button>
+            </div>
+          ) : null}
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -635,6 +643,11 @@ export default function ComprobantesPage() {
                       key={item.id}
                       className={selectedId === item.id ? styles.selectedRow : ''}
                       onClick={() => setSelectedId(item.id)}
+                      onDoubleClick={() => {
+                        setSelectedId(item.id);
+                        setDetailOnly(true);
+                      }}
+                      title="Doble click para abrir el comprobante"
                     >
                       <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
                       <td>{item.document_type || '-'}</td>
@@ -653,6 +666,13 @@ export default function ComprobantesPage() {
         </div>
 
         <aside className={styles.detailPane}>
+          {detailOnly ? (
+            <div className={styles.detailToolbar}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
+                Ver grilla
+              </button>
+            </div>
+          ) : null}
           {detailError ? <div className={styles.error}>{detailError}</div> : null}
           {detailLoading ? <div className={styles.empty}>Cargando detalle...</div> : null}
           {!detailLoading && !detail ? <div className={styles.empty}>Selecciona un comprobante.</div> : null}
