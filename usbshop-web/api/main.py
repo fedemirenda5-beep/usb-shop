@@ -9,6 +9,7 @@ import logging
 import mimetypes
 import os
 import sqlite3
+import ssl
 import time
 import smtplib
 import threading
@@ -1260,7 +1261,7 @@ def _upload_bytes_to_supabase(
     upload_request.add_header("Content-Type", content_type or "application/octet-stream")
     upload_request.add_header("x-upsert", "true")
     try:
-        with urlopen(upload_request, timeout=120):
+        with urlopen(upload_request, timeout=120, context=ssl._create_unverified_context()):
             pass
     except HTTPError as exc:
         detail = ""
@@ -1273,7 +1274,10 @@ def _upload_bytes_to_supabase(
             detail=f"Fallo subiendo imagen a Supabase: {detail[:300] or exc.reason}",
         ) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="No se pudo subir la imagen") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo subir la imagen: {exc.__class__.__name__}: {str(exc)[:300]}",
+        ) from exc
     return _public_storage_url(base_url, bucket, target_name)
 
 
