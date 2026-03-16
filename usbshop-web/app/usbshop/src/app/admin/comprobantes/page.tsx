@@ -683,122 +683,124 @@ export default function ComprobantesPage() {
         </div>
 
       {detailOnly ? (
-        <aside className={styles.detailPane}>
-          <div className={styles.detailToolbar}>
-            <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
-              Volver al listado
-            </button>
-          </div>
-          {detailError ? <div className={styles.error}>{detailError}</div> : null}
-          {detailLoading ? <div className={styles.empty}>Cargando detalle...</div> : null}
-          {!detailLoading && !detail ? <div className={styles.empty}>Selecciona un comprobante.</div> : null}
-          {detail ? (
-            <div className={styles.printArea}>
-              <div className={styles.documentShell}>
-                <div className={styles.printBanner}>
-                  <div>
-                    <p className={styles.brandEyebrow}>USB Shop</p>
-                    <h2>{detail.invoice.document_type || 'Comprobante'} #{detail.invoice.id}</h2>
-                    <p>Comprobante emitido desde admin web</p>
+        <div className={styles.modalOverlay} onClick={() => setDetailOnly(false)}>
+          <aside className={styles.detailModal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.detailToolbar}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
+                Cerrar
+              </button>
+            </div>
+            {detailError ? <div className={styles.error}>{detailError}</div> : null}
+            {detailLoading ? <div className={styles.empty}>Cargando detalle...</div> : null}
+            {!detailLoading && !detail ? <div className={styles.empty}>No se pudo abrir el comprobante.</div> : null}
+            {detail ? (
+              <div className={styles.printArea}>
+                <div className={styles.documentShell}>
+                  <div className={styles.printBanner}>
+                    <div>
+                      <p className={styles.brandEyebrow}>USB Shop</p>
+                      <h2>{detail.invoice.document_type || 'Comprobante'} #{detail.invoice.id}</h2>
+                      <p>Modelo de comprobante web</p>
+                    </div>
+                    <div className={styles.actions}>
+                      <button type="button" className={styles.printButton} onClick={() => window.print()}>
+                        Imprimir
+                      </button>
+                    </div>
                   </div>
-                  <div className={styles.actions}>
-                    <button type="button" className={styles.printButton} onClick={() => window.print()}>
-                      Imprimir
-                    </button>
-                  </div>
-                </div>
 
-                <div className={styles.detailHeader}>
-                  <div>
-                    <p className={styles.sectionLabel}>Cliente</p>
-                    <h3>{detail.invoice.customer_name}</h3>
-                    <p>{detail.invoice.address || detail.invoice.locality || 'Sin domicilio registrado'}</p>
-                    <p>{detail.invoice.customer_phone || detail.invoice.customer_email || 'Sin contacto registrado'}</p>
+                  <div className={styles.detailHeader}>
+                    <div>
+                      <p className={styles.sectionLabel}>Cliente</p>
+                      <h3>{detail.invoice.customer_name}</h3>
+                      <p>{detail.invoice.address || detail.invoice.locality || 'Sin domicilio registrado'}</p>
+                      <p>{detail.invoice.customer_phone || detail.invoice.customer_email || 'Sin contacto registrado'}</p>
+                    </div>
+                    <div className={styles.documentMeta}>
+                      <div><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
+                      <div><span>Condicion fiscal</span><strong>{detail.invoice.tax_condition || '-'}</strong></div>
+                      <div><span>CUIT / DNI</span><strong>{detail.invoice.cuit || '-'}</strong></div>
+                      <div><span>Referencia</span><strong>{detail.invoice.external_ref || '-'}</strong></div>
+                    </div>
                   </div>
-                  <div className={styles.documentMeta}>
-                    <div><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
-                    <div><span>Condicion fiscal</span><strong>{detail.invoice.tax_condition || '-'}</strong></div>
-                    <div><span>CUIT / DNI</span><strong>{detail.invoice.cuit || '-'}</strong></div>
-                    <div><span>Referencia</span><strong>{detail.invoice.external_ref || '-'}</strong></div>
+
+                  <div className={styles.detailMeta}>
+                    <div><span>Venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
+                    <div><span>Forma de pago</span><strong>{detail.invoice.payment_method || '-'}</strong></div>
+                    <div><span>Lista</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
+                    <div><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
                   </div>
-                </div>
 
-                <div className={styles.detailMeta}>
-                  <div><span>Venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
-                  <div><span>Forma de pago</span><strong>{detail.invoice.payment_method || '-'}</strong></div>
-                  <div><span>Lista</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
-                  <div><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
-                </div>
+                  {detail.invoice.notes ? (
+                    <div className={styles.noteBox}>
+                      <span>Observaciones</span>
+                      <p>{detail.invoice.notes}</p>
+                    </div>
+                  ) : null}
 
-                {detail.invoice.notes ? (
-                  <div className={styles.noteBox}>
-                    <span>Observaciones</span>
-                    <p>{detail.invoice.notes}</p>
-                  </div>
-                ) : null}
-
-                <div className={styles.documentTableWrap}>
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Producto</th>
-                        <th>Cant.</th>
-                        <th>Unitario</th>
-                        <th>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.items.map((item) => (
-                        <tr key={item.id}>
-                          <td>{item.product_name}</td>
-                          <td>{item.quantity}</td>
-                          <td>{money(item.unit_price)}</td>
-                          <td className={styles.total}>{money(item.line_total)}</td>
+                  <div className={styles.documentTableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Producto</th>
+                          <th>Cant.</th>
+                          <th>Unitario</th>
+                          <th>Total</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className={styles.documentFooter}>
-                  <div className={styles.paymentBlock}>
-                    <h3>Movimientos asociados</h3>
-                    {detail.payments.length === 0 ? (
-                      <p>Sin pagos o ajustes asociados.</p>
-                    ) : (
-                      <div className={styles.movementList}>
-                        {detail.payments.map((payment) => (
-                          <article key={payment.id} className={styles.movementItem}>
-                            <strong>{payment.movement_type === 'CREDIT' ? 'Cobranza' : 'Debito'}</strong>
-                            <span>{payment.payment_method || payment.reference || 'Movimiento manual'}</span>
-                            <span>{formatDate(payment.created_at)}</span>
-                            <em>{money(payment.amount)}</em>
-                          </article>
+                      </thead>
+                      <tbody>
+                        {detail.items.map((item) => (
+                          <tr key={item.id}>
+                            <td>{item.product_name}</td>
+                            <td>{item.quantity}</td>
+                            <td>{money(item.unit_price)}</td>
+                            <td className={styles.total}>{money(item.line_total)}</td>
+                          </tr>
                         ))}
-                      </div>
-                    )}
+                      </tbody>
+                    </table>
                   </div>
 
-                  <div className={styles.summaryGrid}>
-                    <div><span>Items</span><strong>{detail.summary.items}</strong></div>
-                    <div><span>Subtotal</span><strong>{money(detail.summary.subtotal)}</strong></div>
-                    <div><span>Cobrado</span><strong>{money(detail.summary.payments_total)}</strong></div>
-                    <div><span>Saldo</span><strong>{money(detail.summary.balance_due)}</strong></div>
-                  </div>
-                </div>
+                  <div className={styles.documentFooter}>
+                    <div className={styles.paymentBlock}>
+                      <h3>Movimientos asociados</h3>
+                      {detail.payments.length === 0 ? (
+                        <p>Sin pagos o ajustes asociados.</p>
+                      ) : (
+                        <div className={styles.movementList}>
+                          {detail.payments.map((payment) => (
+                            <article key={payment.id} className={styles.movementItem}>
+                              <strong>{payment.movement_type === 'CREDIT' ? 'Cobranza' : 'Debito'}</strong>
+                              <span>{payment.payment_method || payment.reference || 'Movimiento manual'}</span>
+                              <span>{formatDate(payment.created_at)}</span>
+                              <em>{money(payment.amount)}</em>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-                <div className={styles.signatureRow}>
-                  <div className={styles.signatureBox}>
-                    <span>Firma / aclaracion</span>
+                    <div className={styles.summaryGrid}>
+                      <div><span>Items</span><strong>{detail.summary.items}</strong></div>
+                      <div><span>Subtotal</span><strong>{money(detail.summary.subtotal)}</strong></div>
+                      <div><span>Cobrado</span><strong>{money(detail.summary.payments_total)}</strong></div>
+                      <div><span>Saldo</span><strong>{money(detail.summary.balance_due)}</strong></div>
+                    </div>
                   </div>
-                  <div className={styles.signatureBox}>
-                    <span>Recepcion conforme</span>
+
+                  <div className={styles.signatureRow}>
+                    <div className={styles.signatureBox}>
+                      <span>Firma / aclaracion</span>
+                    </div>
+                    <div className={styles.signatureBox}>
+                      <span>Recepcion conforme</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ) : null}
-        </aside>
+            ) : null}
+          </aside>
+        </div>
       ) : null}
     </div>
   );
