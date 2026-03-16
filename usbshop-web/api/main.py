@@ -2347,14 +2347,16 @@ def admin_create_product(
             values.append(is_offer)
 
         placeholders = ", ".join(["?"] * len(columns))
-        conn.execute(
-            f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})",
-            values,
-        )
+        insert_sql = f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})"
+        if DB_IS_POSTGRES:
+            row = conn.execute(f"{insert_sql} RETURNING id", values).fetchone()
+            product_id = int(row["id"] if isinstance(row, dict) else row[0])
+        else:
+            conn.execute(insert_sql, values)
+            row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
+            product_id = int(row["id"] if isinstance(row, dict) else row[0])
+
         conn.commit()
-        
-        row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
-        product_id = int(row["id"] if isinstance(row, dict) else row[0])
         _replace_product_images(conn, product_id, image_values)
         conn.commit()
         
