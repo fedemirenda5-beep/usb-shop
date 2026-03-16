@@ -458,13 +458,13 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
         </div>
 
         <div className={styles.actions}>
-          <button type="submit" disabled={loading} className={styles.btnSubmit}>
-            {loading ? 'Guardando...' : 'Guardar Producto'}
+          <button type="submit" disabled={loading || uploadingImage} className={styles.btnSubmit}>
+            {uploadingImage ? 'Subiendo imagen...' : loading ? 'Guardando...' : 'Guardar Producto'}
           </button>
           <button
             type="button"
             onClick={() => router.push('/admin/productos')}
-            disabled={loading}
+            disabled={loading || uploadingImage}
             className={styles.btnCancel}
           >
             Cancelar
