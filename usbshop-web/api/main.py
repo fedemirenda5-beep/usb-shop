@@ -3180,6 +3180,7 @@ def admin_cc_overview(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         if not _has_table(conn, "customers") or not _has_table(conn, "account_movements"):
             return {"customers": [], "summary": {"customers": 0, "debit": 0, "credit": 0, "balance": 0}}
         customer_rows = conn.execute(
@@ -3267,6 +3268,7 @@ def admin_cc_customer_detail(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         customer = conn.execute(
             """
             SELECT id, name, email, phone, sale_mode, locality, address, tax_condition, cuit
@@ -3697,6 +3699,7 @@ def admin_cc_create_movement(
 
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         customer = conn.execute(
             """
             SELECT id
