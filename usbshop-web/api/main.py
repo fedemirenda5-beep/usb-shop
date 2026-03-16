@@ -1195,10 +1195,20 @@ def _supabase_storage_settings() -> tuple[str, str, str]:
     base_url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
     api_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
     bucket = (os.getenv("SUPABASE_BUCKET") or "usbshop-catalogo").strip()
-    if not base_url or not api_key or not bucket:
+    missing: list[str] = []
+    if not base_url:
+        missing.append("SUPABASE_URL")
+    if not api_key:
+        missing.append("SUPABASE_SERVICE_ROLE_KEY")
+    if not bucket:
+        missing.append("SUPABASE_BUCKET")
+    if missing:
         raise HTTPException(
             status_code=503,
-            detail="La subida de imagenes no esta configurada en el servidor",
+            detail=(
+                "Faltan variables de Supabase en usbshop-api: "
+                + ", ".join(missing)
+            ),
         )
     return base_url, api_key, bucket
 
