@@ -2667,6 +2667,7 @@ def admin_backoffice_customers(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         params: list[Any] = []
         where_clause = """
         WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
@@ -3340,6 +3341,7 @@ def admin_list_invoices(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         params: list[Any] = []
         where = ""
@@ -3401,6 +3403,7 @@ def admin_create_invoice(
 
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         customer = conn.execute(
             """
@@ -3476,28 +3479,31 @@ def admin_create_invoice(
         next_external_number = int(last_external) + 1 if last_external.isdigit() else 1
         external_ref = f"{next_external_number:014d}"
 
-        conn.execute(
-            """
+        insert_invoice_sql = """
             INSERT INTO invoices (
                 customer_id, total, created_at, seller_id, document_type, commission_amount,
                 sale_mode, price_list, external_ref, due_date, notes, payment_method
             ) VALUES (?, ?, ?, NULL, ?, 0, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                customer_id,
-                round(total, 2),
-                created_at,
-                document_type,
-                sale_mode,
-                price_list,
-                external_ref,
-                due_date,
-                notes,
-                payment_method,
-            ),
+        """
+        insert_invoice_params = (
+            customer_id,
+            round(total, 2),
+            created_at,
+            document_type,
+            sale_mode,
+            price_list,
+            external_ref,
+            due_date,
+            notes,
+            payment_method,
         )
-        invoice_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
-        invoice_id = int(invoice_row["id"] if isinstance(invoice_row, dict) else invoice_row[0])
+        if DB_IS_POSTGRES:
+            invoice_row = conn.execute(f"{insert_invoice_sql} RETURNING id", insert_invoice_params).fetchone()
+            invoice_id = int(invoice_row["id"] if isinstance(invoice_row, dict) else invoice_row[0])
+        else:
+            conn.execute(insert_invoice_sql, insert_invoice_params)
+            invoice_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+            invoice_id = int(invoice_row["id"] if isinstance(invoice_row, dict) else invoice_row[0])
 
         for item in normalized_items:
             conn.execute(
@@ -3557,6 +3563,7 @@ def admin_invoice_detail(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         invoice = conn.execute(
             """

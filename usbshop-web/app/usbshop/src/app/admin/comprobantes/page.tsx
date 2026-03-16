@@ -207,7 +207,12 @@ export default function ComprobantesPage() {
     const load = async () => {
       try {
         setLoading(true);
-        await Promise.all([loadInvoices(), loadOptions()]);
+        await loadInvoices();
+        try {
+          await loadOptions();
+        } catch (optionsError) {
+          console.error('No se pudieron cargar las opciones de comprobantes:', optionsError);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando comprobantes');
       } finally {
