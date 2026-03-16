@@ -139,6 +139,12 @@ export default function ProductosPage() {
 
   const baseUrl = getApiBaseUrl();
 
+  const openEditor = (productId: number) => {
+    window.history.pushState(null, '', `/admin/productos?edit=${productId}`);
+    const product = products.find((item) => item.id === productId) || null;
+    setEditProduct(product);
+  };
+
   const handleDelete = async (id: number) => {
     if (!confirm('Eliminar este producto?')) return;
 
@@ -242,7 +248,12 @@ export default function ProductosPage() {
                 const productImageUrl = resolveImageUrl(product.imageUrl, baseUrl);
                 const margin = calculateMargin(product.cost, product.price);
                 return (
-                  <tr key={product.id}>
+                  <tr
+                    key={product.id}
+                    className={styles.clickableRow}
+                    onDoubleClick={() => openEditor(product.id)}
+                    title="Doble click para editar"
+                  >
                     <td>{product.id}</td>
                     <td>
                       {productImageUrl ? (

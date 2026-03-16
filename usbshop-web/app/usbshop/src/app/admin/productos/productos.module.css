@@ -135,6 +135,10 @@
   color: var(--ink);
 }
 
+.clickableRow {
+  cursor: pointer;
+}
+
 .table tbody tr:hover {
   background: var(--glow);
 }
