@@ -1,189 +1,201 @@
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
 }
 
 .header {
-  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .header h1 {
+  margin: 0;
   font-family: var(--font-head);
-  font-size: clamp(28px, 6vw, 36px);
-  font-weight: 700;
+  font-size: clamp(28px, 5vw, 38px);
   color: var(--ink);
-  margin-bottom: 8px;
-  background: linear-gradient(135deg, var(--purple), var(--lime));
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 .header p {
-  font-family: var(--font-body);
-  color: var(--muted);
-  font-size: 14px;
   margin: 0;
+  color: var(--muted);
+  font-family: var(--font-body);
 }
 
-/* Stats Grid */
-.statsGrid {
+.errorBox {
+  border: 1px solid rgba(220, 38, 38, 0.18);
+  background: rgba(220, 38, 38, 0.08);
+  color: #991b1b;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-family: var(--font-body);
+}
+
+.heroGrid,
+.statsGrid,
+.insightGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
+}
+
+.heroGrid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.heroCard {
+  background: linear-gradient(145deg, rgba(17, 24, 39, 0.96), rgba(31, 41, 55, 0.92));
+  color: white;
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heroCard span {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.heroCard strong {
+  font-family: var(--font-head);
+  font-size: clamp(24px, 4vw, 34px);
+}
+
+.heroCard p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+}
+
+.statsGrid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.statCard,
+.panel {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
 }
 
 .statCard {
-  background: white;
-  border-radius: 12px;
   padding: 20px;
-  border: 1px solid var(--bg-soft);
-  box-shadow: 0 4px 12px var(--shadow);
-  display: flex;
-  gap: 16px;
-  transition: all 0.3s ease;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .statCard:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px var(--shadow);
-  border-color: var(--lime);
-}
-
-.statIcon {
-  font-size: 32px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
+  border-color: rgba(132, 204, 22, 0.45);
+  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
 }
 
 .statContent {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 8px;
 }
 
-.statContent h3 {
+.statContent h3,
+.panelHeader h2 {
+  margin: 0;
   font-family: var(--font-head);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--muted);
-  margin: 0 0 8px 0;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--ink);
 }
 
 .statValue {
+  margin: 0;
   font-family: var(--font-head);
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 28px;
   color: var(--ink);
-  margin: 0 0 4px 0;
 }
 
 .statLabel {
-  font-family: var(--font-body);
-  font-size: 12px;
   color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-/* Quick Actions */
-.quickActions {
+.insightGrid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.panel {
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.quickActions h2 {
-  font-family: var(--font-head);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--ink);
-  margin: 0;
-}
-
-.actionGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-}
-
-.actionCard {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  border: 2px solid var(--bg-soft);
-  text-align: center;
-  text-decoration: none;
-  transition: all 0.3s ease;
+.panelHeader {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   align-items: center;
   gap: 12px;
-  cursor: pointer;
 }
 
-.actionCard:hover {
-  border-color: var(--lime);
-  background: linear-gradient(135deg, rgba(132, 204, 22, 0.05) 0%, rgba(109, 40, 217, 0.05) 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px var(--glow);
-}
-
-.actionIcon {
-  font-size: 24px;
-  line-height: 1;
-}
-
-.actionCard p {
-  font-family: var(--font-body);
+.panelHeader a {
+  color: var(--ink);
   font-size: 13px;
-  color: var(--ink);
-  margin: 0;
-  font-weight: 500;
+  text-decoration: none;
 }
 
-/* Info Box */
-.infoBox {
-  background: linear-gradient(135deg, rgba(109, 40, 217, 0.1) 0%, rgba(132, 204, 22, 0.1) 100%);
-  border: 1px solid rgba(109, 40, 217, 0.2);
-  border-radius: 8px;
-  padding: 16px;
-  font-family: var(--font-body);
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.listRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(241, 245, 249, 0.9);
+}
+
+.listRow strong,
+.listRow span {
   font-size: 14px;
-  color: var(--ink);
-  line-height: 1.5;
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.infoBox {
+  border-radius: 16px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, rgba(132, 204, 22, 0.12), rgba(59, 130, 246, 0.08));
+  border: 1px solid rgba(132, 204, 22, 0.24);
 }
 
 .infoBox p {
   margin: 0;
+  color: var(--ink);
+  line-height: 1.5;
 }
 
-/* Responsive */
 @media (max-width: 768px) {
-  .statsGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .actionGrid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .header h1 {
-    font-size: 24px;
+  .panelHeader {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
 @media (max-width: 640px) {
-  .statCard {
+  .listRow {
     flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .actionGrid {
-    grid-template-columns: 1fr;
+    align-items: flex-start;
   }
 }

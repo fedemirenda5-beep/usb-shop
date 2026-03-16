@@ -1,6 +1,9 @@
 const DEFAULT_API_BASE_URL = (() => {
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    }
     if (host && host !== "localhost" && host !== "127.0.0.1") {
       return "https://usbshop-api.onrender.com";
     }
@@ -37,6 +40,7 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     return null;
   }
   try {
+    const host = window.location.hostname;
     const response = await fetch("/usbshop-config.json", { cache: "no-store" });
     if (!response.ok) {
       return null;
@@ -48,6 +52,10 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     const apiBaseUrl = data.apiBaseUrl.trim();
     if (!apiBaseUrl) {
       return null;
+    }
+    if ((host === "localhost" || host === "127.0.0.1") && /^https?:\/\//i.test(apiBaseUrl)) {
+      runtimeConfigLoaded = true;
+      return runtimeApiBaseUrl;
     }
     setRuntimeApiBaseUrl(apiBaseUrl);
     if (typeof data.orderSecret === "string") {

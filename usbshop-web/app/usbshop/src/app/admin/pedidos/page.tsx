@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './pedidos.module.css';
 
 interface OrderItem {
   product_id: number;
-  product_name: string;
+  sku?: string | null;
+  name?: string | null;
   quantity: number;
   unit_price: number;
 }
@@ -39,27 +41,23 @@ const statusOptions = [
 ];
 
 export default function PedidosPage() {
-  const { user } = useAdminSession();
+  useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('PENDING');
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
 
   const loadOrders = async (status: string) => {
     try {
       setLoading(true);
       setError('');
-
       await loadRuntimeConfig();
       const res = await fetch(
         `${getApiBaseUrl()}/admin/orders?status=${status}&limit=200&include_items=true`,
         { credentials: 'include' }
       );
-
       if (!res.ok) throw new Error('No se pudieron cargar los pedidos');
-
       const data = await res.json();
       setOrders(data);
     } catch (err) {
@@ -70,7 +68,7 @@ export default function PedidosPage() {
   };
 
   useEffect(() => {
-    loadOrders(selectedStatus);
+    void loadOrders(selectedStatus);
   }, [selectedStatus]);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
@@ -82,22 +80,19 @@ export default function PedidosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-
       if (!res.ok) throw new Error('No se pudo actualizar el estado');
-
-      // Si el estado cambia, recarga la lista
-      loadOrders(selectedStatus);
+      await loadOrders(selectedStatus);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error actualizando estado');
+      setError(err instanceof Error ? err.message : 'Error actualizando estado');
     }
   };
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('es-ES', {
+    return new Date(dateStr).toLocaleDateString('es-AR', {
+      year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-      year: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
     });
@@ -108,20 +103,17 @@ export default function PedidosPage() {
       <div className={styles.header}>
         <div>
           <h1>Pedidos</h1>
-          <p>Gestiona los pedidos de clientes</p>
+          <p>Gestiona los pedidos de clientes desde el mismo login admin.</p>
         </div>
       </div>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error ? <div className={styles.error}>{error}</div> : null}
 
-      {/* Status Filter */}
       <div className={styles.filterBar}>
         {statusOptions.map((opt) => (
           <button
             key={opt.value}
-            className={`${styles.filterBtn} ${
-              selectedStatus === opt.value ? styles.active : ''
-            }`}
+            className={`${styles.filterBtn} ${selectedStatus === opt.value ? styles.active : ''}`}
             onClick={() => setSelectedStatus(opt.value)}
           >
             {opt.label}
@@ -129,7 +121,6 @@ export default function PedidosPage() {
         ))}
       </div>
 
-      {/* Orders Table */}
       <div className={styles.tableWrapper}>
         {loading ? (
           <div className={styles.loading}>Cargando pedidos...</div>
@@ -151,114 +142,107 @@ export default function PedidosPage() {
               </tr>
             </thead>
             <tbody>
-              {orders.map((order) => {
+              {orders.flatMap((order) => {
                 const color = statusColors[order.status];
-                return (
-                  <tbody key={order.id}>
-                    <tr className={styles.orderRow}>
-                      <td>#{order.id}</td>
-                      <td className={styles.name}>{order.customer_name}</td>
-                      <td className={styles.email}>{order.customer_email}</td>
-                      <td className={styles.total}>${order.total.toFixed(2)}</td>
-                      <td className={styles.date}>{formatDate(order.created_at)}</td>
-                      <td>
-                        <span
-                          className={styles.statusBadge}
-                          style={{ background: color.bg, color: color.text }}
-                        >
-                          {color.label}
-                        </span>
-                      </td>
-                      <td className={styles.actions}>
-                        <button
-                          className={styles.btnDetails}
-                          onClick={() => setDetailOrder(detailOrder?.id === order.id ? null : order)}
-                        >
-                          📋
-                        </button>
-                        <select
-                          className={styles.statusSelect}
-                          value={order.status}
-                          onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                        >
-                          {statusOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
+                const rows = [
+                  <tr key={`row-${order.id}`} className={styles.orderRow}>
+                    <td>#{order.id}</td>
+                    <td className={styles.name}>{order.customer_name}</td>
+                    <td className={styles.email}>{order.customer_email || '-'}</td>
+                    <td className={styles.total}>${order.total.toFixed(2)}</td>
+                    <td className={styles.date}>{formatDate(order.created_at)}</td>
+                    <td>
+                      <span className={styles.statusBadge} style={{ background: color.bg, color: color.text }}>
+                        {color.label}
+                      </span>
+                    </td>
+                    <td className={styles.actions}>
+                      <button
+                        className={styles.btnDetails}
+                        onClick={() => setDetailOrderId(detailOrderId === order.id ? null : order.id)}
+                      >
+                        Ver
+                      </button>
+                      {order.status === 'PENDING' ? (
+                        <Link href={`/admin/comprobantes?order_id=${order.id}`} className={styles.btnInvoice}>
+                          Generar comprobante
+                        </Link>
+                      ) : null}
+                      <select
+                        className={styles.statusSelect}
+                        value={order.status}
+                        onChange={(e) => void handleStatusChange(order.id, e.target.value)}
+                      >
+                        {statusOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>,
+                ];
 
-                    {/* Details Row */}
-                    {detailOrder?.id === order.id && (
-                      <tr className={styles.detailsRow}>
-                        <td colSpan={7}>
-                          <div className={styles.detailsContent}>
-                            <div className={styles.detailsColumns}>
-                              <div className={styles.detailColumn}>
-                                <h4>Información del cliente:</h4>
-                                <p>
-                                  <strong>Nombre:</strong> {order.customer_name}
-                                </p>
-                                <p>
-                                  <strong>Email:</strong> {order.customer_email}
-                                </p>
-                                <p>
-                                  <strong>Teléfono:</strong> {order.customer_phone || '-'}
-                                </p>
-                              </div>
-
-                              <div className={styles.detailColumn}>
-                                <h4>Información del pedido:</h4>
-                                <p>
-                                  <strong>Creado:</strong> {formatDate(order.created_at)}
-                                </p>
-                                {order.confirmed_at && (
-                                  <p>
-                                    <strong>Confirmado:</strong> {formatDate(order.confirmed_at)}
-                                  </p>
-                                )}
-                                {order.notes && (
-                                  <p>
-                                    <strong>Notas:</strong> {order.notes}
-                                  </p>
-                                )}
-                              </div>
+                if (detailOrderId === order.id) {
+                  rows.push(
+                    <tr key={`detail-${order.id}`} className={styles.detailsRow}>
+                      <td colSpan={7}>
+                        <div className={styles.detailsContent}>
+                          <div className={styles.detailsColumns}>
+                            <div className={styles.detailColumn}>
+                              <h4>Informacion del cliente:</h4>
+                              <p><strong>Nombre:</strong> {order.customer_name}</p>
+                              <p><strong>Email:</strong> {order.customer_email || '-'}</p>
+                              <p><strong>Telefono:</strong> {order.customer_phone || '-'}</p>
                             </div>
 
-                            {/* Items */}
-                            {order.items && order.items.length > 0 && (
-                              <div className={styles.itemsSection}>
-                                <h4>Items:</h4>
-                                <table className={styles.itemsTable}>
-                                  <thead>
-                                    <tr>
-                                      <th>Producto</th>
-                                      <th>Cantidad</th>
-                                      <th>Precio unitario</th>
-                                      <th>Subtotal</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {order.items.map((item, idx) => (
-                                      <tr key={idx}>
-                                        <td>{item.product_name}</td>
-                                        <td>{item.quantity}</td>
-                                        <td>${item.unit_price.toFixed(2)}</td>
-                                        <td>${(item.quantity * item.unit_price).toFixed(2)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
+                            <div className={styles.detailColumn}>
+                              <h4>Informacion del pedido:</h4>
+                              <p><strong>Creado:</strong> {formatDate(order.created_at)}</p>
+                              {order.confirmed_at ? (
+                                <p><strong>Confirmado:</strong> {formatDate(order.confirmed_at)}</p>
+                              ) : null}
+                              {order.confirmed_invoice_id ? (
+                                <p><strong>Comprobante asociado:</strong> {order.confirmed_invoice_id}</p>
+                              ) : null}
+                              {order.notes ? <p><strong>Notas:</strong> {order.notes}</p> : null}
+                            </div>
                           </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                );
+
+                          {order.items.length > 0 ? (
+                            <div className={styles.itemsSection}>
+                              <h4>Items:</h4>
+                              <table className={styles.itemsTable}>
+                                <thead>
+                                  <tr>
+                                    <th>Producto</th>
+                                    <th>SKU</th>
+                                    <th>Cantidad</th>
+                                    <th>Precio unitario</th>
+                                    <th>Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {order.items.map((item, idx) => (
+                                    <tr key={`${order.id}-${idx}`}>
+                                      <td>{item.name || `Producto ${item.product_id}`}</td>
+                                      <td>{item.sku || '-'}</td>
+                                      <td>{item.quantity}</td>
+                                      <td>${item.unit_price.toFixed(2)}</td>
+                                      <td>${(item.quantity * item.unit_price).toFixed(2)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                return rows;
               })}
             </tbody>
           </table>

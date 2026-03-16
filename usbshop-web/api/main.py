@@ -516,6 +516,17 @@ def _pick_price(row: Any) -> float:
     return float(price_list_1) if price_list_1 > 0 else float(price)
 
 
+def _pick_price_by_list(row: Any, price_list: int) -> float:
+    base_price = float(row["price"] or 0)
+    if price_list == 1:
+        price_list_1 = float(row["price_list_1"] or 0)
+        return price_list_1 if price_list_1 > 0 else base_price
+    if price_list == 2:
+        price_list_2 = float(row["price_list_2"] or 0)
+        return price_list_2 if price_list_2 > 0 else base_price
+    return base_price
+
+
 def _public_image_url(image_path: Optional[str], product_id: Optional[int] = None) -> Optional[str]:
     if not image_path:
         return None
@@ -657,6 +668,13 @@ def _ensure_products_cost_column(conn: DBConn) -> None:
     conn.commit()
 
 
+def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
+    if _has_column(conn, "invoices", "payment_method"):
+        return
+    conn.execute("ALTER TABLE invoices ADD COLUMN payment_method TEXT")
+    conn.commit()
+
+
 def _require_sync_token(request: Request) -> None:
     token = (os.getenv("USB_SYNC_TOKEN") or os.getenv("USB_SYNC_SECRET") or "").strip()
     if not token:
@@ -718,6 +736,12 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
             )
             """
         )
+        if not _has_column(conn, "web_orders", "confirmed_at"):
+            conn.execute("ALTER TABLE web_orders ADD COLUMN confirmed_at TIMESTAMP")
+        if not _has_column(conn, "web_orders", "confirmed_invoice_id"):
+            conn.execute("ALTER TABLE web_orders ADD COLUMN confirmed_invoice_id INTEGER")
+        if not _has_column(conn, "web_orders", "external_ref"):
+            conn.execute("ALTER TABLE web_orders ADD COLUMN external_ref TEXT")
         conn.commit()
         return
     conn.execute(
@@ -750,6 +774,12 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
         )
         """
     )
+    if not _has_column(conn, "web_orders", "confirmed_at"):
+        conn.execute("ALTER TABLE web_orders ADD COLUMN confirmed_at DATETIME")
+    if not _has_column(conn, "web_orders", "confirmed_invoice_id"):
+        conn.execute("ALTER TABLE web_orders ADD COLUMN confirmed_invoice_id INTEGER")
+    if not _has_column(conn, "web_orders", "external_ref"):
+        conn.execute("ALTER TABLE web_orders ADD COLUMN external_ref TEXT")
     conn.commit()
 
 
@@ -1185,6 +1215,7 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("external_ref", "TEXT", "TEXT"),
         ("due_date", "TEXT", "TIMESTAMP"),
         ("notes", "TEXT", "TEXT"),
+        ("payment_method", "TEXT", "TEXT"),
     ],
     "invoice_items": [
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
@@ -1509,6 +1540,8 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             "p.image_path",
             "c.name AS category",
         ]
+        select_fields.append("p.created_at" if has_created_at else "NULL AS created_at")
+        select_fields.append("p.updated_at" if has_updated_at else "NULL AS updated_at")
         select_fields.append("p.price_list_1" if has_price_list_1 else "NULL AS price_list_1")
         select_fields.append("p.description" if has_description else "NULL AS description")
         select_fields.append("p.cost")
@@ -1564,6 +1597,8 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             "cost": float(row["cost"] or 0),
             "stock": int(row["stock"] or 0),
             "category": row["category"] or "General",
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
             "description": row["description"],
             "imageUrl": (
                 images_map.get(int(row["id"])) or []
@@ -1704,17 +1739,19 @@ def create_order(payload: OrderPayload) -> dict:
 @app.get("/admin/orders")
 def admin_list_orders(
     request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     status: str = "PENDING",
     limit: int = 200,
     include_items: bool = True,
 ) -> list[dict]:
-    _require_sync_token(request)
+    _require_admin(session_token)
     status_value = (status or "PENDING").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED"}:
         status_value = "PENDING"
 
     conn = _connect()
     try:
+        _ensure_web_order_tables(conn)
         rows = conn.execute(
             """
             SELECT id, customer_name, customer_phone, customer_email, notes, total, status,
@@ -1791,13 +1828,72 @@ def admin_list_orders(
         conn.close()
 
 
+@app.get("/admin/orders/{order_id}")
+def admin_order_detail(
+    order_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_web_order_tables(conn)
+        row = conn.execute(
+            """
+            SELECT id, customer_name, customer_phone, customer_email, notes, total, status,
+                   created_at, confirmed_at, confirmed_invoice_id
+            FROM web_orders
+            WHERE id = ?
+            """,
+            (int(order_id),),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        items = conn.execute(
+            """
+            SELECT i.order_id, i.product_id, i.quantity, i.unit_price,
+                   p.name AS product_name, p.sku AS sku
+            FROM web_order_items i
+            LEFT JOIN products p ON p.id = i.product_id
+            WHERE i.order_id = ?
+            ORDER BY i.id ASC
+            """,
+            (int(order_id),),
+        ).fetchall()
+        return {
+            "id": int(row["id"]),
+            "customer_name": row["customer_name"],
+            "customer_phone": row["customer_phone"],
+            "customer_email": row["customer_email"],
+            "notes": row["notes"],
+            "total": float(row["total"] or 0),
+            "status": row["status"] or "PENDING",
+            "created_at": row["created_at"],
+            "confirmed_at": row["confirmed_at"],
+            "confirmed_invoice_id": row["confirmed_invoice_id"],
+            "items": [
+                {
+                    "product_id": int(item["product_id"] or 0),
+                    "sku": item["sku"],
+                    "name": item["product_name"],
+                    "quantity": int(item["quantity"] or 0),
+                    "unit_price": float(item["unit_price"] or 0),
+                }
+                for item in items
+            ],
+        }
+    finally:
+        conn.close()
+
+
 @app.post("/admin/orders/{order_id}/status")
 def admin_update_order_status(
     order_id: int,
     request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: OrderStatusPayload = Body(...),
 ) -> dict:
-    _require_sync_token(request)
+    _require_admin(session_token)
     status_value = (payload.status or "").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "DELETED"}:
         raise HTTPException(status_code=400, detail="Estado invalido")
@@ -1848,6 +1944,7 @@ def featured_products(limit: int = 6) -> list[dict]:
         _ensure_product_images_table(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
+        has_created_at = _has_column(conn, "products", "created_at")
         has_updated_at = _has_column(conn, "products", "updated_at")
         has_price_list_1 = _has_column(conn, "products", "price_list_1")
         has_description = _has_column(conn, "products", "description")
@@ -1863,6 +1960,8 @@ def featured_products(limit: int = 6) -> list[dict]:
             "p.image_path",
             "c.name AS category",
         ]
+        select_fields.append("p.created_at" if has_created_at else "NULL AS created_at")
+        select_fields.append("p.updated_at" if has_updated_at else "NULL AS updated_at")
         select_fields.append("p.price_list_1" if has_price_list_1 else "NULL AS price_list_1")
         select_fields.append("p.description" if has_description else "NULL AS description")
         select_fields.append("p.is_active" if has_is_active else "NULL AS is_active")
@@ -1917,6 +2016,8 @@ def featured_products(limit: int = 6) -> list[dict]:
             "price": _pick_price(row),
             "stock": int(row["stock"] or 0),
             "category": row["category"] or "General",
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
             "badge": "Destacado" if featured_enabled else "Stock",
             "description": row["description"],
             "imageUrl": (
@@ -2116,7 +2217,7 @@ def admin_list_products(
         
         rows = conn.execute(
             f"""
-            SELECT id, name, sku, price, price_list_1, cost, stock, 
+            SELECT id, name, sku, price, price_list_1, price_list_2, cost, stock, 
                    image_path, category_id, is_active, is_featured, is_offer
             FROM products
             {where_clause}
@@ -2137,7 +2238,9 @@ def admin_list_products(
                 "id": int(row["id"]),
                 "name": row["name"],
                 "sku": row["sku"],
-                "price": float(row["price_list_1"] or row["price"] or 0),
+                "price": float(row["price"] or 0),
+                "price_list_1": float(row["price_list_1"] or 0),
+                "price_list_2": float(row["price_list_2"] or 0),
                 "cost": float(row["cost"] or 0),
                 "stock": int(row["stock"] or 0),
                 "category_id": int(row["category_id"]) if row["category_id"] else None,
@@ -2364,6 +2467,338 @@ def admin_list_customers(
         conn.close()
 
 
+@app.get("/admin/backoffice-customers")
+def admin_backoffice_customers(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    q: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        params: list[Any] = []
+        where_clause = """
+        WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+        """
+        if q:
+            like = f"%{q.strip()}%"
+            where_clause += """
+            AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR cuit LIKE ? OR address LIKE ? OR locality LIKE ?)
+            """
+            params.extend([like, like, like, like, like, like])
+        rows = conn.execute(
+            f"""
+            SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
+            FROM customers
+            {where_clause}
+            ORDER BY name COLLATE NOCASE ASC, id ASC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        ).fetchall()
+        movements = conn.execute(
+            """
+            SELECT customer_id, amount, movement_type
+            FROM account_movements
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+        balances: dict[int, float] = {}
+        for row in movements:
+            customer_id = int(row["customer_id"] or 0)
+            if customer_id <= 0:
+                continue
+            amount = float(row["amount"] or 0)
+            signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
+            balances[customer_id] = round(balances.get(customer_id, 0.0) + signed, 2)
+        invoice_counts = {
+            int(row["customer_id"]): int(row["qty"])
+            for row in conn.execute(
+                """
+                SELECT customer_id, COUNT(*) AS qty
+                FROM invoices
+                GROUP BY customer_id
+                """
+            ).fetchall()
+            if row["customer_id"] is not None
+        }
+        return [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "email": row["email"],
+                "phone": row["phone"],
+                "created_at": row["created_at"],
+                "sale_mode": row["sale_mode"],
+                "locality": row["locality"],
+                "address": row["address"],
+                "tax_condition": row["tax_condition"],
+                "cuit": row["cuit"],
+                "external_ref": row["external_ref"],
+                "balance": balances.get(int(row["id"]), 0.0),
+                "invoice_count": invoice_counts.get(int(row["id"]), 0),
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.get("/admin/backoffice-customers/{customer_id}")
+def admin_backoffice_customer_detail(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        customer = conn.execute(
+            """
+            SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        invoices = conn.execute(
+            """
+            SELECT id, total, created_at, document_type, sale_mode, due_date, notes
+            FROM invoices
+            WHERE customer_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 20
+            """,
+            (customer_id,),
+        ).fetchall()
+        movements = conn.execute(
+            """
+            SELECT am.id, am.amount, am.movement_type, am.reference, am.invoice_id, am.created_at, am.payment_method,
+                   i.document_type, i.total, i.due_date
+            FROM account_movements am
+            LEFT JOIN invoices i ON i.id = am.invoice_id
+            WHERE am.customer_id = ?
+            ORDER BY am.created_at ASC, am.id ASC
+            """,
+            (customer_id,),
+        ).fetchall()
+        running_balance = 0.0
+        serialized_movements = []
+        for row in movements:
+            movement_type = str(row["movement_type"] or "").upper()
+            amount = float(row["amount"] or 0)
+            signed = amount if movement_type == "DEBIT" else -amount
+            running_balance = round(running_balance + signed, 2)
+            serialized_movements.append(
+                {
+                    "id": int(row["id"]),
+                    "movement_type": movement_type,
+                    "amount": amount,
+                    "signed_amount": signed,
+                    "reference": row["reference"],
+                    "invoice_id": int(row["invoice_id"]) if row["invoice_id"] is not None else None,
+                    "created_at": row["created_at"],
+                    "payment_method": row["payment_method"],
+                    "document_type": row["document_type"],
+                    "invoice_total": float(row["total"] or 0) if row["total"] is not None else None,
+                    "due_date": row["due_date"],
+                    "running_balance": running_balance,
+                }
+            )
+        return {
+            "id": int(customer["id"]),
+            "name": customer["name"],
+            "email": customer["email"],
+            "phone": customer["phone"],
+            "sale_mode": customer["sale_mode"],
+            "locality": customer["locality"],
+            "address": customer["address"],
+            "tax_condition": customer["tax_condition"],
+            "cuit": customer["cuit"],
+            "external_ref": customer["external_ref"],
+            "created_at": customer["created_at"],
+            "balance": _customer_current_balance_from_rows(movements),
+            "documents": [
+                {
+                    "id": int(item["id"]),
+                    "total": float(item["total"] or 0),
+                    "created_at": item["created_at"],
+                    "document_type": item["document_type"],
+                    "sale_mode": item["sale_mode"],
+                    "due_date": item["due_date"],
+                    "notes": item["notes"],
+                }
+                for item in invoices
+            ],
+            "movements": list(reversed(serialized_movements[-20:])),
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/admin/backoffice-customers")
+def admin_create_backoffice_customer(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO customers (
+                name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """,
+            (
+                name,
+                str(payload.get("email") or "").strip() or None,
+                str(payload.get("phone") or "").strip() or None,
+                datetime.utcnow().isoformat(),
+                str(payload.get("sale_mode") or "CONTADO").strip() or "CONTADO",
+                str(payload.get("locality") or "").strip() or None,
+                str(payload.get("address") or "").strip() or None,
+                str(payload.get("tax_condition") or "").strip() or None,
+                str(payload.get("cuit") or "").strip() or None,
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+        return {"id": int(row["id"] if isinstance(row, dict) else row[0]), "message": "Cliente creado"}
+    finally:
+        conn.close()
+
+
+@app.put("/admin/backoffice-customers/{customer_id}")
+def admin_update_backoffice_customer(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    conn = _connect()
+    try:
+        _ensure_web_order_tables(conn)
+        row = conn.execute(
+            """
+            SELECT id
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        conn.execute(
+            """
+            UPDATE customers
+               SET name = ?, email = ?, phone = ?, sale_mode = ?, locality = ?, address = ?, tax_condition = ?, cuit = ?
+             WHERE id = ?
+            """,
+            (
+                name,
+                str(payload.get("email") or "").strip() or None,
+                str(payload.get("phone") or "").strip() or None,
+                str(payload.get("sale_mode") or "CONTADO").strip() or "CONTADO",
+                str(payload.get("locality") or "").strip() or None,
+                str(payload.get("address") or "").strip() or None,
+                str(payload.get("tax_condition") or "").strip() or None,
+                str(payload.get("cuit") or "").strip() or None,
+                customer_id,
+            ),
+        )
+        conn.commit()
+        return {"id": customer_id, "message": "Cliente actualizado"}
+    finally:
+        conn.close()
+
+
+@app.post("/admin/backoffice-customers/sync-web-orders")
+def admin_sync_backoffice_customers_from_orders(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        if not _has_table(conn, "web_orders"):
+            return {"created": 0, "updated": 0, "skipped": 0, "total": 0}
+        rows = conn.execute(
+            """
+            SELECT customer_name, customer_email, customer_phone
+            FROM web_orders
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+        created = 0
+        updated = 0
+        skipped = 0
+        for row in rows:
+            next_name = str(row["customer_name"] or "").strip()
+            next_email = str(row["customer_email"] or "").strip() or None
+            next_phone = str(row["customer_phone"] or "").strip() or None
+            if not next_name:
+                skipped += 1
+                continue
+            existing = None
+            if next_email:
+                existing = conn.execute(
+                    "SELECT id, name, email, phone FROM customers WHERE LOWER(COALESCE(email, '')) = ? AND deleted_at IS NULL LIMIT 1",
+                    (next_email.lower(),),
+                ).fetchone()
+            if existing is None and next_phone:
+                existing = conn.execute(
+                    "SELECT id, name, email, phone FROM customers WHERE phone = ? AND deleted_at IS NULL LIMIT 1",
+                    (next_phone,),
+                ).fetchone()
+            if existing is None:
+                existing = conn.execute(
+                    "SELECT id, name, email, phone FROM customers WHERE name = ? AND deleted_at IS NULL LIMIT 1",
+                    (next_name,),
+                ).fetchone()
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO customers (name, email, phone, created_at, sale_mode, is_active)
+                    VALUES (?, ?, ?, ?, 'CONTADO', 1)
+                    """,
+                    (next_name, next_email, next_phone, datetime.utcnow().isoformat()),
+                )
+                created += 1
+                continue
+            current_email = str(existing["email"] or "").strip() or None
+            current_phone = str(existing["phone"] or "").strip() or None
+            if current_email == next_email and current_phone == next_phone and str(existing["name"] or "").strip() == next_name:
+                skipped += 1
+                continue
+            conn.execute(
+                """
+                UPDATE customers
+                   SET name = ?, email = COALESCE(?, email), phone = COALESCE(?, phone)
+                 WHERE id = ?
+                """,
+                (next_name, next_email, next_phone, int(existing["id"])),
+            )
+            updated += 1
+        conn.commit()
+        return {"created": created, "updated": updated, "skipped": skipped, "total": len(rows)}
+    finally:
+        conn.close()
+
+
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.get("/admin/account-customers")
 def admin_account_customers(
     request: Request,
@@ -2716,6 +3151,7 @@ def admin_list_invoices(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_invoice_payment_method_column(conn)
         params: list[Any] = []
         where = ""
         if customer_id:
@@ -2724,7 +3160,7 @@ def admin_list_invoices(
         rows = conn.execute(
             f"""
             SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, i.sale_mode,
-                   i.due_date, i.notes, c.name AS customer_name
+                   i.price_list, i.due_date, i.notes, i.payment_method, c.name AS customer_name
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
             {where}
@@ -2742,11 +3178,183 @@ def admin_list_invoices(
                 "created_at": row["created_at"],
                 "document_type": row["document_type"],
                 "sale_mode": row["sale_mode"],
+                "price_list": int(row["price_list"]) if row["price_list"] is not None else 0,
                 "due_date": row["due_date"],
                 "notes": row["notes"],
+                "payment_method": row["payment_method"],
             }
             for row in rows
         ]
+    finally:
+        conn.close()
+
+
+@app.post("/admin/invoices")
+def admin_create_invoice(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    customer_id = int(payload.get("customer_id") or 0)
+    if customer_id <= 0:
+        raise HTTPException(status_code=400, detail="Cliente requerido")
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=400, detail="Agrega items al comprobante")
+
+    document_type = str(payload.get("document_type") or "FACTURA").strip().upper() or "FACTURA"
+    sale_mode_input = str(payload.get("sale_mode") or "").strip().upper() or None
+    due_date = str(payload.get("due_date") or "").strip() or None
+    notes = str(payload.get("notes") or "").strip() or None
+    order_id = int(payload.get("order_id") or 0) or None
+    created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
+
+    conn = _connect()
+    try:
+        _ensure_invoice_payment_method_column(conn)
+        customer = conn.execute(
+            """
+            SELECT id, sale_mode
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        normalized_items: list[dict[str, Any]] = []
+        total = 0.0
+        price_list = int(payload.get("price_list") or 0)
+        if price_list not in {0, 1, 2}:
+            price_list = 0
+        payment_method = str(payload.get("payment_method") or "").strip() or None
+        for raw in items:
+            product_id = int((raw or {}).get("product_id") or 0)
+            quantity = int((raw or {}).get("quantity") or 0)
+            unit_price_payload = (raw or {}).get("unit_price")
+            if product_id <= 0 or quantity <= 0:
+                raise HTTPException(status_code=400, detail="Items invalidos")
+            product = conn.execute(
+                """
+                SELECT id, name, price, stock
+                FROM products
+                WHERE id = ? AND deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+                """,
+                (product_id,),
+            ).fetchone()
+            if product is None:
+                raise HTTPException(status_code=404, detail=f"Producto {product_id} no encontrado")
+            current_stock = int(product["stock"] or 0)
+            if current_stock < quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Sin stock suficiente para {product['name']}",
+                )
+            unit_price = round(
+                float(
+                    unit_price_payload
+                    if unit_price_payload not in (None, "",)
+                    else _pick_price_by_list(product, price_list)
+                ),
+                2,
+            )
+            if unit_price < 0:
+                raise HTTPException(status_code=400, detail="Precio invalido")
+            subtotal = round(quantity * unit_price, 2)
+            total += subtotal
+            normalized_items.append(
+                {
+                    "product_id": product_id,
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "subtotal": subtotal,
+                }
+            )
+
+        sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
+        external_ref_row = conn.execute(
+            """
+            SELECT external_ref
+            FROM invoices
+            WHERE external_ref IS NOT NULL AND TRIM(external_ref) <> ''
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        last_external = str(external_ref_row["external_ref"] or "").strip() if external_ref_row else ""
+        next_external_number = int(last_external) + 1 if last_external.isdigit() else 1
+        external_ref = f"{next_external_number:014d}"
+
+        conn.execute(
+            """
+            INSERT INTO invoices (
+                customer_id, total, created_at, seller_id, document_type, commission_amount,
+                sale_mode, price_list, external_ref, due_date, notes, payment_method
+            ) VALUES (?, ?, ?, NULL, ?, 0, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                customer_id,
+                round(total, 2),
+                created_at,
+                document_type,
+                sale_mode,
+                price_list,
+                external_ref,
+                due_date,
+                notes,
+                payment_method,
+            ),
+        )
+        invoice_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+        invoice_id = int(invoice_row["id"] if isinstance(invoice_row, dict) else invoice_row[0])
+
+        for item in normalized_items:
+            conn.execute(
+                """
+                INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price)
+                VALUES (?, ?, ?, ?)
+                """,
+                (invoice_id, item["product_id"], item["quantity"], item["unit_price"]),
+            )
+            conn.execute(
+                "UPDATE products SET stock = stock - ? WHERE id = ?",
+                (item["quantity"], item["product_id"]),
+            )
+
+        if sale_mode == "CUENTA_CORRIENTE":
+            conn.execute(
+                """
+                INSERT INTO account_movements (
+                    customer_id, invoice_id, amount, movement_type, reference, created_at, payment_method
+                ) VALUES (?, ?, ?, 'DEBIT', ?, ?, NULL)
+                """,
+                (customer_id, invoice_id, round(total, 2), f"{document_type} #{invoice_id}", created_at),
+            )
+
+        if order_id:
+            conn.execute(
+                """
+                UPDATE web_orders
+                   SET status = 'CONFIRMED', confirmed_at = ?, confirmed_invoice_id = ?
+                 WHERE id = ?
+                """,
+                (datetime.utcnow().isoformat(), str(invoice_id), order_id),
+            )
+
+        conn.commit()
+        return {
+            "id": invoice_id,
+            "customer_id": customer_id,
+            "total": round(total, 2),
+            "document_type": document_type,
+            "sale_mode": sale_mode,
+            "price_list": price_list,
+            "external_ref": external_ref,
+            "payment_method": payment_method,
+            "message": "Comprobante creado",
+        }
     finally:
         conn.close()
 
@@ -2760,11 +3368,12 @@ def admin_invoice_detail(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_invoice_payment_method_column(conn)
         invoice = conn.execute(
             """
             SELECT i.id, i.customer_id, i.total, i.created_at, i.seller_id, i.document_type,
                    i.commission_amount, i.sale_mode, i.price_list, i.external_ref, i.due_date,
-                   i.notes, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                   i.notes, i.payment_method, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
                    c.sale_mode AS customer_sale_mode, c.locality, c.address, c.tax_condition, c.cuit
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
@@ -2855,6 +3464,7 @@ def admin_invoice_detail(
                 "external_ref": invoice["external_ref"],
                 "due_date": invoice["due_date"],
                 "notes": invoice["notes"],
+                "payment_method": invoice["payment_method"],
             },
             "items": serialized_items,
             "payments": serialized_payments,
@@ -3063,6 +3673,7 @@ def admin_reports_overview(
         return {
             "summary": {
                 "products": len(products),
+                "active_customers": len(customer_names),
                 "stock_units": total_stock_units,
                 "stock_value_cost": stock_value_cost,
                 "stock_value_sale": stock_value_sale,
@@ -3070,6 +3681,9 @@ def admin_reports_overview(
                 "sales_total": total_sales,
                 "estimated_margin": total_margin,
                 "cc_open_balance": round(sum(customer_balance_map.values()), 2),
+                "account_movements": len(cc_rows),
+                "debtors": len([balance for balance in customer_balance_map.values() if balance > 0]),
+                "latest_invoice_at": invoices[-1]["created_at"] if invoices else None,
             },
             "monthly_sales": monthly_sales,
             "top_products": top_products,
@@ -3080,6 +3694,7 @@ def admin_reports_overview(
         conn.close()
 
 
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.get("/admin/account-customers/{customer_id}")
 def admin_account_customer_detail(
     customer_id: int,
@@ -3139,6 +3754,7 @@ def admin_account_customer_detail(
         conn.close()
 
 
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.put("/admin/account-customers/{customer_id}")
 def admin_update_account_customer(
     customer_id: int,
@@ -3181,6 +3797,7 @@ def admin_update_account_customer(
         conn.close()
 
 
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.get("/admin/account-customers/{customer_id}/movements")
 def admin_account_customer_movements(
     customer_id: int,
@@ -3222,6 +3839,7 @@ def admin_account_customer_movements(
         conn.close()
 
 
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.post("/admin/account-customers/{customer_id}/movements")
 def admin_create_account_movement(
     customer_id: int,
@@ -3268,6 +3886,7 @@ def admin_create_account_movement(
         conn.close()
 
 
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.post("/admin/account-documents")
 def admin_create_account_document(
     request: Request,
@@ -3382,6 +4001,7 @@ def admin_create_account_document(
         conn.close()
 
 
+# LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.get("/admin/account-documents/{document_id}")
 def admin_account_document_detail(
     document_id: int,
@@ -3443,6 +4063,7 @@ def admin_list_orders_detailed(
     
     conn = _connect()
     try:
+        _ensure_web_order_tables(conn)
         rows = conn.execute(
             """
             SELECT id, customer_name, customer_phone, customer_email, notes, total, status,

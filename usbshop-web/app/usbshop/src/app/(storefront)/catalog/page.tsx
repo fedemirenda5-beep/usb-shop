@@ -10,9 +10,38 @@ type Product = {
   price: number;
   category: string;
   stock: number;
+  created_at?: string | null;
+  updated_at?: string | null;
   imageUrl?: string | null;
   imageUrls?: string[] | null;
   description?: string | null;
+};
+
+const fallbackCategories = [
+  "Cables y cargadores",
+  "Celulares",
+  "Hogar",
+  "Auriculares",
+  "Parlantes y microfonos",
+  "Consolas y computacion",
+  "Luces e iluminacion",
+  "Smartwatch",
+  "Termos y vasos",
+  "Pilas y baterias",
+  "Pendrive y memorias",
+  "Soportes",
+  "Variedad",
+  "Oficina",
+  "Vapers",
+];
+
+const normalizeLabel = (value: string | null | undefined) =>
+  (value || "").trim().toLowerCase();
+
+const toComparableTimestamp = (product: Product) => {
+  const raw = product.created_at || product.updated_at || "";
+  const parsed = raw ? Date.parse(raw) : NaN;
+  return Number.isFinite(parsed) ? parsed : product.id;
 };
 
 export default function CatalogPage() {
@@ -90,12 +119,46 @@ export default function CatalogPage() {
 
   const filtered = useMemo(() => {
     const value = query.trim().toLowerCase();
-    if (!value) {
-      return products;
-    }
-    return products.filter((product) => {
-      return product.name.toLowerCase().includes(value) || product.category.toLowerCase().includes(value);
-    });
+    const orderedCategories = [
+      ...fallbackCategories.filter((category) =>
+        products.some((product) => normalizeLabel(product.category) === normalizeLabel(category))
+      ),
+      ...Array.from(
+        new Set(
+          products
+            .map((product) => (product.category || "General").trim())
+            .filter(Boolean)
+        )
+      )
+        .filter(
+          (category) =>
+            !fallbackCategories.some(
+              (fallback) => normalizeLabel(fallback) === normalizeLabel(category)
+            )
+        )
+        .sort((a, b) => a.localeCompare(b, "es")),
+    ];
+    const categoryRank = new Map(
+      orderedCategories.map((category, index) => [normalizeLabel(category), index])
+    );
+    const compareByCategoryThenNewest = (a: Product, b: Product) => {
+      const rankA = categoryRank.get(normalizeLabel(a.category)) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = categoryRank.get(normalizeLabel(b.category)) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+      const dateCompare = toComparableTimestamp(b) - toComparableTimestamp(a);
+      if (dateCompare !== 0) {
+        return dateCompare;
+      }
+      return a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true });
+    };
+    const source = value
+      ? products.filter((product) => {
+          return product.name.toLowerCase().includes(value) || product.category.toLowerCase().includes(value);
+        })
+      : products;
+    return [...source].sort(compareByCategoryThenNewest);
   }, [products, query]);
 
   const skeletonCards = useMemo(() => Array.from({ length: 12 }, (_, idx) => idx), []);

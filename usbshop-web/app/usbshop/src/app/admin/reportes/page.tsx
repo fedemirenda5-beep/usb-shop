@@ -6,6 +6,7 @@ import styles from './reportes.module.css';
 
 type Summary = {
   products: number;
+  active_customers: number;
   stock_units: number;
   stock_value_cost: number;
   stock_value_sale: number;
@@ -13,6 +14,9 @@ type Summary = {
   sales_total: number;
   estimated_margin: number;
   cc_open_balance: number;
+  account_movements: number;
+  debtors: number;
+  latest_invoice_at?: string | null;
 };
 
 type MonthPoint = { month: string; sales: number; count: number };
@@ -56,8 +60,8 @@ export default function ReportesPage() {
     <div className={styles.page}>
       <section className={styles.header}>
         <div>
-          <h1>Reportes y balances</h1>
-          <p>Resumen general, ventas mensuales, stock valorizado, deudores y top productos.</p>
+          <h1>Reportes</h1>
+          <p>Analisis general, ventas mensuales, top productos, deudores y alertas de stock.</p>
         </div>
       </section>
 
@@ -69,6 +73,8 @@ export default function ReportesPage() {
           <article className={styles.kpi}><span>Comprobantes</span><strong>{summary.sales_count}</strong></article>
           <article className={styles.kpi}><span>Margen estimado</span><strong>{money(summary.estimated_margin)}</strong></article>
           <article className={styles.kpi}><span>Saldo cuenta corriente</span><strong>{money(summary.cc_open_balance)}</strong></article>
+          <article className={styles.kpi}><span>Clientes activos</span><strong>{summary.active_customers}</strong></article>
+          <article className={styles.kpi}><span>Movimientos CC</span><strong>{summary.account_movements}</strong></article>
           <article className={styles.kpi}><span>Stock unidades</span><strong>{summary.stock_units}</strong></article>
           <article className={styles.kpi}><span>Stock a costo</span><strong>{money(summary.stock_value_cost)}</strong></article>
           <article className={styles.kpi}><span>Stock a venta</span><strong>{money(summary.stock_value_sale)}</strong></article>

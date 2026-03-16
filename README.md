@@ -1,4 +1,14 @@
-﻿# ControlStock
+# ControlStock
+
+## Web admin
+
+La guia operativa del panel web esta en [ADMIN_WEB.md](./ADMIN_WEB.md).
+
+Puntos base:
+
+- En local, la web debe correr junto con la API local para leer `controlStock.db`
+- En produccion, la web lee `https://api.usbshop.com.ar`
+- Los modulos del admin se centralizan en `usbshop-web/app/usbshop/src/app/admin/adminModules.ts`
 
 Aplicación de escritorio para la gestión de inventario, clientes, vendedores, ventas y cuentas corrientes.
 
@@ -19,7 +29,7 @@ Si ya tienes la base en `C:\Users\Fede\controlStock.db`, no necesitas cambiar na
 
 ## Estructura del proyecto
 
-```
+```text
 controlStock/
 +-- main.py
 +-- README.md
@@ -75,6 +85,3 @@ controlStock/
 - Agregar edición de clientes/productos/vendedores y registros de pagos a cuenta corriente.
 - Mostrar comisiones en informes consolidados y permitir liquidaciones.
 - Añadir autenticación de usuarios y pruebas automatizadas.
-
-
-

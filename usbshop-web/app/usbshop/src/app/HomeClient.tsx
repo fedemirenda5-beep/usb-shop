@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductCard from "@/components/ProductCard";
 import {
-  SYNC_SECRET,
   fetchJson,
   getOrderSecret,
   getApiBaseUrl,
@@ -19,6 +18,8 @@ type Product = {
   price: number;
   category: string;
   stock: number;
+  created_at?: string | null;
+  updated_at?: string | null;
   badge?: string;
   imageUrl?: string | null;
   imageUrls?: string[] | null;
@@ -62,11 +63,20 @@ const PRODUCTS_PAGE_SIZE = 2000;
 const CATALOG_PAGE_SIZE = 12;
 const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
-const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v7";
-const FEATURED_CACHE_KEY = "usbshop_featured_cache_v7";
+const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v8";
+const FEATURED_CACHE_KEY = "usbshop_featured_cache_v8";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
+const normalizeLabel = (value: string | null | undefined) =>
+  (value || "").trim().toLowerCase();
+const toComparableTimestamp = (product: Product) => {
+  const raw = product.created_at || product.updated_at || "";
+  const parsed = raw ? Date.parse(raw) : NaN;
+  return Number.isFinite(parsed) ? parsed : product.id;
+};
+const compareByNewest = (a: Product, b: Product) =>
+  toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
 const parseStoredCart = (raw: string) => {
   try {
     const parsed = JSON.parse(raw) as
@@ -184,6 +194,20 @@ const normalizeProductWithBase = (
   };
 };
 
+const getProductPlaceholderLabel = (value?: string | null) => {
+  const words = (value ?? "")
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (words.length === 0) {
+    return "USB";
+  }
+  return words
+    .slice(0, 2)
+    .map((item) => item.charAt(0).toUpperCase())
+    .join("");
+};
+
 export default function HomeClient({
   initialProducts,
   initialFeatured,
@@ -211,15 +235,12 @@ export default function HomeClient({
   const [orderStatus, setOrderStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [isLoadingFeatured, setIsLoadingFeatured] = useState(!Array.isArray(initialFeatured));
   const [isLoadingProducts, setIsLoadingProducts] = useState(!Array.isArray(initialProducts));
   const [stockNotice, setStockNotice] = useState<string | null>(null);
   const stockNoticeTimer = useRef<number | null>(null);
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const cartNoticeTimer = useRef<number | null>(null);
-  const syncNoticeTimer = useRef<number | null>(null);
   const cartHydrated = useRef(false);
   const topSalesRef = useRef<HTMLDivElement | null>(null);
   const [orderName, setOrderName] = useState("");
@@ -227,6 +248,7 @@ export default function HomeClient({
   const [orderEmail, setOrderEmail] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [quickView, setQuickView] = useState<Product | null>(null);
+  const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
   const isPublic =
     typeof window !== "undefined" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -293,6 +315,10 @@ export default function HomeClient({
   const handleCloseQuickView = () => {
     setQuickView(null);
   };
+
+  useEffect(() => {
+    setQuickViewImageFailed(false);
+  }, [quickView?.id, quickView?.imageUrl]);
 
   const handleViewFullCatalog = () => {
     setCatalogLimit(Number.MAX_SAFE_INTEGER);
@@ -411,9 +437,6 @@ export default function HomeClient({
     throw lastError ?? new Error("API request failed");
   };
 
-  const normalizeLabel = (value: string | null | undefined) =>
-    (value || "").trim().toLowerCase();
-
   const normalizeProduct = (
     item: Product & { is_featured?: boolean; is_offer?: boolean; is_recommended?: boolean },
     baseUrl: string = productsApiBase
@@ -452,61 +475,6 @@ export default function HomeClient({
     applyProductsResult(productsResult);
   };
 
-  const syncProducts = async (silent = false) => {
-    if (isPublic) {
-      if (!silent) {
-        setSyncStatus("error");
-        setSyncMessage("Sync disponible solo en entorno local.");
-      }
-      return;
-    }
-    if (!silent) {
-      setSyncStatus("syncing");
-      setSyncMessage(null);
-    }
-    try {
-      const baseUrl = productsApiBase || getApiBaseUrl();
-      const syncPath = SYNC_SECRET ? "/sync/remote" : "/sync";
-      const response = await fetch(`${baseUrl}${syncPath}`, {
-        method: "POST",
-        headers: SYNC_SECRET ? { "X-USB-SYNC-SECRET": SYNC_SECRET } : undefined,
-      });
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        const message =
-          detail?.detail ||
-          (response.status === 403
-            ? "Sync solo disponible en localhost."
-            : "No se pudo sincronizar.");
-        if (!silent) {
-          setSyncStatus("error");
-          setSyncMessage(message);
-        }
-        return;
-      }
-      await refreshProducts();
-      if (!silent) {
-        setSyncStatus("success");
-        setSyncMessage("Productos sincronizados.");
-      }
-    } catch {
-      if (!silent) {
-        setSyncStatus("error");
-        setSyncMessage("No se pudo sincronizar.");
-      }
-    } finally {
-      if (!silent) {
-        if (syncNoticeTimer.current) {
-          window.clearTimeout(syncNoticeTimer.current);
-        }
-        syncNoticeTimer.current = window.setTimeout(() => {
-          setSyncMessage(null);
-          setSyncStatus("idle");
-        }, 2500);
-      }
-    }
-  };
-
   useEffect(() => {
     let active = true;
     const loadFeatured = async () => {
@@ -540,14 +508,6 @@ export default function HomeClient({
       active = false;
     };
   }, []);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      void syncProducts(true);
-    }, 120000);
-    return () => window.clearInterval(interval);
-  }, [productsApiBase]);
-
 
   useEffect(() => {
     const source = featured.length > 0 ? featured : products;
@@ -655,18 +615,64 @@ export default function HomeClient({
   const total = cartItems.reduce((sum, item) => sum + item.qty * item.product.price, 0);
   const freeShippingThreshold = 250000;
   const remainingForFreeShipping = Math.max(0, freeShippingThreshold - total);
-  const availableCategories = useMemo(() => {
+  const orderedCategories = useMemo(() => {
     const source = products.length > 0 ? products : featured;
-    const unique = new Map<string, string>();
-    source.forEach((product) => {
-      const label = (product.category || "General").trim();
-      if (label) {
-        unique.set(label, label);
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const category of fallbackCategories) {
+      const normalized = normalizeLabel(category);
+      if (!normalized || seen.has(normalized)) {
+        continue;
       }
-    });
-    const list = Array.from(unique.keys()).sort((a, b) => a.localeCompare(b, "es"));
-    return list.length > 0 ? list : fallbackCategories;
+      const exists = source.some((product) => normalizeLabel(product.category) === normalized);
+      if (exists) {
+        next.push(category);
+        seen.add(normalized);
+      }
+    }
+    const remaining = Array.from(
+      new Set(
+        source
+          .map((product) => (product.category || "General").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "es"));
+    for (const category of remaining) {
+      const normalized = normalizeLabel(category);
+      if (!seen.has(normalized)) {
+        next.push(category);
+        seen.add(normalized);
+      }
+    }
+    return next;
   }, [products, featured]);
+  const categoryRank = useMemo(
+    () => new Map(orderedCategories.map((category, index) => [normalizeLabel(category), index])),
+    [orderedCategories]
+  );
+  const compareByCategoryThenName = (a: Product, b: Product) => {
+    const categoryA = normalizeLabel(a.category) || "general";
+    const categoryB = normalizeLabel(b.category) || "general";
+    const rankA = categoryRank.get(categoryA) ?? Number.MAX_SAFE_INTEGER;
+    const rankB = categoryRank.get(categoryB) ?? Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) {
+      return rankA - rankB;
+    }
+    const categoryCompare = (a.category || "General").localeCompare(b.category || "General", "es", {
+      sensitivity: "base",
+      numeric: true,
+    });
+    if (categoryCompare !== 0) {
+      return categoryCompare;
+    }
+    return (
+      a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true }) ||
+      compareByNewest(a, b)
+    );
+  };
+  const availableCategories = useMemo(() => {
+    return orderedCategories.length > 0 ? orderedCategories : fallbackCategories;
+  }, [orderedCategories]);
   const featuredSource = useMemo(() => {
     if (featured.length > 0) {
       return featured;
@@ -704,7 +710,8 @@ export default function HomeClient({
   };
 
   const filteredFeatured = useMemo(() => {
-    return featuredSource.filter((product) => {
+    return [...featuredSource]
+      .filter((product) => {
       if (
         selectedCategory &&
         normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
@@ -712,10 +719,12 @@ export default function HomeClient({
         return false;
       }
       return matchesSearch(product);
-    });
+      })
+      .sort(compareByNewest);
   }, [featuredSource, searchTokens, selectedCategory]);
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
+    return [...products]
+      .filter((product) => {
       if (
         selectedCategory &&
         normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
@@ -723,8 +732,9 @@ export default function HomeClient({
         return false;
       }
       return matchesSearch(product);
-    });
-  }, [products, searchTokens, selectedCategory]);
+      })
+      .sort(compareByCategoryThenName);
+  }, [products, searchTokens, selectedCategory, categoryRank]);
 
   const catalogSource = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
@@ -737,7 +747,8 @@ export default function HomeClient({
   }, [products, featuredSource, selectedCategory]);
 
   const filteredCatalog = useMemo(() => {
-    return catalogSource.filter((product) => {
+    return [...catalogSource]
+      .filter((product) => {
       if (
         selectedCategory &&
         normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
@@ -745,8 +756,9 @@ export default function HomeClient({
         return false;
       }
       return matchesSearch(product);
-    });
-  }, [catalogSource, searchTokens, selectedCategory]);
+      })
+      .sort(selectedCategory ? compareByNewest : compareByCategoryThenName);
+  }, [catalogSource, searchTokens, selectedCategory, categoryRank]);
 
   const visibleCatalog = useMemo(
     () => filteredCatalog.slice(0, catalogLimit),
@@ -781,7 +793,9 @@ export default function HomeClient({
 
   const newArrivals = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
-    const available = source.filter((product) => (product.stock ?? 0) > 0);
+    const available = [...source]
+      .filter((product) => (product.stock ?? 0) > 0)
+      .sort(compareByNewest);
     if (!selectedCategory) {
       return available.slice(0, 8);
     }
@@ -979,6 +993,9 @@ export default function HomeClient({
   }, [filteredFeatured, featuredIndex]);
 
   const toggleFeatured = async (product: Product) => {
+    if (isPublic) {
+      return;
+    }
     const nextValue = !product.isFeatured;
     const baseUrl = productsApiBase || getApiBaseUrl();
     await fetch(`${baseUrl}/products/${product.id}/featured`, {
@@ -1634,12 +1651,22 @@ export default function HomeClient({
               ✕
             </button>
             <div className="modal-media">
-              {quickView.imageUrl ? (
+              {quickView.imageUrl && !quickViewImageFailed ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={quickView.imageUrl} alt={quickView.name} />
+                <img
+                  src={quickView.imageUrl}
+                  alt={quickView.name}
+                  onError={() => setQuickViewImageFailed(true)}
+                />
               ) : (
                 <div className="modal-placeholder">
-                  {quickView.category}
+                  <div className="modal-placeholder-icon">
+                    {getProductPlaceholderLabel(quickView.category || quickView.name)}
+                  </div>
+                  <div className="modal-placeholder-title">{quickView.name}</div>
+                  <div className="modal-placeholder-meta">
+                    {quickView.category || "Producto sin foto"}
+                  </div>
                 </div>
               )}
             </div>

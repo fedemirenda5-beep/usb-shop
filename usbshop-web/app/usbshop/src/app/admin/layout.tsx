@@ -3,6 +3,7 @@
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { NAV_MODULES } from './adminModules';
 import styles from './admin.module.css';
 
 interface AdminLayoutProps {
@@ -44,12 +45,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         <nav className={styles.sidebarNav}>
           <a href="/admin" className={styles.navItem}>Dashboard</a>
-          <a href="/admin/productos" className={styles.navItem}>Productos</a>
-          <a href="/admin/pedidos" className={styles.navItem}>Pedidos</a>
-          <a href="/admin/clientes" className={styles.navItem}>Clientes</a>
-          <a href="/admin/comprobantes" className={styles.navItem}>Comprobantes</a>
-          <a href="/admin/cuentas-corrientes" className={styles.navItem}>Cuentas corrientes</a>
-          <a href="/admin/reportes" className={styles.navItem}>Reportes</a>
+          {NAV_MODULES.map((module) => (
+            <a key={module.id} href={module.href} className={styles.navItem}>
+              {module.navLabel}
+            </a>
+          ))}
         </nav>
 
         <div className={styles.sidebarFooter}>
