@@ -167,12 +167,24 @@ export default function ComprobantesPage() {
       await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoiceId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('No se pudo cargar el detalle del comprobante');
-      setDetail(await res.json());
+      const payload = await res.json();
+      setDetail(payload);
+      return payload as InvoiceDetail;
     } catch (err) {
       setDetailError(err instanceof Error ? err.message : 'Error cargando detalle');
       setDetail(null);
+      return null;
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function openInvoice(invoiceId: number, autoPrint = false) {
+    setSelectedId(invoiceId);
+    setDetailOnly(true);
+    const loaded = await loadDetail(invoiceId);
+    if (loaded && autoPrint) {
+      window.setTimeout(() => window.print(), 150);
     }
   }
 
@@ -261,11 +273,6 @@ export default function ComprobantesPage() {
     };
     void prefill();
   }, [orderIdParam, customers, products]);
-
-  useEffect(() => {
-    if (!selectedId) return;
-    void loadDetail(selectedId);
-  }, [selectedId]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -609,15 +616,7 @@ export default function ComprobantesPage() {
         </section>
       ) : null}
 
-      <div className={`${styles.layout} ${detailOnly ? styles.detailOnlyLayout : ''}`}>
-        <div className={styles.tablePane}>
-          {detailOnly ? (
-            <div className={styles.listBackBar}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
-                Volver al listado
-              </button>
-            </div>
-          ) : null}
+      <div className={styles.tablePane}>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -630,24 +629,20 @@ export default function ComprobantesPage() {
                   <th>Emision</th>
                   <th>Vencimiento</th>
                   <th>Notas</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8}>Cargando comprobantes...</td></tr>
+                  <tr><td colSpan={9}>Cargando comprobantes...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={8}>No hay comprobantes para mostrar.</td></tr>
+                  <tr><td colSpan={9}>No hay comprobantes para mostrar.</td></tr>
                 ) : (
                   filtered.map((item) => (
                     <tr
                       key={item.id}
                       className={selectedId === item.id ? styles.selectedRow : ''}
                       onClick={() => setSelectedId(item.id)}
-                      onDoubleClick={() => {
-                        setSelectedId(item.id);
-                        setDetailOnly(true);
-                      }}
-                      title="Doble click para abrir el comprobante"
                     >
                       <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
                       <td>{item.document_type || '-'}</td>
@@ -657,6 +652,28 @@ export default function ComprobantesPage() {
                       <td>{formatDate(item.created_at)}</td>
                       <td>{formatDate(item.due_date)}</td>
                       <td>{item.notes || '-'}</td>
+                      <td className={styles.rowActions}>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openInvoice(item.id, false);
+                          }}
+                        >
+                          Ver comprobante
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.printButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openInvoice(item.id, true);
+                          }}
+                        >
+                          Imprimir
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -665,14 +682,13 @@ export default function ComprobantesPage() {
           </div>
         </div>
 
+      {detailOnly ? (
         <aside className={styles.detailPane}>
-          {detailOnly ? (
-            <div className={styles.detailToolbar}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
-                Ver grilla
-              </button>
-            </div>
-          ) : null}
+          <div className={styles.detailToolbar}>
+            <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
+              Volver al listado
+            </button>
+          </div>
           {detailError ? <div className={styles.error}>{detailError}</div> : null}
           {detailLoading ? <div className={styles.empty}>Cargando detalle...</div> : null}
           {!detailLoading && !detail ? <div className={styles.empty}>Selecciona un comprobante.</div> : null}
@@ -783,7 +799,7 @@ export default function ComprobantesPage() {
             </div>
           ) : null}
         </aside>
-      </div>
+      ) : null}
     </div>
   );
 }
