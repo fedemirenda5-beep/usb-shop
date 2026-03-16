@@ -93,6 +93,7 @@ export default function ClientesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -142,6 +143,7 @@ export default function ClientesPage() {
         tax_condition: customerData.tax_condition || 'CONSUMIDOR_FINAL',
         cuit: customerData.cuit || '',
       });
+      setShowCustomerForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error cargando el detalle');
     }
@@ -175,6 +177,7 @@ export default function ClientesPage() {
     setSelectedCustomer(null);
     setCustomerForm(emptyCustomerForm());
     setError('');
+    setShowCustomerForm(true);
   };
 
   const saveCustomer = async (e: React.FormEvent) => {
@@ -201,6 +204,7 @@ export default function ClientesPage() {
       const nextId = selectedCustomerId || data.id;
       await loadCustomers(search);
       if (nextId) setSelectedCustomerId(nextId);
+      setShowCustomerForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando cliente');
     } finally {
@@ -313,71 +317,71 @@ export default function ClientesPage() {
       </div>
 
       <section className={styles.main}>
-        <div className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <h2>{selectedCustomer ? selectedCustomer.name : 'Nuevo cliente'}</h2>
-              <p>
-                {selectedCustomer
-                  ? `Saldo actual: ${formatCurrency(selectedCustomer.balance)}`
-                  : 'Alta y edicion sobre la tabla real de clientes.'}
-              </p>
+        {showCustomerForm ? (
+          <div className={styles.panel}>
+            <div className={styles.panelHeader}>
+              <div>
+                <h2>Nuevo cliente</h2>
+                <p>Alta y edicion sobre la tabla real de clientes.</p>
+              </div>
             </div>
-          </div>
 
-          <form className={styles.formGrid} onSubmit={saveCustomer}>
-            <label>
-              Nombre o razon social
-              <input name="name" value={customerForm.name} onChange={handleCustomerFormChange} required />
-            </label>
-            <label>
-              Email
-              <input name="email" value={customerForm.email} onChange={handleCustomerFormChange} />
-            </label>
-            <label>
-              Telefono
-              <input name="phone" value={customerForm.phone} onChange={handleCustomerFormChange} />
-            </label>
-            <label>
-              CUIT / DNI
-              <input name="cuit" value={customerForm.cuit} onChange={handleCustomerFormChange} />
-            </label>
-            <label>
-              Condicion fiscal
-              <select name="tax_condition" value={customerForm.tax_condition} onChange={handleCustomerFormChange}>
-                <option value="CONSUMIDOR_FINAL">Consumidor Final</option>
-                <option value="RESPONSABLE_INSCRIPTO">Responsable Inscripto</option>
-                <option value="MONOTRIBUTISTA">Monotributista</option>
-                <option value="EXENTO">Exento</option>
-              </select>
-            </label>
-            <label>
-              Modalidad de venta
-              <select name="sale_mode" value={customerForm.sale_mode} onChange={handleCustomerFormChange}>
-                <option value="CONTADO">Contado</option>
-                <option value="CUENTA_CORRIENTE">Cuenta corriente</option>
-              </select>
-            </label>
-            <label>
-              Ciudad
-              <input name="locality" value={customerForm.locality} onChange={handleCustomerFormChange} />
-            </label>
-            <label className={styles.fullWidth}>
-              Domicilio
-              <input name="address" value={customerForm.address} onChange={handleCustomerFormChange} />
-            </label>
-            <div className={styles.formActions}>
-              <button type="submit" className={styles.primaryButton} disabled={saving}>
-                {selectedCustomerId ? 'Guardar cambios' : 'Crear cliente'}
-              </button>
-              {selectedCustomerId ? (
-                <a href={`/admin/cuentas-corrientes`} className={styles.secondaryButton}>
-                  Ir a cuenta corriente
-                </a>
-              ) : null}
-            </div>
-          </form>
-        </div>
+            <form className={styles.formGrid} onSubmit={saveCustomer}>
+              <label>
+                Nombre o razon social
+                <input name="name" value={customerForm.name} onChange={handleCustomerFormChange} required />
+              </label>
+              <label>
+                Email
+                <input name="email" value={customerForm.email} onChange={handleCustomerFormChange} />
+              </label>
+              <label>
+                Telefono
+                <input name="phone" value={customerForm.phone} onChange={handleCustomerFormChange} />
+              </label>
+              <label>
+                CUIT / DNI
+                <input name="cuit" value={customerForm.cuit} onChange={handleCustomerFormChange} />
+              </label>
+              <label>
+                Condicion fiscal
+                <select name="tax_condition" value={customerForm.tax_condition} onChange={handleCustomerFormChange}>
+                  <option value="CONSUMIDOR_FINAL">Consumidor Final</option>
+                  <option value="RESPONSABLE_INSCRIPTO">Responsable Inscripto</option>
+                  <option value="MONOTRIBUTISTA">Monotributista</option>
+                  <option value="EXENTO">Exento</option>
+                </select>
+              </label>
+              <label>
+                Modalidad de venta
+                <select name="sale_mode" value={customerForm.sale_mode} onChange={handleCustomerFormChange}>
+                  <option value="CONTADO">Contado</option>
+                  <option value="CUENTA_CORRIENTE">Cuenta corriente</option>
+                </select>
+              </label>
+              <label>
+                Ciudad
+                <input name="locality" value={customerForm.locality} onChange={handleCustomerFormChange} />
+              </label>
+              <label className={styles.fullWidth}>
+                Domicilio
+                <input name="address" value={customerForm.address} onChange={handleCustomerFormChange} />
+              </label>
+              <div className={styles.formActions}>
+                <button type="submit" className={styles.primaryButton} disabled={saving}>
+                  {saving ? 'Guardando...' : 'Crear cliente'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => setShowCustomerForm(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
 
         {selectedCustomer ? (
           <div className={styles.grid}>
