@@ -111,6 +111,10 @@ export default function ProductCard({
   const isOut = stock <= 0;
   const badge = isOut ? "Sin stock" : product.badge ?? (product.isFeatured ? "Destacado" : undefined);
   const canView = Boolean(onView);
+  const preferProxyImage =
+    typeof window !== "undefined" &&
+    window.location.hostname !== "localhost" &&
+    window.location.hostname !== "127.0.0.1";
   const images = React.useMemo(() => {
     const list = (Array.isArray(product.imageUrls) ? product.imageUrls : [product.imageUrl])
       .map((value) => normalizeImageSrc(value))
@@ -125,7 +129,9 @@ export default function ProductCard({
   const [imageIndex, setImageIndex] = React.useState(0);
   const [imgSrc, setImgSrc] = React.useState<string | null>(() => images[0] ?? null);
   const [useRawImage, setUseRawImage] = React.useState(false);
-  const [proxySrc, setProxySrc] = React.useState<string | null>(null);
+  const [proxySrc, setProxySrc] = React.useState<string | null>(() =>
+    preferProxyImage && product.id ? buildProxyImageSrc(product.id, 0) : null
+  );
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
@@ -179,9 +185,9 @@ export default function ProductCard({
     setImgSrc(normalizeImageSrc(images[imageIndex]));
     setImgAttempt(0);
     setImgFailed(false);
-    setUseRawImage(false);
-    setProxySrc(null);
-  }, [imageIndex, images, imageRefreshKey]);
+    setUseRawImage(!preferProxyImage);
+    setProxySrc(preferProxyImage && product.id ? buildProxyImageSrc(product.id, imageIndex) : null);
+  }, [imageIndex, images, imageRefreshKey, preferProxyImage, product.id]);
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
     if (!activeSrc || imgAttempt >= 1) {
