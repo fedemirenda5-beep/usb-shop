@@ -234,54 +234,85 @@ export default function ClientesPage() {
 
   return (
     <div className={styles.page}>
-      <section className={styles.sidebar}>
-        <div className={styles.sidebarHeader}>
-          <div>
-            <h1>Clientes</h1>
-            <p>Padron unico de clientes reales del backoffice.</p>
-          </div>
-          <div className={styles.sidebarActions}>
-            <button type="button" className={styles.secondaryButton} onClick={syncCustomersFromOrders} disabled={syncingCustomers}>
-              {syncingCustomers ? 'Actualizando...' : 'Importar desde pedidos web'}
-            </button>
-            <button type="button" className={styles.secondaryButton} onClick={resetForNewCustomer}>
-              Nuevo cliente
-            </button>
-          </div>
+      <div className={styles.header}>
+        <div>
+          <h1>Clientes</h1>
+          <p>Padron unico de clientes reales del backoffice.</p>
         </div>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={syncCustomersFromOrders}
+            disabled={syncingCustomers}
+          >
+            {syncingCustomers ? 'Actualizando...' : 'Importar desde pedidos web'}
+          </button>
+          <button type="button" className={styles.primaryButton} onClick={resetForNewCustomer}>
+            + Nuevo cliente
+          </button>
+        </div>
+      </div>
 
-        <div className={styles.searchBar}>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, email, telefono o CUIT"
-          />
-        </div>
+      {error ? <div className={styles.errorBox}>{error}</div> : null}
 
-        <div className={styles.customerList}>
-          {loading ? <p>Cargando clientes...</p> : null}
-          {!loading && customers.length === 0 ? <p>No hay clientes cargados.</p> : null}
-          {customers.map((customer) => (
-            <button
-              type="button"
-              key={customer.id}
-              className={`${styles.customerCard} ${customer.id === selectedCustomerId ? styles.customerCardActive : ''}`}
-              onClick={() => setSelectedCustomerId(customer.id)}
-            >
-              <strong>{customer.name}</strong>
-              <span>{customer.cuit || customer.email || customer.phone || 'Sin dato fiscal'}</span>
-              <span>{customer.invoice_count} comprobantes</span>
-              <em className={customer.balance > 0 ? styles.debt : styles.credit}>
-                {formatCurrency(customer.balance)}
-              </em>
-            </button>
-          ))}
+      <div className={styles.searchBar}>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nombre, email, telefono o CUIT"
+        />
+      </div>
+
+      <div className={styles.tablePanel}>
+        <div className={styles.tableMeta}>
+          <span>{customers.length} clientes{search ? ` para "${search}"` : ''}</span>
         </div>
-      </section>
+        <div className={styles.tableWrap}>
+          {loading ? (
+            <div className={styles.empty}>Cargando clientes...</div>
+          ) : customers.length === 0 ? (
+            <div className={styles.empty}>No hay clientes cargados.</div>
+          ) : (
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Cliente</th>
+                  <th>Contacto</th>
+                  <th>CUIT / DNI</th>
+                  <th>Comprobantes</th>
+                  <th>Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map((customer) => (
+                  <tr
+                    key={customer.id}
+                    className={customer.id === selectedCustomerId ? styles.customerRowActive : ''}
+                    onClick={() => setSelectedCustomerId(customer.id)}
+                  >
+                    <td>{customer.id}</td>
+                    <td>
+                      <strong>{customer.name}</strong>
+                      <span className={styles.metaLine}>{customer.locality || customer.address || 'Sin localidad'}</span>
+                    </td>
+                    <td>{customer.email || customer.phone || 'Sin dato'}</td>
+                    <td>{customer.cuit || '-'}</td>
+                    <td>{customer.invoice_count}</td>
+                    <td className={customer.balance > 0 ? styles.debt : styles.credit}>
+                      {formatCurrency(customer.balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
 
       <section className={styles.main}>
-        {error ? <div className={styles.errorBox}>{error}</div> : null}
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
             <div>
