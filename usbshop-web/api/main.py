@@ -2745,6 +2745,7 @@ def admin_backoffice_customer_detail(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         customer = conn.execute(
             """
             SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
