@@ -83,6 +83,20 @@ const buildProxyImageSrc = (productId: number, index?: number) => {
   return baseUrl.endsWith("/") ? `${baseUrl.slice(0, -1)}${path}` : `${baseUrl}${path}`;
 };
 
+const getFallbackLabel = (value?: string | null) => {
+  const words = (value ?? "")
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (words.length === 0) {
+    return "USB";
+  }
+  return words
+    .slice(0, 2)
+    .map((item) => item.charAt(0).toUpperCase())
+    .join("");
+};
+
 export default function ProductCard({
   product,
   inCart = 0,
@@ -98,16 +112,18 @@ export default function ProductCard({
   const badge = isOut ? "Sin stock" : product.badge ?? (product.isFeatured ? "Destacado" : undefined);
   const canView = Boolean(onView);
   const images = React.useMemo(() => {
-    const list = Array.isArray(product.imageUrls) ? product.imageUrls : [];
-    if (list.length > 0) {
-      return list;
-    }
-    return product.imageUrl ? [product.imageUrl] : [];
+    const list = (Array.isArray(product.imageUrls) ? product.imageUrls : [product.imageUrl])
+      .map((value) => normalizeImageSrc(value))
+      .filter((value): value is string => Boolean(value));
+    return list;
   }, [product.imageUrls, product.imageUrl]);
-  const [imageIndex, setImageIndex] = React.useState(0);
-  const [imgSrc, setImgSrc] = React.useState<string | null>(() =>
-    normalizeImageSrc(images[0])
+  const fallbackLabel = React.useMemo(
+    () => getFallbackLabel(product.category || product.name),
+    [product.category, product.name]
   );
+  const fallbackMeta = product.category?.trim() || "Producto sin foto";
+  const [imageIndex, setImageIndex] = React.useState(0);
+  const [imgSrc, setImgSrc] = React.useState<string | null>(() => images[0] ?? null);
   const [useRawImage, setUseRawImage] = React.useState(false);
   const [proxySrc, setProxySrc] = React.useState<string | null>(null);
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
@@ -195,6 +211,9 @@ export default function ProductCard({
     }, 250 * nextAttempt);
   };
   const handleOpenImage = () => {
+    if (imgFailed) {
+      return;
+    }
     const target = images[imageIndex];
     if (!target) {
       return;
@@ -240,7 +259,7 @@ export default function ProductCard({
         }}
         role={canView ? "button" : undefined}
         tabIndex={canView ? 0 : undefined}
-        title={product.imageUrl ? "Doble click para ver la imagen" : undefined}
+        title={images.length > 0 && !imgFailed ? "Doble click para ver la imagen" : undefined}
         aria-label={canView ? `Ver detalles de ${product.name}` : undefined}
       >
         {displaySrc && !imgFailed ? (
@@ -258,9 +277,9 @@ export default function ProductCard({
           />
         ) : (
           <div className="product-image-fallback" aria-hidden="true">
-            <div className="product-image-fallback-icon">IMG</div>
-            <div className="product-image-fallback-text">Sin imagen</div>
-            <div className="product-image-fallback-meta">{product.category}</div>
+            <div className="product-image-fallback-icon">{fallbackLabel}</div>
+            <div className="product-image-fallback-text">{product.name}</div>
+            <div className="product-image-fallback-meta">{fallbackMeta}</div>
           </div>
         )}
         {hasMultipleImages ? (

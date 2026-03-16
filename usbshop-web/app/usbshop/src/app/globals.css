@@ -1055,36 +1055,50 @@ a:focus-visible {
 }
 
 .product-image-fallback {
+  width: 100%;
+  height: 100%;
   display: grid;
-  gap: 6px;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
   place-items: center;
   text-align: center;
-  padding: 12px;
-  color: rgba(15, 23, 42, 0.7);
+  padding: 18px 14px;
+  color: rgba(15, 23, 42, 0.78);
+  background:
+    radial-gradient(circle at top, rgba(132, 204, 22, 0.24), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.7), rgba(226, 232, 240, 0.92));
 }
 
 .product-image-fallback-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  border: 1px dashed rgba(124, 58, 237, 0.4);
+  width: 54px;
+  height: 54px;
+  border-radius: 16px;
+  border: 1px dashed rgba(124, 58, 237, 0.32);
   display: grid;
   place-items: center;
   font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.14em;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: #4c1d95;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
 
 .product-image-fallback-text {
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-family: var(--font-head);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  text-transform: none;
+  max-width: 16ch;
 }
 
 .product-image-fallback-meta {
   font-size: 10px;
   color: var(--muted);
   letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .product-meta {
@@ -1413,10 +1427,42 @@ input.button {
 }
 
 .modal-placeholder {
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+  background:
+    radial-gradient(circle at top, rgba(132, 204, 22, 0.25), transparent 45%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(226, 232, 240, 0.94));
+}
+
+.modal-placeholder-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  display: grid;
+  place-items: center;
   font-family: var(--font-head);
+  font-size: 22px;
+  color: #4c1d95;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px dashed rgba(124, 58, 237, 0.28);
+}
+
+.modal-placeholder-title {
+  font-family: var(--font-head);
+  font-size: 14px;
+  color: #1f1147;
+}
+
+.modal-placeholder-meta {
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
-  font-size: 12px;
+  letter-spacing: 0.14em;
   color: rgba(15, 23, 42, 0.6);
 }
 
