@@ -696,54 +696,67 @@ export default function ComprobantesPage() {
             {detail ? (
               <div className={styles.printArea}>
                 <div className={styles.documentShell}>
+                  <div className={styles.desktopAccentBar} />
+
                   <div className={styles.printBanner}>
-                    <div>
-                      <p className={styles.brandEyebrow}>USB Shop</p>
-                      <h2>{detail.invoice.document_type || 'Comprobante'} #{detail.invoice.id}</h2>
-                      <p>Modelo de comprobante web</p>
+                    <div className={styles.logoBox}>
+                      <img src="/logo-small.jpeg" alt="USB Shop" className={styles.logoImage} />
                     </div>
-                    <div className={styles.actions}>
-                      <button type="button" className={styles.printButton} onClick={() => window.print()}>
-                        Imprimir
-                      </button>
+                    <div className={styles.docCenter}>
+                      <div className={styles.docKindBadge}>
+                        {detail.invoice.document_type || 'Comprobante'}
+                      </div>
                     </div>
-                  </div>
-
-                  <div className={styles.detailHeader}>
-                    <div>
-                      <p className={styles.sectionLabel}>Cliente</p>
-                      <h3>{detail.invoice.customer_name}</h3>
-                      <p>{detail.invoice.address || detail.invoice.locality || 'Sin domicilio registrado'}</p>
-                      <p>{detail.invoice.customer_phone || detail.invoice.customer_email || 'Sin contacto registrado'}</p>
-                    </div>
-                    <div className={styles.documentMeta}>
-                      <div><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
-                      <div><span>Condicion fiscal</span><strong>{detail.invoice.tax_condition || '-'}</strong></div>
-                      <div><span>CUIT / DNI</span><strong>{detail.invoice.cuit || '-'}</strong></div>
-                      <div><span>Referencia</span><strong>{detail.invoice.external_ref || '-'}</strong></div>
+                    <div className={styles.brandHead}>
+                      <div className={styles.brandName}>USB Shop</div>
+                      <div className={styles.brandMeta}>
+                        Venta mayorista
+                        <br />
+                        Comprobante emitido desde admin
+                      </div>
                     </div>
                   </div>
 
-                  <div className={styles.detailMeta}>
-                    <div><span>Venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
-                    <div><span>Forma de pago</span><strong>{detail.invoice.payment_method || '-'}</strong></div>
-                    <div><span>Lista</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
-                    <div><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
+                  <div className={styles.desktopPanel}>
+                    <div className={styles.sectionTitle}>Datos del cliente</div>
+                    <div className={styles.customerBlock}>
+                      <strong>{detail.invoice.customer_name}</strong>
+                      <span>{detail.invoice.address || detail.invoice.locality || 'Sin domicilio registrado'}</span>
+                      <span>{detail.invoice.customer_phone || detail.invoice.customer_email || 'Sin contacto registrado'}</span>
+                      <span>{detail.invoice.cuit ? `CUIT / DNI: ${detail.invoice.cuit}` : 'CUIT / DNI: -'}</span>
+                      <span>{detail.invoice.tax_condition ? `Condicion fiscal: ${detail.invoice.tax_condition}` : 'Condicion fiscal: -'}</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.desktopPanel}>
+                    <div className={styles.sectionTitle}>Resumen</div>
+                    <div className={styles.summaryRows}>
+                      <div className={styles.metaRow}><span>Numero</span><strong>#{detail.invoice.id}</strong></div>
+                      <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
+                      <div className={styles.metaRow}><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
+                      <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
+                      <div className={styles.metaRow}><span>Forma de pago</span><strong>{detail.invoice.payment_method || '-'}</strong></div>
+                      <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
+                      <div className={styles.metaRow}><span>Referencia externa</span><strong>{detail.invoice.external_ref || '-'}</strong></div>
+                      <div className={styles.metaRow}><span>Estado</span><strong>{detail.summary.balance_due > 0 ? 'Pendiente' : 'Emitido'}</strong></div>
+                    </div>
                   </div>
 
                   {detail.invoice.notes ? (
-                    <div className={styles.noteBox}>
-                      <span>Observaciones</span>
+                    <div className={styles.notesBox}>
+                      <span className={styles.sectionTitle}>Observaciones</span>
                       <p>{detail.invoice.notes}</p>
                     </div>
                   ) : null}
 
-                  <div className={styles.documentTableWrap}>
+                  <div className={styles.desktopPanel}>
+                    <div className={styles.sectionTitle}>Detalle</div>
+                    <div className={styles.documentTableWrap}>
                     <table className={styles.table}>
                       <thead>
                         <tr>
-                          <th>Producto</th>
                           <th>Cant.</th>
+                          <th>Producto</th>
                           <th>Unitario</th>
                           <th>Total</th>
                         </tr>
@@ -751,14 +764,15 @@ export default function ComprobantesPage() {
                       <tbody>
                         {detail.items.map((item) => (
                           <tr key={item.id}>
-                            <td>{item.product_name}</td>
                             <td>{item.quantity}</td>
+                            <td>{item.product_name}</td>
                             <td>{money(item.unit_price)}</td>
                             <td className={styles.total}>{money(item.line_total)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   </div>
 
                   <div className={styles.documentFooter}>
@@ -780,11 +794,17 @@ export default function ComprobantesPage() {
                       )}
                     </div>
 
-                    <div className={styles.summaryGrid}>
-                      <div><span>Items</span><strong>{detail.summary.items}</strong></div>
-                      <div><span>Subtotal</span><strong>{money(detail.summary.subtotal)}</strong></div>
-                      <div><span>Cobrado</span><strong>{money(detail.summary.payments_total)}</strong></div>
-                      <div><span>Saldo</span><strong>{money(detail.summary.balance_due)}</strong></div>
+                    <div className={styles.totalBox}>
+                      <span className={styles.totalLabel}>Total a pagar</span>
+                      <strong className={styles.totalValue}>{money(detail.summary.subtotal)}</strong>
+                      <div className={styles.metaRow}>
+                        <span>Cobrado</span>
+                        <strong>{money(detail.summary.payments_total)}</strong>
+                      </div>
+                      <div className={styles.metaRow}>
+                        <span>Saldo</span>
+                        <strong>{money(detail.summary.balance_due)}</strong>
+                      </div>
                     </div>
                   </div>
 

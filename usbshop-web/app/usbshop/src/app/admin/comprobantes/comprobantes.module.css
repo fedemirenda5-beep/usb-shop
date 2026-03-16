@@ -19,8 +19,16 @@
 .rowActions { white-space: nowrap; display: flex; gap: 8px; }
 .total { color: var(--purple); font-weight: 700; }
 .printArea { display: grid; gap: 16px; }
-.documentShell { display: grid; gap: 16px; padding: 18px; border-radius: 18px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); border: 1px solid var(--bg-soft); }
-.printBanner { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding-bottom: 14px; border-bottom: 1px solid var(--bg-soft); }
+.documentShell { display: grid; gap: 12px; padding: 18px; border-radius: 18px; background: #f7f8fb; border: 1px solid #0b0b0b; }
+.desktopAccentBar { height: 4px; background: #2d0a5b; border-radius: 10px; margin: 0 10px 2px; }
+.printBanner { display: grid; grid-template-columns: 110px minmax(160px, 1fr) minmax(220px, auto); gap: 16px; align-items: center; padding: 8px 10px; background: white; border: 1px solid #0b0b0b; border-radius: 12px; }
+.logoBox { width: 110px; height: 110px; border: 1px solid #0b0b0b; border-radius: 10px; background: white; display: grid; place-items: center; padding: 6px; box-sizing: border-box; }
+.logoImage { width: 100%; height: 100%; object-fit: contain; display: block; }
+.docCenter { display: flex; justify-content: center; }
+.docKindBadge { display: inline-block; padding: 8px 18px; border-radius: 12px; background: #2d0a5b; color: #a5f341; font-weight: 900; font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase; text-align: center; }
+.brandHead { text-align: right; }
+.brandName { font-size: 28px; font-weight: 900; letter-spacing: 0.05em; color: #2d0a5b; text-transform: uppercase; }
+.brandMeta { color: #475569; line-height: 1.5; font-size: 12px; }
 .brandEyebrow, .sectionLabel { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #0f766e; }
 .detailHeader { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
 .detailHeader h3 { margin: 6px 0 0; color: var(--ink); font-size: 23px; }
@@ -32,15 +40,19 @@
 .documentMeta div, .detailMeta div, .summaryGrid div { background: var(--bg); border-radius: 12px; padding: 10px; display: grid; gap: 4px; }
 .documentMeta span, .detailMeta span, .summaryGrid span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
 .documentMeta strong, .detailMeta strong, .summaryGrid strong { color: var(--ink); font-size: 13px; }
-.noteBox { display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: #f8fafc; border: 1px dashed #cbd5e1; }
-.noteBox span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
-.noteBox p { margin: 0; color: var(--ink); line-height: 1.45; font-size: 13px; }
-.documentTableWrap { border: 1px solid var(--bg-soft); border-radius: 14px; overflow: hidden; }
+.desktopPanel { background: white; border: 1px solid #0b0b0b; border-radius: 12px; padding: 10px 12px; }
+.sectionTitle { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; color: #2d0a5b; font-weight: 800; margin-bottom: 8px; }
+.customerBlock { display: grid; gap: 4px; color: #0b0b0b; font-size: 11px; }
+.summaryRows { display: grid; gap: 4px; }
+.metaRow { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #0f172a; }
+.metaRow span { color: #475569; }
+.metaRow strong { color: #0f172a; text-align: right; }
+.notesBox { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid #0b0b0b; background: #f0fdfa; }
+.notesBox p { margin: 0; color: #0b0b0b; line-height: 1.45; font-size: 12px; }
+.documentTableWrap { border: 1px solid #0b0b0b; border-radius: 12px; overflow: hidden; background: white; }
 .documentFooter { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(260px, .9fr); gap: 16px; align-items: start; }
 .detailMeta span, .summaryGrid span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
 .detailMeta strong, .summaryGrid strong { color: var(--ink); }
-.customerBlock { display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
-.customerBlock p { margin: 0; }
 .paymentBlock { display: grid; gap: 10px; }
 .paymentBlock h3 { margin: 0; color: var(--ink); font-size: 16px; }
 .movementList { display: grid; gap: 10px; }
@@ -48,6 +60,11 @@
 .movementItem strong { color: var(--ink); }
 .movementItem span { color: var(--muted); font-size: 12px; }
 .movementItem em { font-style: normal; font-weight: 700; color: var(--purple); }
+.totalBox { border: 2px solid #a5f341; border-radius: 12px; padding: 14px; background: #0f172a; color: #e2e8f0; display: grid; gap: 10px; }
+.totalLabel { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.9; }
+.totalValue { font-size: 24px; font-weight: 900; color: #a5f341; }
+.totalBox .metaRow span { color: #cbd5e1; }
+.totalBox .metaRow strong { color: #f8fafc; }
 .signatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
 .signatureBox { min-height: 88px; border-top: 1px solid #94a3b8; display: flex; align-items: flex-end; padding-top: 10px; color: var(--muted); font-size: 12px; }
 .createButton, .secondaryButton, .removeButton { border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
@@ -79,7 +96,9 @@
   .movementItem { grid-template-columns: 1fr; }
   .headerActions, .createHeader { flex-direction: column; align-items: stretch; }
   .itemRow { grid-template-columns: 1fr; }
-  .detailHeader, .printBanner { flex-direction: column; }
+  .detailHeader { flex-direction: column; }
+  .printBanner { grid-template-columns: 1fr; }
+  .brandHead, .docCenter { justify-content: flex-start; text-align: left; }
   .modalOverlay { padding: 12px; }
   .detailModal { max-height: calc(100vh - 24px); padding: 12px; }
 }
