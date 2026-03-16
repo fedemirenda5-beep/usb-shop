@@ -82,6 +82,7 @@
 .formGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .formGrid label { display: grid; gap: 6px; color: var(--ink); font-size: 13px; }
 .formGrid input, .formGrid select, .formGrid textarea, .itemRow input, .itemRow select { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; }
+.fieldHint { color: var(--muted); font-size: 11px; }
 .fullWidth { grid-column: 1 / -1; }
 .itemRow { display: grid; grid-template-columns: minmax(0, 2fr) 110px 130px minmax(140px, 0.8fr) auto; gap: 10px; align-items: center; }
 .itemMeta { color: var(--muted); font-size: 12px; }

@@ -144,6 +144,7 @@ export default function ComprobantesPage() {
   const [detailError, setDetailError] = useState('');
   const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -287,6 +288,17 @@ export default function ComprobantesPage() {
     [customers]
   );
 
+  const filteredCustomerOptions = useMemo(() => {
+    const needle = customerSearch.trim().toLowerCase();
+    if (!needle) return customers;
+    return customers.filter((customer) =>
+      [customer.name, customer.email || '', customer.phone || '', customer.cuit || '']
+        .join(' ')
+        .toLowerCase()
+        .includes(needle)
+    );
+  }, [customerSearch, customers]);
+
   const productMap = useMemo(
     () => new Map(products.map((product) => [product.id, product])),
     [products]
@@ -362,6 +374,7 @@ export default function ComprobantesPage() {
       notes: '',
       items: [emptyItem()],
     });
+    setCustomerSearch('');
     setCreateError('');
   };
 
@@ -453,6 +466,12 @@ export default function ComprobantesPage() {
             <div className={styles.formGrid}>
               <label>
                 Cliente
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="Buscar cliente por nombre, mail, telefono o CUIT"
+                />
                 <select
                   value={form.customer_id}
                   onChange={(e) => {
@@ -466,12 +485,15 @@ export default function ComprobantesPage() {
                   required
                 >
                   <option value="">Seleccionar cliente</option>
-                  {customers.map((customer) => (
+                  {filteredCustomerOptions.map((customer) => (
                     <option key={customer.id} value={customer.id}>
                       {customer.name} {customer.cuit ? `- ${customer.cuit}` : ''}
                     </option>
                   ))}
                 </select>
+                <small className={styles.fieldHint}>
+                  {filteredCustomerOptions.length} cliente{filteredCustomerOptions.length === 1 ? '' : 's'} encontrado{filteredCustomerOptions.length === 1 ? '' : 's'}
+                </small>
               </label>
 
               <label>
