@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import styles from './ProductForm.module.css';
@@ -116,6 +116,8 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
@@ -189,17 +191,27 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
     handleFieldChange(name as keyof ProductFormState, value);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  useEffect(() => {
+    if (!selectedImageFile) {
+      setLocalPreviewUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(selectedImageFile);
+    setLocalPreviewUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [selectedImageFile]);
 
-    setError('');
+  const uploadSelectedImage = async () => {
+    if (!selectedImageFile) {
+      return formData.image_path.trim();
+    }
+
     setUploadingImage(true);
     try {
       await loadRuntimeConfig();
       const body = new FormData();
-      body.append('file', file);
-      body.append('product_name', formData.name || file.name);
+      body.append('file', selectedImageFile);
+      body.append('product_name', formData.name || selectedImageFile.name);
 
       const res = await fetch(`${getApiBaseUrl()}/admin/uploads/product-image`, {
         method: 'POST',
@@ -216,16 +228,25 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
       }
 
       const payload = await res.json();
+      const uploadedUrl = String(payload.url || payload.path || '').trim();
       setFormData((prev) => ({
         ...prev,
-        image_path: String(payload.url || payload.path || '').trim(),
+        image_path: uploadedUrl,
       }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error subiendo imagen');
+      setSelectedImageFile(null);
+      return uploadedUrl;
     } finally {
       setUploadingImage(false);
-      e.target.value = '';
     }
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setError('');
+    setSelectedImageFile(file);
+    e.target.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -254,6 +275,8 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
         throw new Error('Stock no puede ser negativo');
       }
 
+      const finalImagePath = await uploadSelectedImage();
+
       await onSubmit({
         name: formData.name.trim(),
         sku: formData.sku.trim(),
@@ -262,7 +285,7 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
         stock,
         is_featured: formData.is_featured,
         is_offer: formData.is_offer,
-        image_path: formData.image_path.trim(),
+        image_path: finalImagePath,
         image_urls_text: formData.image_urls_text,
         image_urls: formData.image_urls_text
           .split(/\r?\n/)
@@ -277,7 +300,7 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
   };
 
   const marginPreview = calculateMargin(parseDecimal(formData.cost), parseDecimal(formData.price));
-  const previewUrl = resolveImageUrl(formData.image_path, getApiBaseUrl());
+  const previewUrl = localPreviewUrl || resolveImageUrl(formData.image_path, getApiBaseUrl());
 
   return (
     <div className={styles.container}>
@@ -401,8 +424,9 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
               className={styles.fileInput}
             />
             <p className={styles.help}>
-              Guarda la foto en cualquier carpeta de tu PC y subila desde aca. Queda guardada en Supabase.
+              Elegi la foto desde tu PC. Se sube a Supabase automaticamente al guardar el producto.
             </p>
+            {selectedImageFile ? <p className={styles.help}>Imagen lista para guardar: {selectedImageFile.name}</p> : null}
             {uploadingImage ? <p className={styles.help}>Subiendo imagen...</p> : null}
           </div>
           <input
