@@ -78,6 +78,7 @@ export default function CuentasCorrientesPage() {
   const [invoices, setInvoices] = useState<InvoiceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [legacyMode, setLegacyMode] = useState(false);
   const [search, setSearch] = useState('');
   const [summary, setSummary] = useState({ customers: 0, debit: 0, credit: 0, balance: 0 });
   const [saving, setSaving] = useState(false);
@@ -89,26 +90,141 @@ export default function CuentasCorrientesPage() {
     invoice_id: '',
   });
 
+  const emptyAging = (): Aging => ({
+    current: 0,
+    d1_30: 0,
+    d31_60: 0,
+    d61_90: 0,
+    d90_plus: 0,
+    total: 0,
+  });
+
+  const mapLegacyCustomers = (rows: Array<Record<string, unknown>>) => {
+    const normalized = rows.map((row) => ({
+      id: Number(row.id || 0),
+      name: String(row.name || 'Sin nombre'),
+      email: typeof row.email === 'string' ? row.email : null,
+      phone: typeof row.phone === 'string' ? row.phone : null,
+      sale_mode: 'CUENTA_CORRIENTE',
+      balance: Number(row.balance || 0),
+      aging: { ...emptyAging(), total: Number(row.balance || 0) },
+      last_movement: typeof row.updated_at === 'string' ? row.updated_at : null,
+    }));
+    const debit = normalized.filter((item) => item.balance > 0).reduce((sum, item) => sum + item.balance, 0);
+    const credit = Math.abs(
+      normalized.filter((item) => item.balance < 0).reduce((sum, item) => sum + item.balance, 0)
+    );
+    return {
+      customers: normalized,
+      summary: {
+        customers: normalized.length,
+        debit,
+        credit,
+        balance: normalized.reduce((sum, item) => sum + item.balance, 0),
+      },
+    };
+  };
+
+  const mapLegacyDetail = (
+    customer: Record<string, unknown>,
+    movementsPayload: { balance?: number; items?: Array<Record<string, unknown>> }
+  ): CustomerDetail => {
+    const items = Array.isArray(movementsPayload.items) ? movementsPayload.items : [];
+    const signedAscending = [...items]
+      .map((item) => ({
+        id: Number(item.id || 0),
+        movement_type: String(item.movement_type || ''),
+        amount: Number(item.amount || 0),
+        signed_amount: Number(item.signed_amount || 0),
+        reference: typeof item.description === 'string' ? item.description : null,
+        invoice_id: null,
+        created_at: typeof item.created_at === 'string' ? item.created_at : null,
+        payment_method: null,
+        document_type:
+          typeof item.document_type === 'string' && typeof item.document_number === 'string'
+            ? `${item.document_type} ${item.document_number}`.trim()
+            : typeof item.document_type === 'string'
+            ? item.document_type
+            : null,
+        due_date: typeof item.due_date === 'string' ? item.due_date : null,
+        running_balance: 0,
+      }))
+      .reverse();
+    let runningBalance = 0;
+    const movements = signedAscending.map((item) => {
+      runningBalance += item.signed_amount;
+      return { ...item, running_balance: runningBalance };
+    }).reverse();
+    const balance = Number(movementsPayload.balance || customer.balance || 0);
+    return {
+      customer: {
+        id: Number(customer.id || 0),
+        name: String(customer.name || 'Sin nombre'),
+        email: typeof customer.email === 'string' ? customer.email : null,
+        phone: typeof customer.phone === 'string' ? customer.phone : null,
+        sale_mode: 'CUENTA_CORRIENTE',
+        locality: typeof customer.city === 'string' ? customer.city : null,
+        address: typeof customer.address === 'string' ? customer.address : null,
+        tax_condition: typeof customer.tax_condition === 'string' ? customer.tax_condition : null,
+        cuit: typeof customer.tax_id === 'string' ? customer.tax_id : null,
+      },
+      balance,
+      aging: { ...emptyAging(), total: balance },
+      movements,
+    };
+  };
+
   async function loadOverview() {
     setLoading(true);
     await loadRuntimeConfig();
     const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
-    if (!res.ok) throw new Error('No se pudo cargar cuentas corrientes');
-    const data = await res.json();
-    setCustomers(data.customers || []);
-    setSummary(data.summary || { customers: 0, debit: 0, credit: 0, balance: 0 });
-    if ((data.customers || []).length > 0) setSelectedId((current) => current ?? data.customers[0].id);
+    if (res.ok) {
+      const data = await res.json();
+      setLegacyMode(false);
+      setCustomers(data.customers || []);
+      setSummary(data.summary || { customers: 0, debit: 0, credit: 0, balance: 0 });
+      if ((data.customers || []).length > 0) setSelectedId((current) => current ?? data.customers[0].id);
+      return;
+    }
+    if (res.status !== 404) {
+      throw new Error('No se pudo cargar cuentas corrientes');
+    }
+    const legacyRes = await fetch(`${getApiBaseUrl()}/admin/account-customers?limit=300`, { credentials: 'include' });
+    if (!legacyRes.ok) throw new Error('No se pudo cargar cuentas corrientes');
+    const legacyRows = await legacyRes.json();
+    const data = mapLegacyCustomers(Array.isArray(legacyRows) ? legacyRows : []);
+    setLegacyMode(true);
+    setCustomers(data.customers);
+    setSummary(data.summary);
+    if (data.customers.length > 0) setSelectedId((current) => current ?? data.customers[0].id);
   }
 
   async function loadDetail(customerId: number) {
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
-    if (!res.ok) throw new Error('No se pudo cargar el detalle');
-    const data = await res.json();
-    setDetail(data);
+    if (!legacyMode) {
+      const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
+      if (res.ok) {
+        setDetail(await res.json());
+        return;
+      }
+      if (res.status !== 404) throw new Error('No se pudo cargar el detalle');
+      setLegacyMode(true);
+    }
+    const [customerRes, movementsRes] = await Promise.all([
+      fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}`, { credentials: 'include' }),
+      fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}/movements`, { credentials: 'include' }),
+    ]);
+    if (!customerRes.ok || !movementsRes.ok) throw new Error('No se pudo cargar el detalle');
+    const customer = await customerRes.json();
+    const movements = await movementsRes.json();
+    setDetail(mapLegacyDetail(customer, movements));
   }
 
   async function loadInvoices(customerId: number) {
+    if (legacyMode) {
+      setInvoices([]);
+      return;
+    }
     await loadRuntimeConfig();
     const res = await fetch(`${getApiBaseUrl()}/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
     if (!res.ok) throw new Error('No se pudieron cargar los comprobantes del cliente');
@@ -148,17 +264,27 @@ export default function CuentasCorrientesPage() {
       setSaving(true);
       setError('');
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/cc/${selectedId}/movements`, {
+      const endpoint = legacyMode
+        ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements`
+        : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
+      const payload = legacyMode
+        ? {
+            movement_type: form.movement_type,
+            amount: Number(form.amount || 0),
+            description: form.reference || form.payment_method || null,
+          }
+        : {
+            movement_type: form.movement_type,
+            amount: Number(form.amount || 0),
+            payment_method: form.payment_method || null,
+            reference: form.reference || null,
+            invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
+          };
+      const res = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          movement_type: form.movement_type,
-          amount: Number(form.amount || 0),
-          payment_method: form.payment_method || null,
-          reference: form.reference || null,
-          invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo registrar el movimiento');
