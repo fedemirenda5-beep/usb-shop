@@ -1232,7 +1232,7 @@ def _build_uploaded_image_name(filename: str, product_name: str = "") -> str:
 
 
 def _public_storage_url(base_url: str, bucket: str, target_name: str) -> str:
-    return f"{base_url}/storage/v1/object/public/{bucket}/{quote(target_name)}"
+    return f"{base_url}/storage/v1/object/public/{bucket}/{quote(target_name, safe='/')}"
 
 
 def _upload_bytes_to_supabase(
@@ -1244,7 +1244,7 @@ def _upload_bytes_to_supabase(
     content_type: str,
     api_key: str,
 ) -> str:
-    upload_url = f"{base_url}/storage/v1/object/{bucket}/{quote(target_name)}"
+    upload_url = f"{base_url}/storage/v1/object/{bucket}/{quote(target_name, safe='/')}"
     upload_request = UrlRequest(upload_url, data=content, method="PUT")
     _apply_supabase_auth_headers(upload_request, api_key)
     upload_request.add_header("Content-Type", content_type or "application/octet-stream")

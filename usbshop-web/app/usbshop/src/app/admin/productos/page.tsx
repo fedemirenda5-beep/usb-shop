@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
@@ -55,6 +56,7 @@ const buildSearchTokens = (value: string) => {
 
 export default function ProductosPage() {
   const { user } = useAdminSession();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams?.get('edit');
 
@@ -140,7 +142,7 @@ export default function ProductosPage() {
   const baseUrl = getApiBaseUrl();
 
   const openEditor = (productId: number) => {
-    window.history.pushState(null, '', `/admin/productos?edit=${productId}`);
+    router.push(`/admin/productos?edit=${productId}`);
     const product = products.find((item) => item.id === productId) || null;
     setEditProduct(product);
   };
@@ -277,7 +279,10 @@ export default function ProductosPage() {
                     <td>
                       <button
                         className={`${styles.toggle} ${product.is_featured ? styles.active : ''}`}
-                        onClick={() => toggleFeatured(product)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void toggleFeatured(product);
+                        }}
                         title="Cambiar destacado"
                       >
                         {product.is_featured ? 'Si' : 'No'}
@@ -292,7 +297,13 @@ export default function ProductosPage() {
                       <Link href={`/admin/productos?edit=${product.id}`} className={styles.btnEdit}>
                         Editar
                       </Link>
-                      <button className={styles.btnDelete} onClick={() => handleDelete(product.id)}>
+                      <button
+                        className={styles.btnDelete}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDelete(product.id);
+                        }}
+                      >
                         Eliminar
                       </button>
                     </td>
@@ -331,7 +342,7 @@ export default function ProductosPage() {
           <div className={styles.modalContent}>
             <button
               className={styles.modalClose}
-              onClick={() => window.history.pushState(null, '', '/admin/productos')}
+              onClick={() => router.push('/admin/productos')}
             >
               x
             </button>
@@ -358,7 +369,7 @@ export default function ProductosPage() {
                   throw new Error(responseError.detail || 'Error actualizando producto');
                 }
 
-                window.history.pushState(null, '', '/admin/productos');
+                router.push('/admin/productos');
                 loadProducts();
               }}
             />
