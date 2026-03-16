@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import styles from './ProductForm.module.css';
 
 interface ProductFormData {
@@ -114,6 +115,7 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [error, setError] = useState('');
 
   const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
@@ -187,6 +189,45 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
     handleFieldChange(name as keyof ProductFormState, value);
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setError('');
+    setUploadingImage(true);
+    try {
+      await loadRuntimeConfig();
+      const body = new FormData();
+      body.append('file', file);
+      body.append('product_name', formData.name || file.name);
+
+      const res = await fetch(`${getApiBaseUrl()}/admin/uploads/product-image`, {
+        method: 'POST',
+        credentials: 'include',
+        body,
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(async () => {
+          const detail = await res.text().catch(() => '');
+          return { detail };
+        });
+        throw new Error(payload.detail || 'No se pudo subir la imagen');
+      }
+
+      const payload = await res.json();
+      setFormData((prev) => ({
+        ...prev,
+        image_path: String(payload.url || payload.path || '').trim(),
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error subiendo imagen');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -236,6 +277,7 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
   };
 
   const marginPreview = calculateMargin(parseDecimal(formData.cost), parseDecimal(formData.price));
+  const previewUrl = resolveImageUrl(formData.image_path, getApiBaseUrl());
 
   return (
     <div className={styles.container}>
@@ -344,17 +386,36 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
 
         <div className={styles.field}>
           <label htmlFor="image_path">Imagen principal</label>
+          <div className={styles.imageUpload}>
+            {previewUrl ? (
+              <div className={styles.preview}>
+                <img src={previewUrl} alt={formData.name || 'Vista previa'} />
+              </div>
+            ) : null}
+            <input
+              id="image_file"
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              disabled={loading || uploadingImage}
+              className={styles.fileInput}
+            />
+            <p className={styles.help}>
+              Guarda la foto en cualquier carpeta de tu PC y subila desde aca. Queda guardada en Supabase.
+            </p>
+            {uploadingImage ? <p className={styles.help}>Subiendo imagen...</p> : null}
+          </div>
           <input
             id="image_path"
-            type="url"
+            type="text"
             name="image_path"
             value={formData.image_path}
             onChange={handleChange}
             placeholder="https://.../foto-principal.jpg"
-            disabled={loading}
+            disabled={loading || uploadingImage}
             className={styles.input}
           />
-          <p className={styles.help}>Usa una URL publica. No sirve una ruta local como C:\...</p>
+          <p className={styles.help}>Tambien podes pegar una URL publica si ya la tenes.</p>
         </div>
 
         <div className={styles.field}>

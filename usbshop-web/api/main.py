@@ -6,21 +6,23 @@ import hmac
 import io
 import json
 import logging
+import mimetypes
 import os
 import sqlite3
 import time
 import smtplib
 import threading
+import unicodedata
 from email.message import EmailMessage
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional, List, Any
 from urllib.error import HTTPError
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.parse import urlencode, quote
+from urllib.request import Request as UrlRequest, urlopen
 
-from fastapi import Body, Cookie, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Body, Cookie, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -1187,6 +1189,82 @@ def _normalize_image_entries(payload: dict) -> list[str]:
             seen.add(value)
             normalized.append(value)
     return normalized
+
+
+def _supabase_storage_settings() -> tuple[str, str, str]:
+    base_url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+    api_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
+    bucket = (os.getenv("SUPABASE_BUCKET") or "usbshop-catalogo").strip()
+    if not base_url or not api_key or not bucket:
+        raise HTTPException(
+            status_code=503,
+            detail="La subida de imagenes no esta configurada en el servidor",
+        )
+    return base_url, api_key, bucket
+
+
+def _apply_supabase_auth_headers(request: UrlRequest, api_key: str) -> None:
+    request.add_header("apikey", api_key)
+    if api_key.startswith("sb_secret_") or api_key.startswith("sb_publishable_"):
+        return
+    request.add_header("Authorization", f"Bearer {api_key}")
+
+
+def _slugify_filename(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+    cleaned = "".join(ch if ch.isalnum() else "-" for ch in ascii_value.lower())
+    collapsed = "-".join(part for part in cleaned.split("-") if part)
+    return collapsed or "producto"
+
+
+def _build_uploaded_image_name(filename: str, product_name: str = "") -> str:
+    source = Path(filename or "imagen.jpg")
+    ext = source.suffix.lower()
+    if not ext:
+        guessed = mimetypes.guess_extension(mimetypes.guess_type(source.name)[0] or "") or ".jpg"
+        ext = guessed.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".jfif"}:
+        ext = ".jpg"
+    base_name = _slugify_filename(product_name or source.stem or "producto")
+    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    return f"productos/{base_name}-{stamp}{ext}"
+
+
+def _public_storage_url(base_url: str, bucket: str, target_name: str) -> str:
+    return f"{base_url}/storage/v1/object/public/{bucket}/{quote(target_name)}"
+
+
+def _upload_bytes_to_supabase(
+    *,
+    base_url: str,
+    bucket: str,
+    target_name: str,
+    content: bytes,
+    content_type: str,
+    api_key: str,
+) -> str:
+    upload_url = f"{base_url}/storage/v1/object/{bucket}/{quote(target_name)}"
+    upload_request = UrlRequest(upload_url, data=content, method="PUT")
+    _apply_supabase_auth_headers(upload_request, api_key)
+    upload_request.add_header("Content-Type", content_type or "application/octet-stream")
+    upload_request.add_header("x-upsert", "true")
+    try:
+        with urlopen(upload_request, timeout=120):
+            pass
+    except HTTPError as exc:
+        detail = ""
+        try:
+            detail = (exc.read() or b"").decode("utf-8", errors="replace")
+        except Exception:
+            detail = ""
+        raise HTTPException(
+            status_code=502,
+            detail=f"Fallo subiendo imagen a Supabase: {detail[:300] or exc.reason}",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="No se pudo subir la imagen") from exc
+    return _public_storage_url(base_url, bucket, target_name)
 
 
 def _replace_product_images(conn: DBConn, product_id: int, image_values: list[str]) -> None:
@@ -2374,6 +2452,41 @@ def admin_create_product(
         }
     finally:
         conn.close()
+
+
+@app.post("/admin/uploads/product-image")
+async def admin_upload_product_image(
+    request: Request,
+    file: UploadFile = File(...),
+    product_name: str = Form(default=""),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Archivo requerido")
+
+    content_type = (file.content_type or "").strip().lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="La imagen esta vacia")
+    if len(content) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="La imagen supera el maximo de 12 MB")
+
+    base_url, api_key, bucket = _supabase_storage_settings()
+    target_name = _build_uploaded_image_name(file.filename, product_name)
+    public_url = _upload_bytes_to_supabase(
+        base_url=base_url,
+        bucket=bucket,
+        target_name=target_name,
+        content=content,
+        content_type=content_type,
+        api_key=api_key,
+    )
+    return {"url": public_url, "path": public_url, "bucket": bucket, "object": target_name}
 
 
 @app.put("/admin/products/{product_id}")
