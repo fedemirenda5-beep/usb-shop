@@ -1381,6 +1381,48 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
     conn.commit()
 
 
+def _ensure_sellers_table(conn: DBConn) -> None:
+    if not _has_table(conn, "sellers"):
+        if DB_IS_POSTGRES:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sellers (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    commission_percent NUMERIC(6, 2) NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sellers (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    commission_percent REAL NOT NULL DEFAULT 0,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+    required_columns = (
+        ("name", "TEXT", "TEXT"),
+        ("commission_percent", "REAL NOT NULL DEFAULT 0", "NUMERIC(6, 2) NOT NULL DEFAULT 0"),
+        ("is_active", "INTEGER NOT NULL DEFAULT 1", "INTEGER NOT NULL DEFAULT 1"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+        ("updated_at", "TEXT", "TIMESTAMP"),
+    )
+    for name, sqlite_type, pg_type in required_columns:
+        if _has_column(conn, "sellers", name):
+            continue
+        conn.execute(f"ALTER TABLE sellers ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}")
+    conn.commit()
+
+
 def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
     columns = [name for name, _, _ in SYNC_TABLE_SCHEMAS[table_name]]
     placeholders = ", ".join(["?"] * len(columns))
@@ -1440,6 +1482,12 @@ class OrderPayload(BaseModel):
 class OrderStatusPayload(BaseModel):
     status: str
     confirmed_invoice_id: Optional[int] = None
+
+
+class SellerPayload(BaseModel):
+    name: str
+    commission_percent: float = 0
+    is_active: bool = True
 
 
 @app.get("/health")
@@ -2732,6 +2780,139 @@ def admin_backoffice_customers(
             }
             for row in rows
         ]
+    finally:
+        conn.close()
+
+
+@app.get("/admin/sellers")
+def admin_sellers(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    q: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_sellers_table(conn)
+        params: list[Any] = []
+        where_parts = ["1 = 1"]
+        if q:
+            like = f"%{q.strip()}%"
+            where_parts.append("name LIKE ?")
+            params.append(like)
+        rows = conn.execute(
+            f"""
+            SELECT id, name, commission_percent, is_active, created_at, updated_at
+            FROM sellers
+            WHERE {' AND '.join(where_parts)}
+            ORDER BY name COLLATE NOCASE ASC, id ASC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        ).fetchall()
+        return [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "commission_percent": float(row["commission_percent"] or 0),
+                "is_active": bool(row["is_active"]),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+@app.post("/admin/sellers")
+def admin_create_seller(
+    payload: SellerPayload,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    if payload.commission_percent < 0:
+        raise HTTPException(status_code=400, detail="La comision no puede ser negativa")
+    conn = _connect()
+    try:
+        _ensure_sellers_table(conn)
+        existing = conn.execute(
+            "SELECT id FROM sellers WHERE LOWER(TRIM(name)) = ? LIMIT 1",
+            (name.lower(),),
+        ).fetchone()
+        if existing is not None:
+            raise HTTPException(status_code=400, detail="Ya existe un vendedor con ese nombre")
+        now = datetime.utcnow().isoformat()
+        if DB_IS_POSTGRES:
+            row = conn.execute(
+                """
+                INSERT INTO sellers (name, commission_percent, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING id
+                """,
+                (name, float(payload.commission_percent), 1 if payload.is_active else 0, now, now),
+            ).fetchone()
+            seller_id = int(row["id"])
+        else:
+            conn.execute(
+                """
+                INSERT INTO sellers (name, commission_percent, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (name, float(payload.commission_percent), 1 if payload.is_active else 0, now, now),
+            )
+            row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+            seller_id = int(row["id"] if isinstance(row, dict) else row[0])
+        conn.commit()
+        return {"id": seller_id, "message": "Vendedor creado"}
+    finally:
+        conn.close()
+
+
+@app.put("/admin/sellers/{seller_id}")
+def admin_update_seller(
+    seller_id: int,
+    payload: SellerPayload,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Nombre requerido")
+    if payload.commission_percent < 0:
+        raise HTTPException(status_code=400, detail="La comision no puede ser negativa")
+    conn = _connect()
+    try:
+        _ensure_sellers_table(conn)
+        existing = conn.execute(
+            "SELECT id FROM sellers WHERE id = ?",
+            (seller_id,),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+        duplicate = conn.execute(
+            "SELECT id FROM sellers WHERE LOWER(TRIM(name)) = ? AND id <> ? LIMIT 1",
+            (name.lower(), seller_id),
+        ).fetchone()
+        if duplicate is not None:
+            raise HTTPException(status_code=400, detail="Ya existe un vendedor con ese nombre")
+        conn.execute(
+            """
+            UPDATE sellers
+               SET name = ?, commission_percent = ?, is_active = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (name, float(payload.commission_percent), 1 if payload.is_active else 0, datetime.utcnow().isoformat(), seller_id),
+        )
+        conn.commit()
+        return {"id": seller_id, "message": "Vendedor actualizado"}
     finally:
         conn.close()
 

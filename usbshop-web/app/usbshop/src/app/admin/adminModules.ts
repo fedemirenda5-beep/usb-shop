@@ -3,6 +3,7 @@ export type AdminModuleId =
   | 'productos'
   | 'pedidos'
   | 'clientes'
+  | 'vendedores'
   | 'comprobantes'
   | 'cuentas-corrientes'
   | 'balances'
@@ -44,6 +45,13 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/admin/clientes',
     navLabel: 'Clientes',
     dashboardLabel: 'Clientes y cuenta corriente operativa',
+  },
+  {
+    id: 'vendedores',
+    title: 'Vendedores',
+    href: '/admin/vendedores',
+    navLabel: 'Vendedores',
+    dashboardLabel: 'Padron comercial y comisiones',
   },
   {
     id: 'comprobantes',
