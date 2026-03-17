@@ -16,6 +16,7 @@ node_modules/
 .next/
 out/
 .firebase/
+*.tsbuildinfo
 
 # Build and distribution outputs
 build/
