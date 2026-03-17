@@ -140,22 +140,6 @@ export default function ReportesPage() {
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
-      {summary ? (
-        <section className={styles.kpiGrid}>
-          <article className={styles.kpi}><span>Ventas</span><strong>{money(summary.sales_total)}</strong></article>
-          <article className={styles.kpi}><span>Comprobantes</span><strong>{summary.sales_count}</strong></article>
-          <article className={styles.kpi}><span>Margen estimado</span><strong>{money(summary.estimated_margin)}</strong></article>
-          <article className={styles.kpi}><span>Resultado operativo</span><strong>{money(summary.operating_result)}</strong></article>
-          <article className={styles.kpi}><span>Saldo cuenta corriente</span><strong>{money(summary.cc_open_balance)}</strong></article>
-          <article className={styles.kpi}><span>Clientes activos</span><strong>{summary.active_customers}</strong></article>
-          <article className={styles.kpi}><span>Movimientos CC</span><strong>{summary.account_movements}</strong></article>
-          <article className={styles.kpi}><span>Stock unidades</span><strong>{summary.stock_units}</strong></article>
-          <article className={styles.kpi}><span>Stock a costo</span><strong>{money(summary.stock_value_cost)}</strong></article>
-          <article className={styles.kpi}><span>Stock a venta</span><strong>{money(summary.stock_value_sale)}</strong></article>
-          <article className={styles.kpi}><span>Productos activos</span><strong>{summary.products}</strong></article>
-        </section>
-      ) : null}
-
       <section className={styles.grid}>
         <article className={`${styles.panel} ${styles.dailyPanel}`}>
           <div className={styles.panelHeader}>
@@ -170,10 +154,10 @@ export default function ReportesPage() {
           </div>
           {dailyReport ? (
             <>
-              <div className={styles.kpiGrid}>
+              <div className={styles.dailyKpiGrid}>
+                <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Venta del día</span><strong>{money(dailyReport.summary.sales)}</strong></article>
+                <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Ganancia del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
                 <article className={styles.kpi}><span>Fecha</span><strong>{dailyReport.date}</strong></article>
-                <article className={styles.kpi}><span>Venta del día</span><strong>{money(dailyReport.summary.sales)}</strong></article>
-                <article className={styles.kpi}><span>Ganancia del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
                 <article className={styles.kpi}><span>Comprobantes</span><strong>{integer(dailyReport.summary.invoice_count)}</strong></article>
                 <article className={styles.kpi}><span>Ticket promedio</span><strong>{money(dailyReport.summary.avg_ticket)}</strong></article>
               </div>
@@ -216,6 +200,30 @@ export default function ReportesPage() {
             <div className={styles.empty}>Cargando reporte diario...</div>
           )}
         </article>
+
+        {summary ? (
+          <article className={`${styles.panel} ${styles.secondarySummaryPanel}`}>
+            <div className={styles.panelHeader}>
+              <div>
+                <h2>Panorama general</h2>
+                <p>Resumen secundario del negocio con números más compactos.</p>
+              </div>
+            </div>
+            <div className={styles.kpiGridCompact}>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Ventas</span><strong>{money(summary.sales_total)}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Comprobantes</span><strong>{summary.sales_count}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Margen estimado</span><strong>{money(summary.estimated_margin)}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Resultado operativo</span><strong>{money(summary.operating_result)}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Saldo cuenta corriente</span><strong>{money(summary.cc_open_balance)}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Clientes activos</span><strong>{summary.active_customers}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Movimientos CC</span><strong>{summary.account_movements}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Stock unidades</span><strong>{summary.stock_units}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Stock a costo</span><strong>{money(summary.stock_value_cost)}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Stock a venta</span><strong>{money(summary.stock_value_sale)}</strong></article>
+              <article className={`${styles.kpi} ${styles.kpiCompact}`}><span>Productos activos</span><strong>{summary.products}</strong></article>
+            </div>
+          </article>
+        ) : null}
 
         <article className={styles.panel}>
           <div className={styles.panelHeader}>
