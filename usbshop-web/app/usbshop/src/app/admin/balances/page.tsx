@@ -31,6 +31,7 @@ type YearProjection = {
   trend_projection: number;
   recent_window_months: number;
 };
+type AnnualMetricMode = 'sales' | 'margin' | 'count';
 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
@@ -61,6 +62,7 @@ export default function BalancesPage() {
   const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
+  const [metricMode, setMetricMode] = useState<AnnualMetricMode>('sales');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -95,21 +97,82 @@ export default function BalancesPage() {
     if (!summary) return 0;
     return summary.stock_value_cost + summary.cc_open_balance;
   }, [summary]);
+
+  const annualCapital = useMemo(() => {
+    if (!summary) return 0;
+    return summary.stock_value_cost + summary.cc_open_balance + summary.estimated_margin;
+  }, [summary]);
+
   const composition = useMemo(() => {
     if (!summary) return [];
     return [
       { label: 'Stock a costo', value: summary.stock_value_cost, tone: 'var(--lime)' },
       { label: 'Cuenta corriente', value: summary.cc_open_balance, tone: '#2563eb' },
-      { label: 'Margen estimado', value: summary.estimated_margin, tone: '#7c3aed' },
+      { label: 'Ganancia estimada', value: summary.estimated_margin, tone: '#7c3aed' },
     ];
   }, [summary]);
+
   const compositionTotal = useMemo(
     () => composition.reduce((acc, item) => acc + Math.max(0, item.value), 0),
     [composition]
   );
-  const monthlyPath = useMemo(
-    () => buildLinePath(monthly.map((item) => item.sales || 0), 520, 150),
-    [monthly]
+
+  const monthlyMetricPoints = useMemo(() => {
+    if (!summary) return [];
+    return monthly.map((item) => {
+      if (metricMode === 'count') return item.count || 0;
+      if (metricMode === 'margin') {
+        const ratio = summary.sales_total > 0 ? (item.sales || 0) / summary.sales_total : 0;
+        return summary.estimated_margin * ratio;
+      }
+      return item.sales || 0;
+    });
+  }, [metricMode, monthly, summary]);
+
+  const annualMetricPath = useMemo(
+    () => buildLinePath(monthlyMetricPoints, 520, 170),
+    [monthlyMetricPoints]
+  );
+
+  const maxAnnualMetric = useMemo(() => Math.max(1, ...monthlyMetricPoints, 0), [monthlyMetricPoints]);
+
+  const annualBarData = useMemo(
+    () =>
+      monthly.map((item, index) => ({
+        month: item.month,
+        value: monthlyMetricPoints[index] || 0,
+        count: item.count || 0,
+      })),
+    [monthly, monthlyMetricPoints]
+  );
+
+  const annualSummaryRows = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: 'Capital total', value: money(annualCapital), help: 'Stock + cuenta corriente + ganancia estimada' },
+      { label: 'Ventas acumuladas', value: money(summary.sales_total), help: `${integer(summary.sales_count)} comprobantes emitidos` },
+      { label: 'Ganancia estimada', value: money(summary.estimated_margin), help: 'Calculada sobre ventas reales emitidas' },
+      { label: 'Cierre comercial', value: money(grossPosition), help: 'Stock a costo + cuenta corriente abierta' },
+    ];
+  }, [annualCapital, grossPosition, summary]);
+
+  const metricLabel =
+    metricMode === 'margin'
+      ? 'Ganancia'
+      : metricMode === 'count'
+        ? 'Comprobantes'
+        : 'Ventas';
+
+  const monthlyDetailRows = useMemo(
+    () =>
+      annualBarData.slice(-6).reverse().map((item) => ({
+        ...item,
+        display:
+          metricMode === 'count'
+            ? `${integer(item.value)} comprobantes`
+            : money(item.value),
+      })),
+    [annualBarData, metricMode]
   );
 
   return (
@@ -117,7 +180,7 @@ export default function BalancesPage() {
       <section className={styles.header}>
         <div>
           <h1>Balances</h1>
-          <p>Lectura operativa del negocio: ventas, stock valorizado, saldo abierto y posicion comercial.</p>
+          <p>Modelo anual inspirado en la app de escritorio: capital, ventas, ganancia y cierre comercial.</p>
         </div>
       </section>
 
@@ -125,22 +188,21 @@ export default function BalancesPage() {
 
       {summary ? (
         <>
-          <section className={styles.heroGrid}>
-            <article className={styles.heroCard}>
-              <span>Posicion comercial</span>
-              <strong>{money(grossPosition)}</strong>
-              <p>Stock a costo + saldo de cuentas corrientes</p>
-            </article>
-            <article className={styles.heroCard}>
-              <span>Ventas acumuladas</span>
-              <strong>{money(summary.sales_total)}</strong>
-              <p>{integer(summary.sales_count)} comprobantes emitidos</p>
-            </article>
-            <article className={styles.heroCard}>
-              <span>Margen estimado</span>
-              <strong>{money(summary.estimated_margin)}</strong>
+          <section className={styles.desktopHero}>
+            <article className={styles.heroLead}>
+              <span>Balance anual</span>
+              <strong>{money(annualCapital)}</strong>
               <p>Ultimo comprobante: {formatDate(summary.latest_invoice_at)}</p>
             </article>
+            <div className={styles.summaryStrip}>
+              {annualSummaryRows.map((item) => (
+                <article key={item.label} className={styles.summaryTile}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <p>{item.help}</p>
+                </article>
+              ))}
+            </div>
           </section>
 
           <section className={styles.metricGrid}>
@@ -167,14 +229,44 @@ export default function BalancesPage() {
           </section>
 
           <section className={styles.grid}>
-            <article className={styles.panel}>
+            <article className={`${styles.panel} ${styles.primaryPanel}`}>
               <div className={styles.panelHeader}>
-                <h2>Corte mensual</h2>
+                <div>
+                  <h2>Ventas mensuales</h2>
+                  <p className={styles.panelNote}>Comparativo mensual del balance anual, como en escritorio.</p>
+                </div>
+                <div className={styles.metricSwitch}>
+                  <button
+                    type="button"
+                    className={metricMode === 'sales' ? styles.metricSwitchActive : ''}
+                    onClick={() => setMetricMode('sales')}
+                  >
+                    Ventas
+                  </button>
+                  <button
+                    type="button"
+                    className={metricMode === 'margin' ? styles.metricSwitchActive : ''}
+                    onClick={() => setMetricMode('margin')}
+                  >
+                    Ganancia
+                  </button>
+                  <button
+                    type="button"
+                    className={metricMode === 'count' ? styles.metricSwitchActive : ''}
+                    onClick={() => setMetricMode('count')}
+                  >
+                    Comprobantes
+                  </button>
+                </div>
               </div>
               <div className={styles.highlight}>
                 <div>
-                  <span>Mes actual</span>
-                  <strong>{currentMonth ? money(currentMonth.sales) : money(0)}</strong>
+                  <span>{metricLabel} actual</span>
+                  <strong>
+                    {metricMode === 'count'
+                      ? integer(monthlyMetricPoints[monthlyMetricPoints.length - 1] || 0)
+                      : money(monthlyMetricPoints[monthlyMetricPoints.length - 1] || 0)}
+                  </strong>
                 </div>
                 <div>
                   <span>Variacion mensual</span>
@@ -183,22 +275,78 @@ export default function BalancesPage() {
                   </strong>
                 </div>
               </div>
-              <div className={styles.chartBox}>
-                <svg viewBox="0 0 520 180" className={styles.lineChart} aria-hidden="true">
-                  <path d="M 0 150 L 520 150" className={styles.chartBaseline} />
-                  {monthlyPath ? <path d={monthlyPath} className={styles.linePrimary} /> : null}
-                </svg>
+              <div className={styles.desktopChartPanel}>
+                <div className={styles.chartBox}>
+                  <svg viewBox="0 0 520 190" className={styles.lineChart} aria-hidden="true">
+                    <path d="M 0 170 L 520 170" className={styles.chartBaseline} />
+                    {annualMetricPath ? <path d={annualMetricPath} className={styles.linePrimary} /> : null}
+                  </svg>
+                </div>
+                <div className={styles.barChart}>
+                  {annualBarData.slice(-8).map((item) => (
+                    <div key={item.month} className={styles.barItem}>
+                      <div
+                        className={styles.barFill}
+                        style={{ height: `${Math.max(8, (item.value / maxAnnualMetric) * 100)}%` }}
+                      />
+                      <span>{item.month}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className={styles.monthList}>
-                {monthly.slice(-6).reverse().map((item) => (
+                {monthlyDetailRows.map((item) => (
                   <div key={item.month} className={styles.monthRow}>
                     <div>
                       <strong>{item.month}</strong>
                       <span>{item.count} comprobantes</span>
                     </div>
-                    <em>{money(item.sales)}</em>
+                    <em>{item.display}</em>
                   </div>
                 ))}
+              </div>
+            </article>
+
+            <article className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <h2>Composicion general</h2>
+              </div>
+              <div className={styles.ringWrap}>
+                <div className={styles.ringChart}>
+                  <div
+                    className={styles.ringChartFill}
+                    style={{
+                      background: `conic-gradient(
+                        var(--lime) 0 ${(compositionTotal > 0 ? (Math.max(0, composition[0]?.value || 0) / compositionTotal) * 100 : 0).toFixed(2)}%,
+                        #2563eb ${(compositionTotal > 0 ? (Math.max(0, composition[0]?.value || 0) / compositionTotal) * 100 : 0).toFixed(2)}% ${(
+                          compositionTotal > 0
+                            ? ((Math.max(0, composition[0]?.value || 0) + Math.max(0, composition[1]?.value || 0)) / compositionTotal) * 100
+                            : 0
+                        ).toFixed(2)}%,
+                        #7c3aed ${(
+                          compositionTotal > 0
+                            ? ((Math.max(0, composition[0]?.value || 0) + Math.max(0, composition[1]?.value || 0)) / compositionTotal) * 100
+                            : 0
+                        ).toFixed(2)}% 100%
+                      )`,
+                    }}
+                  />
+                  <div className={styles.ringChartCenter}>
+                    <span>Total</span>
+                    <strong>{money(annualCapital)}</strong>
+                  </div>
+                </div>
+                <div className={styles.compositionList}>
+                  {composition.map((item) => (
+                    <div key={item.label} className={styles.compositionRow}>
+                      <span className={styles.compositionDot} style={{ background: item.tone }} />
+                      <div>
+                        <strong>{item.label}</strong>
+                        <p>{money(item.value)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </article>
 
@@ -225,36 +373,7 @@ export default function BalancesPage() {
 
             <article className={styles.panel}>
               <div className={styles.panelHeader}>
-                <h2>Composicion del balance</h2>
-              </div>
-              <div className={styles.stackBar}>
-                {composition.map((item) => (
-                  <div
-                    key={item.label}
-                    className={styles.stackSegment}
-                    style={{
-                      width: `${compositionTotal > 0 ? (Math.max(0, item.value) / compositionTotal) * 100 : 0}%`,
-                      background: item.tone,
-                    }}
-                  />
-                ))}
-              </div>
-              <div className={styles.compositionList}>
-                {composition.map((item) => (
-                  <div key={item.label} className={styles.compositionRow}>
-                    <span className={styles.compositionDot} style={{ background: item.tone }} />
-                    <div>
-                      <strong>{item.label}</strong>
-                      <p>{money(item.value)}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <article className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <h2>Proyección anual</h2>
+                <h2>Proyeccion anual</h2>
               </div>
               {yearProjection ? (
                 <div className={styles.projectionGrid}>
@@ -266,7 +385,7 @@ export default function BalancesPage() {
                   <div className={styles.projectionCard}>
                     <span>Crecimiento sobre cierre previo</span>
                     <strong>{money(yearProjection.growth_projection)}</strong>
-                    <p>Basado en ventas del año {yearProjection.year - 1}.</p>
+                    <p>Basado en ventas del ano {yearProjection.year - 1}.</p>
                   </div>
                   <div className={styles.projectionCard}>
                     <span>Tendencia real</span>
@@ -275,7 +394,7 @@ export default function BalancesPage() {
                   </div>
                 </div>
               ) : (
-                <div className={styles.empty}>Sin datos suficientes para proyectar el año.</div>
+                <div className={styles.empty}>Sin datos suficientes para proyectar el ano.</div>
               )}
             </article>
 
@@ -305,15 +424,9 @@ export default function BalancesPage() {
                 <h2>Lectura rapida</h2>
               </div>
               <div className={styles.notes}>
-                <p>
-                  El admin ya trabaja con una sola fuente operativa para clientes, comprobantes y cuentas corrientes.
-                </p>
-                <p>
-                  El balance comercial combina ventas emitidas, stock valorizado y saldos pendientes del backoffice.
-                </p>
-                <p>
-                  Si la web corre en `localhost`, toma la base local real; en produccion depende de la API publicada.
-                </p>
+                <p>Esta vista replica la lectura central del escritorio: capital total, ventas, ganancia y cierre.</p>
+                <p>El comparativo mensual puede alternar entre ventas, ganancia estimada y cantidad de comprobantes.</p>
+                <p>Si queres, el siguiente paso es agregar la grilla anual editable que tenia la app de escritorio.</p>
               </div>
             </article>
           </section>

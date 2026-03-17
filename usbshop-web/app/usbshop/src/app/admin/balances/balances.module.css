@@ -18,58 +18,94 @@
   color: var(--muted);
 }
 
-.heroGrid,
+.desktopHero,
 .metricGrid,
-.grid {
+.grid,
+.summaryStrip {
   display: grid;
   gap: 16px;
 }
 
-.heroGrid {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+.desktopHero {
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
 }
 
-.heroCard,
+.heroLead,
 .metricCard,
-.panel {
+.panel,
+.summaryTile {
   background: white;
   border: 1px solid var(--bg-soft);
   border-radius: 16px;
   box-shadow: 0 4px 16px var(--shadow);
 }
 
-.heroCard {
-  padding: 20px;
+.heroLead {
+  padding: 22px;
   display: grid;
-  gap: 8px;
-  background: linear-gradient(160deg, rgba(15, 118, 110, 0.92), rgba(29, 78, 216, 0.92));
+  gap: 10px;
+  background: linear-gradient(160deg, rgba(15, 118, 110, 0.96), rgba(29, 78, 216, 0.92));
   color: white;
 }
 
-.heroCard span,
+.heroLead span,
 .metricCard span,
+.summaryTile span,
 .monthRow span,
 .listRow span {
   font-size: 13px;
-  color: inherit;
   opacity: 0.84;
 }
 
-.heroCard strong,
-.metricCard strong {
-  font-size: 30px;
-  line-height: 1.1;
+.heroLead strong {
+  font-size: 34px;
+  line-height: 1.04;
   word-break: break-word;
 }
 
-.heroCard p,
+.heroLead p,
 .metricCard p,
+.summaryTile p,
 .notes p {
   margin: 0;
 }
 
+.summaryStrip {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.summaryTile {
+  padding: 18px;
+  display: grid;
+  gap: 8px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 1));
+}
+
+.summaryTile span,
+.metricCard span {
+  color: var(--muted);
+  opacity: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+.summaryTile strong,
+.metricCard strong {
+  color: var(--ink);
+  font-size: 26px;
+  line-height: 1.08;
+  word-break: break-word;
+}
+
+.summaryTile p,
+.metricCard p {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .metricGrid {
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .metricCard {
@@ -78,23 +114,8 @@
   gap: 8px;
 }
 
-.metricCard span {
-  color: var(--muted);
-  opacity: 1;
-}
-
-.metricCard strong {
-  color: var(--ink);
-  font-size: 24px;
-}
-
-.metricCard p {
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
 .grid {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .panel {
@@ -106,17 +127,51 @@
   overflow: hidden;
 }
 
+.primaryPanel {
+  grid-column: 1 / -1;
+}
+
 .panelHeader {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
   align-items: flex-start;
+  justify-content: space-between;
 }
 
 .panelHeader h2 {
   margin: 0;
   color: var(--ink);
   font-size: 18px;
+}
+
+.panelNote {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metricSwitch {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metricSwitch button {
+  border: 1px solid var(--bg-soft);
+  background: #f8fafc;
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.metricSwitchActive {
+  background: var(--ink) !important;
+  color: white !important;
+  border-color: var(--ink) !important;
 }
 
 .highlight {
@@ -128,9 +183,15 @@
 .highlight > div {
   padding: 14px;
   border-radius: 14px;
-  background: rgba(241, 245, 249, 0.9);
+  background: rgba(241, 245, 249, 0.92);
   display: grid;
   gap: 6px;
+}
+
+.highlight span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
 }
 
 .highlight strong {
@@ -138,10 +199,17 @@
   color: var(--ink);
 }
 
+.desktopChartPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 16px;
+  align-items: end;
+}
+
 .chartBox {
   padding: 12px 10px 0;
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(241,245,249,.72));
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.72));
   border: 1px solid var(--bg-soft);
 }
 
@@ -164,89 +232,45 @@
   stroke-linejoin: round;
 }
 
+.barChart {
+  height: 190px;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 10px 8px 0;
+  border: 1px solid var(--bg-soft);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+}
+
+.barItem {
+  display: grid;
+  justify-items: center;
+  align-items: end;
+  gap: 8px;
+  height: 100%;
+}
+
+.barFill {
+  width: 100%;
+  min-height: 8%;
+  border-radius: 10px 10px 4px 4px;
+  background: linear-gradient(180deg, #2563eb, #0f766e);
+}
+
+.barItem span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .monthList,
 .list,
-.notes {
+.notes,
+.compositionList {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.stackBar {
-  width: 100%;
-  height: 18px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: rgba(148, 163, 184, 0.14);
-  display: flex;
-}
-
-.stackSegment {
-  height: 100%;
-  min-width: 6px;
-}
-
-.compositionList {
-  display: grid;
-  gap: 12px;
-}
-
-.compositionRow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.compositionDot {
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  flex: 0 0 14px;
-}
-
-.compositionRow strong,
-.compositionRow p {
-  margin: 0;
-}
-
-.compositionRow p {
-  color: var(--muted);
-}
-
-.projectionGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.projectionCard {
-  border: 1px solid var(--bg-soft);
-  border-radius: 12px;
-  padding: 14px;
-  background: linear-gradient(180deg, rgba(248,250,252,.95), rgba(255,255,255,1));
-  display: grid;
-  gap: 8px;
-}
-
-.projectionCard span {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-
-.projectionCard strong {
-  color: var(--ink);
-  font-size: 24px;
-  line-height: 1.1;
-  word-break: break-word;
-}
-
-.projectionCard p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.4;
 }
 
 .monthRow,
@@ -262,7 +286,8 @@
 }
 
 .monthRow strong,
-.listRow strong {
+.listRow strong,
+.compositionRow strong {
   color: var(--ink);
   display: block;
   overflow-wrap: anywhere;
@@ -275,6 +300,104 @@
   color: var(--purple);
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+.ringWrap {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+}
+
+.ringChart {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto;
+}
+
+.ringChartFill {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+.ringChartCenter {
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid var(--bg-soft);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 18px;
+}
+
+.ringChartCenter span {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.ringChartCenter strong {
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.compositionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.compositionDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  flex: 0 0 14px;
+}
+
+.compositionRow p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.projectionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.projectionCard {
+  border: 1px solid var(--bg-soft);
+  border-radius: 12px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 1));
+  display: grid;
+  gap: 8px;
+}
+
+.projectionCard span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.projectionCard strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.projectionCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .positive {
@@ -307,17 +430,53 @@
   border: 1px solid rgba(220, 38, 38, 0.25);
 }
 
-@media (max-width: 1100px) {
-  .grid { grid-template-columns: 1fr; }
+@media (max-width: 1180px) {
+  .desktopHero,
+  .grid,
+  .ringWrap,
+  .desktopChartPanel,
+  .projectionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .metricGrid,
+  .summaryStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ringChart {
+    width: 200px;
+    height: 200px;
+  }
 }
 
 @media (max-width: 720px) {
-  .page { gap: 16px; }
-  .heroCard, .metricCard, .panel { padding: 14px; }
-  .heroGrid, .metricGrid { grid-template-columns: 1fr; }
-  .highlight,
+  .page {
+    gap: 16px;
+  }
+
+  .heroLead,
+  .metricCard,
+  .panel,
+  .summaryTile {
+    padding: 14px;
+  }
+
+  .metricGrid,
+  .summaryStrip,
+  .highlight {
+    grid-template-columns: 1fr;
+  }
+
   .monthRow,
-  .listRow { flex-direction: column; align-items: flex-start; }
+  .listRow,
+  .panelHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .monthRow em,
-  .listRow em { text-align: left; }
+  .listRow em {
+    text-align: left;
+  }
 }
