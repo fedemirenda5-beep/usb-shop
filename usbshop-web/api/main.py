@@ -4268,6 +4268,138 @@ def admin_reports_overview(
         conn.close()
 
 
+@app.get("/admin/reports/daily")
+def admin_reports_daily(
+    report_date: Optional[str] = None,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    target_date = datetime.utcnow().date()
+    if report_date:
+        try:
+            target_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Fecha invalida. Usa YYYY-MM-DD.") from exc
+    conn = _connect()
+    try:
+        invoices = conn.execute(
+            """
+            SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, c.name AS customer_name
+            FROM invoices i
+            LEFT JOIN customers c ON c.id = i.customer_id
+            ORDER BY i.created_at ASC, i.id ASC
+            """
+        ).fetchall()
+        selected_invoices: list[dict[str, Any]] = []
+        invoice_ids: list[int] = []
+        customer_summary: dict[int, dict[str, Any]] = {}
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None or created.date() != target_date:
+                continue
+            invoice_id = int(row["id"] or 0)
+            total = round(float(row["total"] or 0), 2)
+            customer_id = int(row["customer_id"] or 0)
+            selected_invoices.append(
+                {
+                    "id": invoice_id,
+                    "customer_id": customer_id,
+                    "customer_name": row["customer_name"] or (f"Cliente {customer_id}" if customer_id > 0 else "Cliente"),
+                    "total": total,
+                    "created_at": row["created_at"],
+                    "document_type": row["document_type"],
+                }
+            )
+            invoice_ids.append(invoice_id)
+            customer_entry = customer_summary.setdefault(
+                customer_id,
+                {
+                    "customer_id": customer_id,
+                    "name": row["customer_name"] or (f"Cliente {customer_id}" if customer_id > 0 else "Cliente"),
+                    "invoice_count": 0,
+                    "sales": 0.0,
+                },
+            )
+            customer_entry["invoice_count"] += 1
+            customer_entry["sales"] = round(float(customer_entry["sales"]) + total, 2)
+
+        product_rows: list[dict[str, Any]] = []
+        if invoice_ids:
+            placeholders = ",".join(["?"] * len(invoice_ids))
+            product_rows = [
+                dict(row)
+                for row in conn.execute(
+                    f"""
+                    SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.cost
+                    FROM invoice_items ii
+                    LEFT JOIN products p ON p.id = ii.product_id
+                    WHERE ii.invoice_id IN ({placeholders})
+                    """,
+                    tuple(invoice_ids),
+                ).fetchall()
+            ]
+
+        product_summary: dict[int, dict[str, Any]] = {}
+        total_margin = 0.0
+        for row in product_rows:
+            product_id = int(row.get("product_id") or 0)
+            quantity = int(row.get("quantity") or 0)
+            unit_price = float(row.get("unit_price") or 0)
+            revenue = round(quantity * unit_price, 2)
+            cost = float(row.get("cost") or 0)
+            total_margin += quantity * max(0.0, unit_price - cost)
+            product_entry = product_summary.setdefault(
+                product_id,
+                {
+                    "product_id": product_id,
+                    "name": row.get("product_name") or (f"Producto {product_id}" if product_id > 0 else "Producto"),
+                    "quantity": 0,
+                    "sales": 0.0,
+                },
+            )
+            product_entry["quantity"] += quantity
+            product_entry["sales"] = round(float(product_entry["sales"]) + revenue, 2)
+
+        products = sorted(
+            [
+                {
+                    **payload,
+                    "avg_price": round(float(payload["sales"]) / max(int(payload["quantity"]), 1), 2),
+                }
+                for payload in product_summary.values()
+            ],
+            key=lambda item: (-item["sales"], item["name"].lower()),
+        )[:20]
+
+        customers = sorted(
+            [
+                {
+                    **payload,
+                    "avg_ticket": round(float(payload["sales"]) / max(int(payload["invoice_count"]), 1), 2),
+                }
+                for payload in customer_summary.values()
+            ],
+            key=lambda item: (-item["sales"], item["name"].lower()),
+        )[:20]
+
+        total_sales = round(sum(float(item["total"]) for item in selected_invoices), 2)
+        invoice_count = len(selected_invoices)
+        return {
+            "date": target_date.isoformat(),
+            "summary": {
+                "sales": total_sales,
+                "margin": round(total_margin, 2),
+                "invoice_count": invoice_count,
+                "avg_ticket": round(total_sales / invoice_count, 2) if invoice_count else 0.0,
+            },
+            "products": products,
+            "customers": customers,
+            "invoices": selected_invoices,
+        }
+    finally:
+        conn.close()
+
+
 # LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.get("/admin/account-customers/{customer_id}")
 def admin_account_customer_detail(

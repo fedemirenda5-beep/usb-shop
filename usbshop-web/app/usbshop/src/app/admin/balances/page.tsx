@@ -21,6 +21,26 @@ type Summary = {
 
 type MonthPoint = { month: string; sales: number; count: number };
 type LowStock = { id: number; name: string; stock: number; reorder_point: number };
+type DailySummary = {
+  sales: number;
+  margin: number;
+  invoice_count: number;
+  avg_ticket: number;
+};
+type DailyProduct = {
+  product_id: number;
+  name: string;
+  quantity: number;
+  sales: number;
+  avg_price: number;
+};
+type DailyCustomer = {
+  customer_id: number;
+  name: string;
+  invoice_count: number;
+  sales: number;
+  avg_ticket: number;
+};
 type SellerBalance = {
   seller_id: number;
   name: string;
@@ -74,6 +94,11 @@ export default function BalancesPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [monthly, setMonthly] = useState<MonthPoint[]>([]);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
+  const [dailyDate, setDailyDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
+  const [dailyProducts, setDailyProducts] = useState<DailyProduct[]>([]);
+  const [dailyCustomers, setDailyCustomers] = useState<DailyCustomer[]>([]);
+  const [dailyLoading, setDailyLoading] = useState(false);
   const [sellerBalances, setSellerBalances] = useState<SellerBalance[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
   const [metricMode, setMetricMode] = useState<AnnualMetricMode>('sales');
@@ -102,6 +127,28 @@ export default function BalancesPage() {
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    const loadDaily = async () => {
+      try {
+        setDailyLoading(true);
+        await loadRuntimeConfig();
+        const res = await fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('No se pudo cargar el reporte diario');
+        const data = await res.json();
+        setDailySummary(data.summary || null);
+        setDailyProducts(data.products || []);
+        setDailyCustomers(data.customers || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error cargando balances');
+      } finally {
+        setDailyLoading(false);
+      }
+    };
+    void loadDaily();
+  }, [dailyDate]);
 
   const currentMonth = monthly[monthly.length - 1];
   const previousMonth = monthly[monthly.length - 2];
@@ -149,7 +196,7 @@ export default function BalancesPage() {
   }, [metricMode, monthly, summary]);
 
   const annualMetricPath = useMemo(
-    () => buildLinePath(monthlyMetricPoints, 520, 170),
+    () => buildLinePath(monthlyMetricPoints, 460, 148),
     [monthlyMetricPoints]
   );
   const annualBarData = useMemo(
@@ -164,9 +211,9 @@ export default function BalancesPage() {
   const chartPoints = useMemo(() => {
     if (monthlyMetricPoints.length === 0) return [];
     return monthlyMetricPoints.map((value, index) => {
-      const x = monthlyMetricPoints.length === 1 ? 260 : (index / (monthlyMetricPoints.length - 1)) * 520;
+      const x = monthlyMetricPoints.length === 1 ? 230 : (index / (monthlyMetricPoints.length - 1)) * 460;
       const max = Math.max(1, ...monthlyMetricPoints);
-      const y = 170 - (value / max) * 170;
+      const y = 148 - (value / max) * 148;
       return {
         key: annualBarData[index]?.month || String(index),
         x,
@@ -320,10 +367,10 @@ export default function BalancesPage() {
                 </div>
               </div>
               <div className={styles.chartBox}>
-                <svg viewBox="0 0 520 235" className={styles.lineChart} aria-hidden="true">
-                  <path d="M 0 170 L 520 170" className={styles.chartBaseline} />
-                  {[34, 68, 102, 136].map((y) => (
-                    <path key={y} d={`M 0 ${y} L 520 ${y}`} className={styles.chartGrid} />
+                <svg viewBox="0 0 460 206" className={styles.lineChart} aria-hidden="true">
+                  <path d="M 0 148 L 460 148" className={styles.chartBaseline} />
+                  {[30, 60, 90, 120].map((y) => (
+                    <path key={y} d={`M 0 ${y} L 460 ${y}`} className={styles.chartGrid} />
                   ))}
                   {annualMetricPath ? <path d={annualMetricPath} className={styles.linePrimary} /> : null}
                   {chartPoints.map((point) => (
@@ -344,7 +391,7 @@ export default function BalancesPage() {
                       </text>
                       <text
                         x={point.x}
-                        y="214"
+                        y="188"
                         textAnchor="middle"
                         className={styles.axisLabel}
                       >
@@ -364,6 +411,115 @@ export default function BalancesPage() {
                     <em>{item.display}</em>
                   </div>
                 ))}
+              </div>
+            </article>
+
+            <article className={`${styles.panel} ${styles.primaryPanel}`}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h2>Reporte diario</h2>
+                  <p className={styles.panelNote}>Ventas y ganancia del dia de trabajo seleccionado.</p>
+                </div>
+                <label className={styles.chartField}>
+                  <span>Fecha:</span>
+                  <input
+                    type="date"
+                    value={dailyDate}
+                    onChange={(e) => setDailyDate(e.target.value)}
+                    className={styles.dateInput}
+                  />
+                </label>
+              </div>
+
+              <div className={styles.dailySummaryGrid}>
+                <article className={styles.dailyMetric}>
+                  <span>Ventas del dia</span>
+                  <strong>{money(dailySummary?.sales || 0)}</strong>
+                </article>
+                <article className={styles.dailyMetric}>
+                  <span>Ganancia del dia</span>
+                  <strong>{money(dailySummary?.margin || 0)}</strong>
+                </article>
+                <article className={styles.dailyMetric}>
+                  <span>Comprobantes emitidos</span>
+                  <strong>{integer(dailySummary?.invoice_count || 0)}</strong>
+                </article>
+                <article className={styles.dailyMetric}>
+                  <span>Ticket promedio</span>
+                  <strong>{money(dailySummary?.avg_ticket || 0)}</strong>
+                </article>
+              </div>
+
+              <div className={styles.dailyTables}>
+                <section className={styles.dailyTableCard}>
+                  <div className={styles.panelHeader}>
+                    <h3>Productos</h3>
+                    <span className={styles.tableMeta}>{dailyProducts.length} filas</span>
+                  </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Producto</th>
+                          <th>Cantidad</th>
+                          <th>Ventas</th>
+                          <th>Precio promedio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyLoading ? (
+                          <tr><td colSpan={4}>Cargando...</td></tr>
+                        ) : dailyProducts.length === 0 ? (
+                          <tr><td colSpan={4}>No hay productos vendidos en la fecha seleccionada.</td></tr>
+                        ) : (
+                          dailyProducts.map((item) => (
+                            <tr key={item.product_id}>
+                              <td>{item.name}</td>
+                              <td>{integer(item.quantity)}</td>
+                              <td>{money(item.sales)}</td>
+                              <td>{money(item.avg_price)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className={styles.dailyTableCard}>
+                  <div className={styles.panelHeader}>
+                    <h3>Clientes</h3>
+                    <span className={styles.tableMeta}>{dailyCustomers.length} filas</span>
+                  </div>
+                  <div className={styles.tableWrap}>
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Cliente</th>
+                          <th>Comprobantes</th>
+                          <th>Ventas</th>
+                          <th>Ticket promedio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyLoading ? (
+                          <tr><td colSpan={4}>Cargando...</td></tr>
+                        ) : dailyCustomers.length === 0 ? (
+                          <tr><td colSpan={4}>No hay clientes con compras en la fecha seleccionada.</td></tr>
+                        ) : (
+                          dailyCustomers.map((item) => (
+                            <tr key={`${item.customer_id}-${item.name}`}>
+                              <td>{item.name}</td>
+                              <td>{integer(item.invoice_count)}</td>
+                              <td>{money(item.sales)}</td>
+                              <td>{money(item.avg_ticket)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </div>
             </article>
 

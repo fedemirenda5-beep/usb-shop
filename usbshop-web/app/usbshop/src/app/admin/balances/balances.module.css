@@ -1,9 +1,9 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
   width: 100%;
-  max-width: 1440px;
+  max-width: 1360px;
   margin: 0 auto;
   min-width: 0;
 }
@@ -23,7 +23,7 @@
 .grid,
 .summaryStrip {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .desktopHero {
@@ -41,9 +41,9 @@
 }
 
 .heroLead {
-  padding: 22px;
+  padding: 18px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   background: linear-gradient(160deg, rgba(15, 118, 110, 0.96), rgba(29, 78, 216, 0.92));
   color: white;
 }
@@ -58,7 +58,7 @@
 }
 
 .heroLead strong {
-  font-size: 34px;
+  font-size: 29px;
   line-height: 1.04;
   word-break: break-word;
 }
@@ -75,9 +75,9 @@
 }
 
 .summaryTile {
-  padding: 18px;
+  padding: 15px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 1));
 }
 
@@ -93,7 +93,7 @@
 .summaryTile strong,
 .metricCard strong {
   color: var(--ink);
-  font-size: 26px;
+  font-size: 22px;
   line-height: 1.08;
   word-break: break-word;
 }
@@ -109,9 +109,9 @@
 }
 
 .metricCard {
-  padding: 16px;
+  padding: 14px;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .grid {
@@ -119,10 +119,10 @@
 }
 
 .panel {
-  padding: 18px;
+  padding: 15px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   min-width: 0;
   overflow: hidden;
 }
@@ -142,13 +142,19 @@
 .panelHeader h2 {
   margin: 0;
   color: var(--ink);
-  font-size: 18px;
+  font-size: 16px;
+}
+
+.panelHeader h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
 }
 
 .panelNote {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .chartToolbar {
@@ -162,7 +168,7 @@
   align-items: center;
   gap: 10px;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .chartField span {
@@ -173,10 +179,10 @@
   border: 1px solid var(--bg-soft);
   background: #fff;
   color: var(--ink);
-  border-radius: 12px;
-  padding: 9px 12px;
+  border-radius: 10px;
+  padding: 8px 10px;
   font: inherit;
-  min-width: 170px;
+  min-width: 150px;
 }
 
 .metricSwitch {
@@ -207,7 +213,7 @@
 }
 
 .highlight > div {
-  padding: 14px;
+  padding: 12px;
   border-radius: 14px;
   background: rgba(241, 245, 249, 0.92);
   display: grid;
@@ -221,7 +227,7 @@
 }
 
 .highlight strong {
-  font-size: 24px;
+  font-size: 20px;
   color: var(--ink);
 }
 
@@ -233,7 +239,7 @@
 }
 
 .chartBox {
-  padding: 12px 10px 0;
+  padding: 10px 8px 0;
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.72));
   border: 1px solid var(--bg-soft);
@@ -259,7 +265,7 @@
 .linePrimary {
   fill: none;
   stroke: #0891b2;
-  stroke-width: 4.5;
+  stroke-width: 3.6;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -267,7 +273,7 @@
 .point,
 .pointSelected {
   stroke: #065f73;
-  stroke-width: 2;
+  stroke-width: 1.5;
   fill: #22d3ee;
 }
 
@@ -277,13 +283,13 @@
 
 .pointLabel {
   fill: #0f172a;
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 700;
 }
 
 .axisLabel {
   fill: #64748b;
-  font-size: 11px;
+  font-size: 9px;
 }
 
 .monthList,
@@ -303,7 +309,7 @@
   gap: 12px;
   border: 1px solid var(--bg-soft);
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px;
   min-width: 0;
 }
 
@@ -326,15 +332,15 @@
 
 .compactComposition {
   display: grid;
-  grid-template-columns: 170px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 14px;
   align-items: center;
 }
 
 .ringChart {
   position: relative;
-  width: 170px;
-  height: 170px;
+  width: 140px;
+  height: 140px;
   margin: 0 auto;
 }
 
@@ -346,14 +352,14 @@
 
 .ringChartCenter {
   position: absolute;
-  inset: 22px;
+  inset: 18px;
   border-radius: 50%;
   background: white;
   border: 1px solid var(--bg-soft);
   display: grid;
   place-items: center;
   text-align: center;
-  padding: 18px;
+  padding: 12px;
 }
 
 .ringChartCenter span {
@@ -364,7 +370,7 @@
 
 .ringChartCenter strong {
   color: var(--ink);
-  font-size: 17px;
+  font-size: 14px;
   line-height: 1.15;
 }
 
@@ -395,7 +401,7 @@
 .projectionCard {
   border: 1px solid var(--bg-soft);
   border-radius: 12px;
-  padding: 14px;
+  padding: 12px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.95), rgba(255, 255, 255, 1));
   display: grid;
   gap: 8px;
@@ -410,7 +416,7 @@
 
 .projectionCard strong {
   color: var(--ink);
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1.1;
   word-break: break-word;
 }
@@ -439,9 +445,9 @@
 .sellerCard {
   border: 1px solid var(--bg-soft);
   border-radius: 14px;
-  padding: 14px;
+  padding: 12px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
 }
 
@@ -469,7 +475,7 @@
 }
 
 .sellerBarTrack {
-  height: 12px;
+  height: 10px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.18);
   overflow: hidden;
@@ -499,6 +505,84 @@
   margin-top: 4px;
 }
 
+.dateInput {
+  border: 1px solid var(--bg-soft);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.dailySummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dailyMetric,
+.dailyTableCard {
+  border: 1px solid var(--bg-soft);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+}
+
+.dailyMetric {
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.dailyMetric span,
+.tableMeta {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.dailyMetric strong {
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.dailyTables {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dailyTableCard {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tableWrap {
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 520px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--bg-soft);
+  font-size: 12px;
+}
+
+.table th {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
 .empty,
 .error {
   padding: 14px;
@@ -520,12 +604,14 @@
   .desktopHero,
   .grid,
   .compactComposition,
-  .projectionGrid {
+  .projectionGrid,
+  .dailyTables {
     grid-template-columns: 1fr;
   }
 
   .metricGrid,
-  .summaryStrip {
+  .summaryStrip,
+  .dailySummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -545,7 +631,8 @@
 
   .metricGrid,
   .summaryStrip,
-  .highlight {
+  .highlight,
+  .dailySummaryGrid {
     grid-template-columns: 1fr;
   }
 
