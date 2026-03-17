@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { NAV_MODULES } from './adminModules';
+import { canAccessAdminModule } from './adminPermissions';
 import styles from './admin.module.css';
 
 interface AdminLayoutProps {
@@ -22,6 +23,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       router.push('/login');
     }
   }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    const restricted = NAV_MODULES.find(
+      (module) => module.href === pathname && !canAccessAdminModule(user.role, module.id)
+    );
+    if (restricted) {
+      router.replace('/admin');
+    }
+  }, [pathname, router, user]);
 
   if (isLoading || !user) {
     return (
@@ -55,7 +66,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         <nav className={styles.sidebarNav}>
           <Link href="/admin" className={`${styles.navItem} ${pathname === '/admin' ? styles.navItemActive : ''}`}>Dashboard</Link>
-          {NAV_MODULES.map((module) => (
+          {NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id)).map((module) => (
             <Link
               key={module.id}
               href={module.href}

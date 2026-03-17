@@ -55,6 +55,8 @@ LOG_PATH = LOG_DIR / "api.log"
 SESSION_COOKIE = "usbshop_session"
 SESSION_TTL_SECONDS = 8 * 60 * 60
 AUTH_SECRET = os.getenv("USB_AUTH_SECRET")
+ROLE_ADMIN = "admin"
+ROLE_STAFF = "staff"
 DEFAULT_ORDER_DOC = os.getenv("USB_ORDER_DOCUMENT", "PEDIDO_WEB")
 DEFAULT_ORDER_SALE_MODE = os.getenv("USB_ORDER_SALE_MODE", "ONLINE")
 DEFAULT_ORDER_EXTERNAL_REF = os.getenv("USB_ORDER_EXTERNAL_REF", "WEB-PENDIENTE")
@@ -454,10 +456,19 @@ def _verify_session(token: str) -> Optional[dict]:
     return payload
 
 
-def _require_admin(session_token: Optional[str]) -> None:
+def _require_roles(session_token: Optional[str], allowed_roles: set[str]) -> dict:
     payload = _verify_session(session_token or "")
-    if not payload or payload.get("role") != "admin":
+    if not payload or str(payload.get("role") or "").strip().lower() not in allowed_roles:
         raise HTTPException(status_code=401, detail="No autorizado")
+    return payload
+
+
+def _require_admin(session_token: Optional[str]) -> dict:
+    return _require_roles(session_token, {ROLE_ADMIN, ROLE_STAFF})
+
+
+def _require_full_admin(session_token: Optional[str]) -> dict:
+    return _require_roles(session_token, {ROLE_ADMIN})
 
 
 def _ensure_users_table(conn: DBConn) -> None:
@@ -491,9 +502,9 @@ def _ensure_users_table(conn: DBConn) -> None:
     conn.commit()
 
 
-def _ensure_bootstrap_admin(conn: DBConn) -> None:
-    username = (os.getenv("USB_ADMIN_USERNAME") or "").strip()
-    password = os.getenv("USB_ADMIN_PASSWORD") or ""
+def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, role: str) -> None:
+    username = (os.getenv(username_env) or "").strip()
+    password = os.getenv(password_env) or ""
     if not username or not password:
         return
     password_hash = _hash_password(password)
@@ -507,7 +518,7 @@ def _ensure_bootstrap_admin(conn: DBConn) -> None:
             INSERT INTO users (username, password_hash, role, active)
             VALUES (?, ?, ?, 1)
             """,
-            (username, password_hash, "admin"),
+            (username, password_hash, role),
         )
     else:
         conn.execute(
@@ -516,9 +527,14 @@ def _ensure_bootstrap_admin(conn: DBConn) -> None:
             SET password_hash = ?, role = ?, active = 1
             WHERE username = ?
             """,
-            (password_hash, "admin", username),
+            (password_hash, role, username),
         )
     conn.commit()
+
+
+def _ensure_bootstrap_admin(conn: DBConn) -> None:
+    _ensure_bootstrap_user(conn, "USB_ADMIN_USERNAME", "USB_ADMIN_PASSWORD", ROLE_ADMIN)
+    _ensure_bootstrap_user(conn, "USB_STAFF_USERNAME", "USB_STAFF_PASSWORD", ROLE_STAFF)
 
 
 def _pick_price(row: Any) -> float:
@@ -4321,7 +4337,7 @@ def admin_reports_overview(
     request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
-    _require_admin(session_token)
+    session_payload = _require_admin(session_token)
     conn = _connect()
     try:
         products = conn.execute(
@@ -4760,7 +4776,7 @@ def admin_reports_overview(
                 }
             )
 
-        return {
+        response = {
             "summary": {
                 "products": len(products),
                 "active_customers": len(customer_names),
@@ -4825,6 +4841,37 @@ def admin_reports_overview(
                 "recent_window_months": len(recent_complete_months) if recent_complete_months else max(current_month - 1, 0),
             },
         }
+        if str(session_payload.get("role") or "").strip().lower() == ROLE_STAFF:
+            return {
+                "summary": {
+                    "products": len(products),
+                    "active_customers": len(customer_names),
+                    "stock_units": total_stock_units,
+                    "stock_value_cost": None,
+                    "stock_value_sale": None,
+                    "sales_count": len(invoices),
+                    "sales_total": None,
+                    "estimated_margin": None,
+                    "operating_result": None,
+                    "cc_open_balance": round(sum(customer_balance_map.values()), 2),
+                    "cash_on_hand": None,
+                    "account_movements": len(cc_rows),
+                    "debtors": len([balance for balance in customer_balance_map.values() if balance > 0]),
+                    "latest_invoice_at": invoices[-1]["created_at"] if invoices else None,
+                },
+                "monthly_sales": [],
+                "monthly_sales_all": [],
+                "top_products": [],
+                "top_customers": [],
+                "sales_by_category": [],
+                "sales_by_seller": [],
+                "top_debtors": top_debtors,
+                "low_stock": low_stock,
+                "current_year_detail": None,
+                "annual_history": [],
+                "year_projection": None,
+            }
+        return response
     finally:
         conn.close()
 
@@ -4834,7 +4881,7 @@ def admin_reports_daily(
     report_date: Optional[str] = None,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
-    _require_admin(session_token)
+    _require_full_admin(session_token)
     target_date = datetime.utcnow().date()
     if report_date:
         try:

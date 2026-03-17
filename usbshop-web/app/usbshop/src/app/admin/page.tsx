@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ADMIN_MODULES } from './adminModules';
+import { canAccessAdminModule, canViewFinancialModules } from './adminPermissions';
 import styles from './dashboard.module.css';
 
 type Summary = {
@@ -115,6 +116,11 @@ export default function AdminDashboard() {
     [summary]
   );
 
+  const visibleSections = useMemo(
+    () => sections.filter((section) => canAccessAdminModule(user?.role, section.id)),
+    [sections, user?.role]
+  );
+
   return (
     <div className={styles.dashboard}>
       <div className={styles.header}>
@@ -149,16 +155,24 @@ export default function AdminDashboard() {
             <strong>{integer(summary.active_customers)}</strong>
             <p>{integer(summary.account_movements)} movimientos de cuenta corriente</p>
           </article>
-          <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
-            <span>Balance comercial</span>
-            <strong>{money(summary.estimated_margin)}</strong>
-            <p>Margen estimado sobre ventas por {money(summary.sales_total)}</p>
-          </article>
+          {canViewFinancialModules(user?.role) ? (
+            <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
+              <span>Balance comercial</span>
+              <strong>{money(summary.estimated_margin)}</strong>
+              <p>Margen estimado sobre ventas por {money(summary.sales_total)}</p>
+            </article>
+          ) : (
+            <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
+              <span>Stock operativo</span>
+              <strong>{integer(summary.stock_units)}</strong>
+              <p>Unidades disponibles para la operación diaria.</p>
+            </article>
+          )}
         </section>
       ) : null}
 
       <div className={styles.statsGrid}>
-        {sections.map((section) => (
+        {visibleSections.map((section) => (
           <a key={section.href} href={section.href} className={styles.statCard}>
             <div className={styles.statContent}>
               <span className={styles.statEyebrow}>Panel</span>
