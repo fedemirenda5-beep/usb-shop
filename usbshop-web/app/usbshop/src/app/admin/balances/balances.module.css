@@ -45,7 +45,7 @@
 
 .topGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.3fr) repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -99,6 +99,18 @@
   color: var(--ink);
   font-size: 24px;
   line-height: 1.08;
+}
+
+.cashInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  font-size: 20px;
 }
 
 .subGrid {

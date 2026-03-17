@@ -7,7 +7,12 @@ import styles from './balances.module.css';
 type Summary = {
   stock_value_cost: number;
   estimated_margin: number;
+  purchases_total: number;
+  expenses_total: number;
+  commissions_total: number;
+  operating_result: number;
   cc_open_balance: number;
+  cash_on_hand: number;
   latest_invoice_at?: string | null;
 };
 
@@ -27,6 +32,11 @@ type CurrentYearDetail = {
   capital_total: number;
   sales_total: number;
   margin_total: number;
+  purchases_total: number;
+  expenses_total: number;
+  commissions_total: number;
+  operating_result_total: number;
+  cash_on_hand: number;
   months: CurrentYearMonth[];
 };
 
@@ -34,8 +44,13 @@ type AnnualHistoryEntry = {
   year: number;
   sales: number;
   margin: number;
+  purchases: number;
+  expenses: number;
+  commissions: number;
+  operating_result: number;
   invoice_count: number;
   cc_balance_end: number;
+  cash_balance_end: number;
   capital_total: number;
   sales_growth_pct?: number | null;
   capital_growth_pct?: number | null;
@@ -69,6 +84,7 @@ export default function BalancesPage() {
   const [currentYear, setCurrentYear] = useState<CurrentYearDetail | null>(null);
   const [annualHistory, setAnnualHistory] = useState<AnnualHistoryEntry[]>([]);
   const [error, setError] = useState('');
+  const [cashBalanceInput, setCashBalanceInput] = useState('0');
 
   useEffect(() => {
     const load = async () => {
@@ -97,6 +113,17 @@ export default function BalancesPage() {
     [annualHistory]
   );
 
+  const manualCashBalance = useMemo(() => {
+    const normalized = cashBalanceInput.replace(',', '.').trim();
+    const parsed = Number(normalized || '0');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [cashBalanceInput]);
+
+  const currentCapitalTotal = useMemo(() => {
+    if (!summary) return 0;
+    return summary.stock_value_cost + summary.cc_open_balance + manualCashBalance;
+  }, [manualCashBalance, summary]);
+
   return (
     <div className={styles.page}>
       <section className={styles.header}>
@@ -122,8 +149,8 @@ export default function BalancesPage() {
             <div className={styles.topGrid}>
               <article className={styles.heroCard}>
                 <span>Capital total de la empresa</span>
-                <strong>{money(currentYear.capital_total)}</strong>
-                <p>Stock a costo + cuenta corriente abierta + ganancia acumulada.</p>
+                <strong>{money(currentCapitalTotal)}</strong>
+                <p>Valorización de stock + cuentas corrientes + dinero en caja.</p>
               </article>
               <article className={styles.statCard}>
                 <span>Venta total anual</span>
@@ -131,9 +158,20 @@ export default function BalancesPage() {
                 <p>Facturado acumulado en {currentYear.year}.</p>
               </article>
               <article className={styles.statCard}>
-                <span>Ganancia anual</span>
-                <strong>{money(currentYear.margin_total)}</strong>
-                <p>Margen estimado acumulado en {currentYear.year}.</p>
+                <span>Resultado operativo</span>
+                <strong>{money(currentYear.operating_result_total)}</strong>
+                <p>Ganancia bruta menos gastos y comisiones.</p>
+              </article>
+              <article className={styles.statCard}>
+                <span>Saldo de caja</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={cashBalanceInput}
+                  onChange={(event) => setCashBalanceInput(event.target.value)}
+                  className={styles.cashInput}
+                />
+                <p>Cargá manualmente el efectivo real que tenés en caja.</p>
               </article>
               <article className={styles.statCard}>
                 <span>Cuenta corriente abierta</span>
@@ -212,7 +250,7 @@ export default function BalancesPage() {
                 <div className={styles.panelHeader}>
                   <div>
                     <h3>Lectura rápida</h3>
-                    <p>Componentes actuales del capital en curso.</p>
+                    <p>Capital actual y resultado del período separados correctamente.</p>
                   </div>
                 </div>
 
@@ -226,12 +264,35 @@ export default function BalancesPage() {
                     <strong>{money(summary.cc_open_balance)}</strong>
                   </div>
                   <div className={styles.breakdownRow}>
-                    <span>Ganancia acumulada actual</span>
-                    <strong>{money(summary.estimated_margin)}</strong>
+                    <span>Saldo de caja manual</span>
+                    <strong>{money(manualCashBalance)}</strong>
                   </div>
                   <div className={`${styles.breakdownRow} ${styles.breakdownTotal}`}>
                     <span>Total actual</span>
-                    <strong>{money(currentYear.capital_total)}</strong>
+                    <strong>{money(currentCapitalTotal)}</strong>
+                  </div>
+                </div>
+
+                <div className={styles.breakdownList}>
+                  <div className={styles.breakdownRow}>
+                    <span>Ganancia bruta estimada</span>
+                    <strong>{money(currentYear.margin_total)}</strong>
+                  </div>
+                  <div className={styles.breakdownRow}>
+                    <span>Gastos del año</span>
+                    <strong>{money(currentYear.expenses_total)}</strong>
+                  </div>
+                  <div className={styles.breakdownRow}>
+                    <span>Comisiones del año</span>
+                    <strong>{money(currentYear.commissions_total)}</strong>
+                  </div>
+                  <div className={styles.breakdownRow}>
+                    <span>Compras del año</span>
+                    <strong>{money(currentYear.purchases_total)}</strong>
+                  </div>
+                  <div className={`${styles.breakdownRow} ${styles.breakdownTotal}`}>
+                    <span>Resultado operativo</span>
+                    <strong>{money(currentYear.operating_result_total)}</strong>
                   </div>
                 </div>
               </article>
@@ -248,7 +309,7 @@ export default function BalancesPage() {
             </div>
 
             <div className={styles.note}>
-              El capital de cierre historico se muestra como estimacion contable usando stock actual, cuenta corriente al cierre de cada año y ganancia acumulada hasta ese momento.
+              Las compras se informan como inversión y reposición de stock, no como gasto del período mientras sigan en stock. El capital histórico sigue siendo estimado porque no reconstruimos stock por fecha.
             </div>
 
             <div className={styles.tableWrap}>
@@ -257,27 +318,31 @@ export default function BalancesPage() {
                   <tr>
                     <th>Año</th>
                     <th>Vendí</th>
-                    <th>Gané</th>
+                    <th>Gan. bruta</th>
+                    <th>Compré</th>
+                    <th>Gasté</th>
+                    <th>Comisiones</th>
+                    <th>Resultado operativo</th>
                     <th>Cuenta corriente cierre</th>
                     <th>Capital total cierre</th>
-                    <th>Crec. ventas</th>
                     <th>Crec. capital</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previousYears.length === 0 ? (
-                    <tr><td colSpan={7}>No hay balances anuales previos disponibles.</td></tr>
+                    <tr><td colSpan={10}>No hay balances anuales previos disponibles.</td></tr>
                   ) : (
                     previousYears.map((item) => (
                       <tr key={item.year}>
                         <td>{item.year}</td>
                         <td>{money(item.sales)}</td>
                         <td>{money(item.margin)}</td>
+                        <td>{money(item.purchases)}</td>
+                        <td>{money(item.expenses)}</td>
+                        <td>{money(item.commissions)}</td>
+                        <td>{money(item.operating_result)}</td>
                         <td>{money(item.cc_balance_end)}</td>
                         <td>{money(item.capital_total)}</td>
-                        <td className={(item.sales_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
-                          {formatPercent(item.sales_growth_pct)}
-                        </td>
                         <td className={(item.capital_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                           {formatPercent(item.capital_growth_pct)}
                         </td>

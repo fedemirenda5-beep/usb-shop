@@ -111,6 +111,14 @@ class DBConn:
         self._conn.close()
 
 
+def _scalar_number(row: Any, key: str = "total") -> float:
+    if row is None:
+        return 0.0
+    if isinstance(row, dict):
+        return float(row.get(key) or 0)
+    return float(row[0] or 0)
+
+
 def _effective_db_path() -> Path:
     if DB_IS_POSTGRES:
         return DB_PATH
@@ -1100,6 +1108,50 @@ def _customer_current_balance_from_rows(rows: list[Any]) -> float:
     return round(balance, 2)
 
 
+def _row_get(row: Any, key: str, default: Any = None) -> Any:
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
+def _movement_entry_kind(row: Any) -> str:
+    raw_kind = str(_row_get(row, "entry_kind") or "").strip().upper()
+    if raw_kind in {"SALE", "PAYMENT", "CREDIT_NOTE", "ADJUSTMENT", "OPENING_BALANCE", "WRITEOFF"}:
+        return raw_kind
+    movement_type = str(_row_get(row, "movement_type") or "").strip().upper()
+    invoice_id = _row_get(row, "invoice_id")
+    reference = str(_row_get(row, "reference") or _row_get(row, "description") or "").strip().lower()
+    document_type = str(_row_get(row, "document_type") or "").strip().upper()
+    payment_method = str(_row_get(row, "payment_method") or "").strip().lower()
+    if movement_type == "DEBIT":
+        if invoice_id not in (None, "", 0, "0"):
+            return "SALE"
+        if any(token in reference for token in ("saldo inicial", "saldo previo", "deuda previa", "historica")):
+            return "OPENING_BALANCE"
+        return "ADJUSTMENT"
+    if document_type == "NOTA_CREDITO" or "nota de credito" in reference or "nota credito" in reference:
+        return "CREDIT_NOTE"
+    if any(token in reference for token in ("incobrable", "castigo", "writeoff")):
+        return "WRITEOFF"
+    if "ajuste" in reference or "ajuste" in payment_method:
+        return "ADJUSTMENT"
+    return "PAYMENT"
+
+
+def _movement_entry_label(entry_kind: str) -> str:
+    return {
+        "SALE": "Venta",
+        "PAYMENT": "Cobranza",
+        "CREDIT_NOTE": "Nota de credito",
+        "ADJUSTMENT": "Ajuste",
+        "OPENING_BALANCE": "Saldo inicial",
+        "WRITEOFF": "Incobrable",
+    }.get(entry_kind, "Movimiento")
+
+
 def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, Any]:
     debits: list[dict[str, Any]] = []
     credits: list[dict[str, Any]] = []
@@ -1109,19 +1161,22 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
         created_at = _safe_parse_datetime(row["created_at"] if isinstance(row, dict) else row["created_at"])
         due_at_raw = row.get("due_date") if isinstance(row, dict) else None
         due_at = _safe_parse_datetime(due_at_raw) if due_at_raw else None
+        entry_kind = _movement_entry_kind(row)
         payload = {
             "id": int(row["id"] if isinstance(row, dict) else row["id"]),
             "amount": amount,
             "remaining": amount,
+            "applied": 0.0,
             "created_at": created_at,
             "due_date": due_at or ((created_at or datetime.utcnow()) + timedelta(days=terms_days)),
-            "reference": row["reference"] if isinstance(row, dict) else row.get("reference"),
-            "invoice_id": row["invoice_id"] if isinstance(row, dict) else row.get("invoice_id"),
+            "reference": row["reference"] if isinstance(row, dict) else row["reference"],
+            "invoice_id": row["invoice_id"] if isinstance(row, dict) else row["invoice_id"],
+            "entry_kind": entry_kind,
         }
         if movement_type == "DEBIT":
             debits.append(payload)
         else:
-            credits.append(payload)
+            credits.append({**payload, "entry_kind": entry_kind})
 
     debits.sort(key=lambda item: (item["due_date"] or datetime.utcnow(), item["id"]))
     for credit in credits:
@@ -1134,12 +1189,27 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
                 continue
             consumed = min(available, remaining_credit)
             debit["remaining"] = round(available - consumed, 2)
+            debit["applied"] = round(float(debit["applied"] or 0) + consumed, 2)
             remaining_credit = round(remaining_credit - consumed, 2)
 
     today = datetime.utcnow().date()
     buckets = {"current": 0.0, "d1_30": 0.0, "d31_60": 0.0, "d61_90": 0.0, "d90_plus": 0.0}
+    classification = {
+        "pending": 0.0,
+        "overdue": 0.0,
+        "collected": 0.0,
+        "payments": 0.0,
+        "credit_notes": 0.0,
+        "writeoffs": 0.0,
+        "adjustments": 0.0,
+        "opening_balance": 0.0,
+    }
     open_items: list[dict[str, Any]] = []
     for debit in debits:
+        if debit["entry_kind"] == "OPENING_BALANCE":
+            classification["opening_balance"] += float(debit["amount"] or 0)
+        elif debit["entry_kind"] == "ADJUSTMENT":
+            classification["adjustments"] += float(debit["amount"] or 0)
         remaining = float(debit["remaining"] or 0)
         if remaining <= 0:
             continue
@@ -1156,17 +1226,35 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
         else:
             bucket = "d90_plus"
         buckets[bucket] += remaining
+        classification["pending"] += remaining
+        if overdue_days > 0:
+            classification["overdue"] += remaining
         open_items.append(
             {
+                "id": debit["id"],
                 "invoice_id": debit["invoice_id"],
                 "reference": debit["reference"],
                 "remaining": round(remaining, 2),
                 "due_date": due_date.isoformat(),
                 "bucket": bucket,
+                "entry_kind": debit["entry_kind"],
+                "entry_label": _movement_entry_label(debit["entry_kind"]),
+                "status_label": "Vencido" if overdue_days > 0 else "Pendiente",
             }
         )
+    for credit in credits:
+        if credit["entry_kind"] == "PAYMENT":
+            classification["payments"] += float(credit["amount"] or 0)
+            classification["collected"] += float(credit["amount"] or 0)
+        elif credit["entry_kind"] == "CREDIT_NOTE":
+            classification["credit_notes"] += float(credit["amount"] or 0)
+        elif credit["entry_kind"] == "WRITEOFF":
+            classification["writeoffs"] += float(credit["amount"] or 0)
+        elif credit["entry_kind"] == "ADJUSTMENT":
+            classification["adjustments"] -= float(credit["amount"] or 0)
     return {
         **{key: round(value, 2) for key, value in buckets.items()},
+        "classification": {key: round(value, 2) for key, value in classification.items()},
         "open_items": open_items,
         "total": round(sum(buckets.values()), 2),
     }
@@ -1356,6 +1444,7 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("invoice_id", "INTEGER", "INTEGER"),
         ("amount", "REAL", "NUMERIC(12, 2)"),
         ("movement_type", "TEXT", "TEXT"),
+        ("entry_kind", "TEXT", "TEXT"),
         ("reference", "TEXT", "TEXT"),
         ("created_at", "TEXT", "TIMESTAMP"),
         ("payment_method", "TEXT", "TEXT"),
@@ -3402,9 +3491,11 @@ def admin_cc_overview(
         ).fetchall()
         movement_rows = conn.execute(
             """
-            SELECT id, customer_id, amount, movement_type, reference, invoice_id, created_at, payment_method
-            FROM account_movements
-            ORDER BY created_at ASC, id ASC
+            SELECT am.id, am.customer_id, am.amount, am.movement_type, am.entry_kind, am.reference,
+                   am.invoice_id, am.created_at, am.payment_method, i.due_date, i.document_type
+            FROM account_movements am
+            LEFT JOIN invoices i ON i.id = am.invoice_id
+            ORDER BY am.created_at ASC, am.id ASC
             """
         ).fetchall()
         movements_by_customer: dict[int, list[Any]] = {}
@@ -3415,6 +3506,12 @@ def admin_cc_overview(
         total_debit = 0.0
         total_credit = 0.0
         total_balance = 0.0
+        total_pending = 0.0
+        total_overdue = 0.0
+        total_collected = 0.0
+        total_credit_notes = 0.0
+        total_writeoffs = 0.0
+        total_adjustments = 0.0
         for row in customer_rows:
             customer_id = int(row["id"])
             customer_movements = movements_by_customer.get(customer_id, [])
@@ -3432,9 +3529,16 @@ def admin_cc_overview(
             )
             balance = round(debit - credit, 2)
             aging = _aging_from_movements(customer_movements)
+            classification = aging.get("classification", {})
             total_debit += debit
             total_credit += credit
             total_balance += balance
+            total_pending += float(classification.get("pending") or 0)
+            total_overdue += float(classification.get("overdue") or 0)
+            total_collected += float(classification.get("collected") or 0)
+            total_credit_notes += float(classification.get("credit_notes") or 0)
+            total_writeoffs += float(classification.get("writeoffs") or 0)
+            total_adjustments += float(classification.get("adjustments") or 0)
             last_movement = customer_movements[-1]["created_at"] if customer_movements else None
             customers.append(
                 {
@@ -3451,6 +3555,7 @@ def admin_cc_overview(
                     "credit": round(credit, 2),
                     "balance": balance,
                     "aging": aging,
+                    "classification": classification,
                     "last_movement": last_movement,
                 }
             )
@@ -3462,6 +3567,12 @@ def admin_cc_overview(
                 "debit": round(total_debit, 2),
                 "credit": round(total_credit, 2),
                 "balance": round(total_balance, 2),
+                "pending": round(total_pending, 2),
+                "overdue": round(total_overdue, 2),
+                "collected": round(total_collected, 2),
+                "credit_notes": round(total_credit_notes, 2),
+                "writeoffs": round(total_writeoffs, 2),
+                "adjustments": round(total_adjustments, 2),
             },
         }
     finally:
@@ -3491,7 +3602,7 @@ def admin_cc_customer_detail(
         movements = conn.execute(
             """
             SELECT am.id, am.customer_id, am.amount, am.movement_type, am.reference, am.invoice_id,
-                   am.created_at, am.payment_method, i.document_type, i.total, i.due_date
+                   am.entry_kind, am.created_at, am.payment_method, i.document_type, i.total, i.due_date
             FROM account_movements am
             LEFT JOIN invoices i ON i.id = am.invoice_id
             WHERE am.customer_id = ?
@@ -3499,6 +3610,12 @@ def admin_cc_customer_detail(
             """,
             (customer_id,),
         ).fetchall()
+        aging = _aging_from_movements(movements)
+        open_items_by_id = {
+            int(item["id"]): item
+            for item in aging.get("open_items", [])
+            if item.get("id") is not None
+        }
         serialized = []
         running_balance = 0.0
         for row in movements:
@@ -3506,10 +3623,25 @@ def admin_cc_customer_detail(
             amount = float(row["amount"] or 0)
             signed = amount if movement_type == "DEBIT" else -amount
             running_balance = round(running_balance + signed, 2)
+            entry_kind = _movement_entry_kind(row)
+            remaining = None
+            status_label = None
+            if movement_type == "DEBIT":
+                open_item = open_items_by_id.get(int(row["id"]))
+                if open_item is not None:
+                    remaining = float(open_item["remaining"] or 0)
+                    status_label = str(open_item["status_label"] or "").strip() or "Pendiente"
+                else:
+                    remaining = 0.0
+                    status_label = "Cobrado"
+            else:
+                status_label = _movement_entry_label(entry_kind)
             serialized.append(
                 {
                     "id": int(row["id"]),
                     "movement_type": movement_type,
+                    "entry_kind": entry_kind,
+                    "entry_label": _movement_entry_label(entry_kind),
                     "amount": amount,
                     "signed_amount": signed,
                     "reference": row["reference"],
@@ -3519,6 +3651,8 @@ def admin_cc_customer_detail(
                     "document_type": row["document_type"],
                     "invoice_total": float(row["total"] or 0) if row["total"] is not None else None,
                     "due_date": row["due_date"],
+                    "remaining_amount": remaining,
+                    "status_label": status_label,
                     "running_balance": running_balance,
                 }
             )
@@ -3535,7 +3669,8 @@ def admin_cc_customer_detail(
                 "cuit": customer["cuit"],
             },
             "balance": _customer_current_balance_from_rows(movements),
-            "aging": _aging_from_movements(movements),
+            "aging": aging,
+            "classification": aging.get("classification", {}),
             "movements": serialized,
         }
     finally:
@@ -3824,8 +3959,8 @@ def admin_create_invoice(
             conn.execute(
                 """
                 INSERT INTO account_movements (
-                    customer_id, invoice_id, amount, movement_type, reference, created_at, payment_method
-                ) VALUES (?, ?, ?, 'DEBIT', ?, ?, ?)
+                    customer_id, invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method
+                ) VALUES (?, ?, ?, 'DEBIT', 'SALE', ?, ?, ?)
                 """,
                 (
                     customer_id,
@@ -4093,11 +4228,22 @@ def admin_cc_create_movement(
     amount = round(float(payload.get("amount") or 0), 2)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Importe invalido")
+    entry_kind = str(payload.get("entry_kind") or "").strip().upper()
     invoice_id = payload.get("invoice_id")
     parsed_invoice_id = int(invoice_id) if invoice_id not in (None, "", 0, "0") else None
     created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
     reference = str(payload.get("reference") or "").strip() or None
     payment_method = str(payload.get("payment_method") or "").strip() or None
+    if movement_type == "DEBIT":
+        allowed_entry_kinds = {"ADJUSTMENT", "OPENING_BALANCE"}
+        if not entry_kind:
+            entry_kind = "ADJUSTMENT"
+    else:
+        allowed_entry_kinds = {"PAYMENT", "CREDIT_NOTE", "WRITEOFF", "ADJUSTMENT"}
+        if not entry_kind:
+            entry_kind = "PAYMENT"
+    if entry_kind not in allowed_entry_kinds:
+        raise HTTPException(status_code=400, detail="Concepto de movimiento invalido")
 
     conn = _connect()
     try:
@@ -4127,10 +4273,10 @@ def admin_cc_create_movement(
                 raise HTTPException(status_code=400, detail="El comprobante no pertenece al cliente")
         conn.execute(
             """
-            INSERT INTO account_movements (customer_id, invoice_id, amount, movement_type, reference, created_at, payment_method)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO account_movements (customer_id, invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (customer_id, parsed_invoice_id, amount, movement_type, reference, created_at, payment_method),
+            (customer_id, parsed_invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method),
         )
         conn.commit()
         balance_row = conn.execute(
@@ -4194,6 +4340,28 @@ def admin_reports_overview(
             ORDER BY created_at ASC, id ASC
             """
         ).fetchall()
+        purchase_rows = (
+            conn.execute(
+                """
+                SELECT total, created_at
+                FROM purchases
+                ORDER BY created_at ASC, id ASC
+                """
+            ).fetchall()
+            if _has_table(conn, "purchases")
+            else []
+        )
+        expense_rows = (
+            conn.execute(
+                """
+                SELECT amount, created_at
+                FROM expenses
+                ORDER BY created_at ASC, id ASC
+                """
+            ).fetchall()
+            if _has_table(conn, "expenses")
+            else []
+        )
 
         total_stock_units = sum(int(row["stock"] or 0) for row in products)
         cost_by_product = {int(row["id"]): float(row["cost"] or 0) for row in products}
@@ -4310,6 +4478,37 @@ def admin_reports_overview(
             amount = float(row["amount"] or 0)
             signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
             customer_balance_map[customer_id] = round(customer_balance_map.get(customer_id, 0.0) + signed, 2)
+
+        cash_events: list[tuple[datetime, float]] = []
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            sale_mode = str(row["sale_mode"] or "").strip().upper()
+            if sale_mode != "CUENTA_CORRIENTE":
+                cash_events.append((created, round(float(row["total"] or 0), 2)))
+        for row in cc_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            if str(row["movement_type"] or "").strip().upper() == "CREDIT":
+                cash_events.append((created, round(float(row["amount"] or 0), 2)))
+        for row in purchase_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            cash_events.append((created, -round(float(row["total"] or 0), 2)))
+        for row in expense_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            cash_events.append((created, -round(float(row["amount"] or 0), 2)))
+        cash_events.sort(key=lambda item: item[0])
+        cash_on_hand = 0.0
+        cash_balance_end_by_year: dict[int, float] = {}
+        for created, amount in cash_events:
+            cash_on_hand = round(cash_on_hand + amount, 2)
+            cash_balance_end_by_year[created.year] = cash_on_hand
         customer_names = {
             int(row["id"]): row["name"]
             for row in conn.execute("SELECT id, name FROM customers WHERE deleted_at IS NULL").fetchall()
@@ -4370,16 +4569,58 @@ def admin_reports_overview(
             ),
             2,
         )
+        total_purchases = round(sum(float(row["total"] or 0) for row in purchase_rows), 2)
+        total_expenses = round(sum(float(row["amount"] or 0) for row in expense_rows), 2)
+        total_commissions = round(sum(float(row["commission_amount"] or 0) for row in invoices), 2)
+        operating_result = round(total_margin - total_expenses - total_commissions, 2)
         yearly_map: dict[int, dict[str, Any]] = {}
         for item in monthly_sales_all:
             try:
                 year = int(str(item["month"]).split("-")[0])
             except Exception:
                 continue
-            entry = yearly_map.setdefault(year, {"year": year, "sales": 0.0, "margin": 0.0, "count": 0})
+            entry = yearly_map.setdefault(
+                year,
+                {
+                    "year": year,
+                    "sales": 0.0,
+                    "margin": 0.0,
+                    "count": 0,
+                    "purchases": 0.0,
+                    "expenses": 0.0,
+                    "commissions": 0.0,
+                },
+            )
             entry["sales"] += float(item["sales"] or 0)
             entry["margin"] += float(item["margin"] or 0)
             entry["count"] += int(item["count"] or 0)
+        for row in purchase_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            entry = yearly_map.setdefault(
+                created.year,
+                {"year": created.year, "sales": 0.0, "margin": 0.0, "count": 0, "purchases": 0.0, "expenses": 0.0, "commissions": 0.0},
+            )
+            entry["purchases"] += float(row["total"] or 0)
+        for row in expense_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            entry = yearly_map.setdefault(
+                created.year,
+                {"year": created.year, "sales": 0.0, "margin": 0.0, "count": 0, "purchases": 0.0, "expenses": 0.0, "commissions": 0.0},
+            )
+            entry["expenses"] += float(row["amount"] or 0)
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            entry = yearly_map.setdefault(
+                created.year,
+                {"year": created.year, "sales": 0.0, "margin": 0.0, "count": 0, "purchases": 0.0, "expenses": 0.0, "commissions": 0.0},
+            )
+            entry["commissions"] += float(row["commission_amount"] or 0)
 
         now_dt = datetime.utcnow()
         current_year = now_dt.year
@@ -4425,15 +4666,18 @@ def admin_reports_overview(
             year_end_cc_balance[created.year] = running_cc_balance
 
         annual_history: list[dict[str, Any]] = []
-        cumulative_margin = 0.0
         previous_year_sales_value = 0.0
         previous_year_capital_value = 0.0
         for year in sorted(yearly_map.keys()):
             payload = yearly_map[year]
-            cumulative_margin = round(cumulative_margin + float(payload["margin"] or 0), 2)
             cc_balance_end = round(float(year_end_cc_balance.get(year, 0.0)), 2)
-            capital_total = round(stock_value_cost + cumulative_margin + cc_balance_end, 2)
+            cash_balance_end = round(float(cash_balance_end_by_year.get(year, 0.0)), 2)
+            capital_total = round(stock_value_cost + cc_balance_end + cash_balance_end, 2)
             sales_value = round(float(payload["sales"] or 0), 2)
+            expenses_value = round(float(payload["expenses"] or 0), 2)
+            purchases_value = round(float(payload["purchases"] or 0), 2)
+            commissions_value = round(float(payload["commissions"] or 0), 2)
+            operating_result_value = round(float(payload["margin"] or 0) - expenses_value - commissions_value, 2)
             sales_growth_pct = (
                 round(((sales_value - previous_year_sales_value) / previous_year_sales_value) * 100, 2)
                 if previous_year_sales_value > 0
@@ -4449,8 +4693,13 @@ def admin_reports_overview(
                     "year": year,
                     "sales": sales_value,
                     "margin": round(float(payload["margin"] or 0), 2),
+                    "purchases": purchases_value,
+                    "expenses": expenses_value,
+                    "commissions": commissions_value,
+                    "operating_result": operating_result_value,
                     "invoice_count": int(payload["count"] or 0),
                     "cc_balance_end": cc_balance_end,
+                    "cash_balance_end": cash_balance_end,
                     "capital_total": capital_total,
                     "sales_growth_pct": sales_growth_pct,
                     "capital_growth_pct": capital_growth_pct,
@@ -4503,7 +4752,12 @@ def admin_reports_overview(
                 "sales_count": len(invoices),
                 "sales_total": total_sales,
                 "estimated_margin": total_margin,
+                "purchases_total": total_purchases,
+                "expenses_total": total_expenses,
+                "commissions_total": total_commissions,
+                "operating_result": operating_result,
                 "cc_open_balance": round(sum(customer_balance_map.values()), 2),
+                "cash_on_hand": cash_on_hand,
                 "account_movements": len(cc_rows),
                 "debtors": len([balance for balance in customer_balance_map.values() if balance > 0]),
                 "latest_invoice_at": invoices[-1]["created_at"] if invoices else None,
@@ -4518,9 +4772,28 @@ def admin_reports_overview(
             "low_stock": low_stock,
             "current_year_detail": {
                 "year": current_year,
-                "capital_total": round(stock_value_cost + round(sum(customer_balance_map.values()), 2) + total_margin, 2),
+                "capital_total": round(stock_value_cost + round(sum(customer_balance_map.values()), 2) + cash_on_hand, 2),
                 "sales_total": current_ytd_sales,
                 "margin_total": round(sum(float(item["margin"] or 0) for item in current_year_months), 2),
+                "purchases_total": round(
+                    sum(float(row["total"] or 0) for row in purchase_rows if (_safe_parse_datetime(row["created_at"]) or now_dt).year == current_year),
+                    2,
+                ),
+                "expenses_total": round(
+                    sum(float(row["amount"] or 0) for row in expense_rows if (_safe_parse_datetime(row["created_at"]) or now_dt).year == current_year),
+                    2,
+                ),
+                "commissions_total": round(
+                    sum(float(row["commission_amount"] or 0) for row in invoices if (_safe_parse_datetime(row["created_at"]) or now_dt).year == current_year),
+                    2,
+                ),
+                "operating_result_total": round(
+                    sum(float(item["margin"] or 0) for item in current_year_months)
+                    - sum(float(row["amount"] or 0) for row in expense_rows if (_safe_parse_datetime(row["created_at"]) or now_dt).year == current_year)
+                    - sum(float(row["commission_amount"] or 0) for row in invoices if (_safe_parse_datetime(row["created_at"]) or now_dt).year == current_year),
+                    2,
+                ),
+                "cash_on_hand": cash_on_hand,
                 "months": current_year_comparison,
             },
             "annual_history": annual_history,

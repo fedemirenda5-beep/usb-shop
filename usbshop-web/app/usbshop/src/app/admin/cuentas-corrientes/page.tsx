@@ -11,6 +11,16 @@ type Aging = {
   d61_90: number;
   d90_plus: number;
   total: number;
+  classification?: {
+    pending: number;
+    overdue: number;
+    collected: number;
+    payments: number;
+    credit_notes: number;
+    writeoffs: number;
+    adjustments: number;
+    opening_balance: number;
+  };
 };
 
 type CustomerOverview = {
@@ -27,12 +37,15 @@ type CustomerOverview = {
   credit?: number;
   balance: number;
   aging: Aging;
+  classification?: Aging['classification'];
   last_movement?: string | null;
 };
 
 type Movement = {
   id: number;
   movement_type: string;
+  entry_kind?: string | null;
+  entry_label?: string | null;
   amount: number;
   signed_amount: number;
   reference?: string | null;
@@ -41,6 +54,8 @@ type Movement = {
   payment_method?: string | null;
   document_type?: string | null;
   due_date?: string | null;
+  remaining_amount?: number | null;
+  status_label?: string | null;
   running_balance: number;
 };
 
@@ -58,6 +73,7 @@ type CustomerDetail = {
   };
   balance: number;
   aging: Aging;
+  classification?: Aging['classification'];
   movements: Movement[];
 };
 
@@ -90,14 +106,30 @@ export default function CuentasCorrientesPage() {
   const [error, setError] = useState('');
   const [legacyMode, setLegacyMode] = useState(false);
   const [search, setSearch] = useState('');
-  const [summary, setSummary] = useState({ customers: 0, debit: 0, credit: 0, balance: 0 });
+  const [summary, setSummary] = useState({
+    customers: 0,
+    debit: 0,
+    credit: 0,
+    balance: 0,
+    pending: 0,
+    overdue: 0,
+    collected: 0,
+    credit_notes: 0,
+    writeoffs: 0,
+    adjustments: 0,
+  });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [detailOnly, setDetailOnly] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDateRangeModal, setShowDateRangeModal] = useState(false);
+  const [outputMode, setOutputMode] = useState<'print' | 'pdf' | null>(null);
+  const [outputRange, setOutputRange] = useState<{ from: string; to: string } | null>(null);
+  const [dateRangeDraft, setDateRangeDraft] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [movementMode, setMovementMode] = useState<'payment' | 'debt'>('payment');
   const [form, setForm] = useState({
     movement_type: 'CREDIT',
+    entry_kind: 'PAYMENT',
     amount: '',
     payment_method: 'Transferencia',
     reference: '',
@@ -111,6 +143,16 @@ export default function CuentasCorrientesPage() {
     d61_90: 0,
     d90_plus: 0,
     total: 0,
+    classification: {
+      pending: 0,
+      overdue: 0,
+      collected: 0,
+      payments: 0,
+      credit_notes: 0,
+      writeoffs: 0,
+      adjustments: 0,
+      opening_balance: 0,
+    },
   });
 
   const mapLegacyCustomers = (rows: Array<Record<string, unknown>>) => {
@@ -128,6 +170,10 @@ export default function CuentasCorrientesPage() {
       credit: Number(row.balance || 0) < 0 ? Math.abs(Number(row.balance || 0)) : 0,
       balance: Number(row.balance || 0),
       aging: { ...emptyAging(), total: Number(row.balance || 0) },
+      classification: {
+        ...emptyAging().classification,
+        pending: Math.max(0, Number(row.balance || 0)),
+      },
       last_movement: typeof row.updated_at === 'string' ? row.updated_at : null,
     }));
     const debit = normalized.filter((item) => item.balance > 0).reduce((sum, item) => sum + item.balance, 0);
@@ -141,6 +187,12 @@ export default function CuentasCorrientesPage() {
         debit,
         credit,
         balance: normalized.reduce((sum, item) => sum + item.balance, 0),
+        pending: normalized.reduce((sum, item) => sum + Math.max(0, item.balance), 0),
+        overdue: 0,
+        collected: 0,
+        credit_notes: 0,
+        writeoffs: 0,
+        adjustments: 0,
       },
     };
   };
@@ -192,6 +244,10 @@ export default function CuentasCorrientesPage() {
       },
       balance,
       aging: { ...emptyAging(), total: balance },
+      classification: {
+        ...emptyAging().classification,
+        pending: Math.max(0, balance),
+      },
       movements,
     };
   };
@@ -204,7 +260,20 @@ export default function CuentasCorrientesPage() {
       const data = await res.json();
       setLegacyMode(false);
       setCustomers(data.customers || []);
-      setSummary(data.summary || { customers: 0, debit: 0, credit: 0, balance: 0 });
+      setSummary(
+        data.summary || {
+          customers: 0,
+          debit: 0,
+          credit: 0,
+          balance: 0,
+          pending: 0,
+          overdue: 0,
+          collected: 0,
+          credit_notes: 0,
+          writeoffs: 0,
+          adjustments: 0,
+        }
+      );
       if ((data.customers || []).length > 0) setSelectedId((current) => current ?? data.customers[0].id);
       return;
     }
@@ -302,6 +371,7 @@ export default function CuentasCorrientesPage() {
           }
         : {
             movement_type: form.movement_type,
+            entry_kind: form.entry_kind,
             amount: Number(form.amount || 0),
             payment_method: form.payment_method || null,
             reference: form.reference || null,
@@ -321,6 +391,7 @@ export default function CuentasCorrientesPage() {
         amount: '',
         reference: '',
         invoice_id: '',
+        entry_kind: movementMode === 'payment' ? 'PAYMENT' : 'ADJUSTMENT',
       }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando movimiento');
@@ -358,16 +429,67 @@ export default function CuentasCorrientesPage() {
     );
   }, [detail]);
 
+  const visibleMovements = useMemo(() => {
+    if (!detail) return [];
+    if (!outputRange?.from && !outputRange?.to) return detail.movements;
+    const fromTs = outputRange?.from ? new Date(`${outputRange.from}T00:00:00`).getTime() : null;
+    const toTs = outputRange?.to ? new Date(`${outputRange.to}T23:59:59`).getTime() : null;
+    return detail.movements.filter((movement) => {
+      if (!movement.created_at) return false;
+      const ts = new Date(movement.created_at).getTime();
+      if (Number.isNaN(ts)) return false;
+      if (fromTs !== null && ts < fromTs) return false;
+      if (toTs !== null && ts > toTs) return false;
+      return true;
+    });
+  }, [detail, outputRange]);
+
+  const visibleMovementSummary = useMemo(() => {
+    return visibleMovements.reduce(
+      (acc, movement) => {
+        if (movement.movement_type === 'DEBIT') acc.debits += movement.amount;
+        if (movement.movement_type === 'CREDIT') acc.credits += movement.amount;
+        acc.movements += 1;
+        return acc;
+      },
+      { debits: 0, credits: 0, movements: 0 }
+    );
+  }, [visibleMovements]);
+
+  const rangeLabel = useMemo(() => {
+    if (!outputRange?.from && !outputRange?.to) return 'Historial completo';
+    const from = outputRange?.from || 'Inicio';
+    const to = outputRange?.to || 'Hoy';
+    return `${from} a ${to}`;
+  }, [outputRange]);
+
   const setMode = (mode: 'payment' | 'debt') => {
     setMovementMode(mode);
     setForm((current) => ({
       ...current,
       movement_type: mode === 'payment' ? 'CREDIT' : 'DEBIT',
+      entry_kind: mode === 'payment' ? 'PAYMENT' : 'ADJUSTMENT',
       payment_method: mode === 'payment' ? current.payment_method || 'Transferencia' : '',
       invoice_id: mode === 'payment' ? current.invoice_id : '',
       reference: mode === 'payment' ? current.reference : current.reference || 'Faltante de pago / deuda historica',
     }));
   };
+
+  const movementConceptOptions = useMemo(
+    () =>
+      movementMode === 'payment'
+        ? [
+            { value: 'PAYMENT', label: 'Cobranza' },
+            { value: 'CREDIT_NOTE', label: 'Nota de credito' },
+            { value: 'WRITEOFF', label: 'Incobrable' },
+            { value: 'ADJUSTMENT', label: 'Ajuste a favor' },
+          ]
+        : [
+            { value: 'ADJUSTMENT', label: 'Ajuste de deuda' },
+            { value: 'OPENING_BALANCE', label: 'Saldo inicial' },
+          ],
+    [movementMode]
+  );
 
   const refreshAll = async () => {
     try {
@@ -384,17 +506,37 @@ export default function CuentasCorrientesPage() {
   const openCustomerDetail = (customerId: number) => {
     setSelectedId(customerId);
     setDetailOnly(true);
+    setOutputRange(null);
     window.requestAnimationFrame(() => {
       detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
 
-  const printDetail = () => {
-    window.print();
+  const closeDetailOnly = () => {
+    setDetailOnly(false);
+    setOutputRange(null);
   };
 
-  const exportPdf = () => {
-    window.print();
+  const requestOutput = (mode: 'print' | 'pdf') => {
+    if (!selectedId) return;
+    setOutputMode(mode);
+    setDateRangeDraft(outputRange || { from: '', to: '' });
+    setShowDateRangeModal(true);
+  };
+
+  const confirmOutput = async () => {
+    if (!selectedId) return;
+    try {
+      if (!detail || detail.customer.id !== selectedId) {
+        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
+      }
+      setOutputRange({ ...dateRangeDraft });
+      setDetailOnly(true);
+      setShowDateRangeModal(false);
+      window.setTimeout(() => window.print(), 180);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo preparar la exportación');
+    }
   };
 
   const deleteSelectedAccount = async () => {
@@ -440,23 +582,25 @@ export default function CuentasCorrientesPage() {
           <div className={styles.accountSummary}>
             <strong>
               {detail.customer.name} (#{detail.customer.id}) - Saldo: {money(detail.balance)} - Facturas:{' '}
-              {money(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} - Pagos: {money(movementSummary.credits)}
+              {money(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} - Cobrado:{' '}
+              {money(detailOnly ? visibleMovementSummary.credits : detail.classification?.payments || movementSummary.credits)}
             </strong>
             <span>
               {detail.customer.tax_condition || 'Sin condicion fiscal'} - {detail.customer.cuit || 'Sin CUIT/DNI'} -{' '}
               {detail.customer.address || detail.customer.locality || 'Sin domicilio'}
             </span>
+            {detailOnly ? <span>Período visible: {rangeLabel}</span> : null}
           </div>
           <div className={styles.accountActions}>
             {detailOnly ? (
               <>
-                <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
+                <button type="button" className={styles.secondaryButton} onClick={closeDetailOnly}>
                   Volver
                 </button>
-                <button type="button" className={styles.secondaryButton} onClick={printDetail}>
+                <button type="button" className={styles.secondaryButton} onClick={() => requestOutput('print')}>
                   Imprimir
                 </button>
-                <button type="button" className={styles.primaryButton} onClick={exportPdf}>
+                <button type="button" className={styles.primaryButton} onClick={() => requestOutput('pdf')}>
                   Exportar PDF
                 </button>
               </>
@@ -468,10 +612,10 @@ export default function CuentasCorrientesPage() {
                 <button type="button" className={styles.secondaryButton} onClick={() => setMode('debt')}>
                   Registrar deuda
                 </button>
-                <button type="button" className={styles.secondaryButton} onClick={printDetail}>
+                <button type="button" className={styles.secondaryButton} onClick={() => requestOutput('print')}>
                   Imprimir
                 </button>
-                <button type="button" className={styles.primaryButton} onClick={exportPdf}>
+                <button type="button" className={styles.primaryButton} onClick={() => requestOutput('pdf')}>
                   Exportar PDF
                 </button>
               </>
@@ -484,9 +628,11 @@ export default function CuentasCorrientesPage() {
             <div className={styles.desktopStats}>
               <article className={styles.statChip}><span>Contacto</span><strong>{detail.customer.phone || detail.customer.email || 'Sin dato'}</strong></article>
               <article className={styles.statChip}><span>Modo</span><strong>{detail.customer.sale_mode || 'Sin definir'}</strong></article>
-              <article className={styles.statChip}><span>Debe</span><strong>{money(selectedOverview?.debit || movementSummary.debits)}</strong></article>
-              <article className={styles.statChip}><span>Pagado</span><strong>{money(selectedOverview?.credit || movementSummary.credits)}</strong></article>
-              <article className={styles.statChip}><span>Vencido 90+</span><strong>{money(detail.aging.d90_plus)}</strong></article>
+              <article className={styles.statChip}><span>Pendiente</span><strong>{money(detail.classification?.pending || detail.balance)}</strong></article>
+              <article className={styles.statChip}><span>Vencido</span><strong>{money(detail.classification?.overdue || 0)}</strong></article>
+              <article className={styles.statChip}><span>Cobrado</span><strong>{money(detail.classification?.collected || 0)}</strong></article>
+              <article className={styles.statChip}><span>NC / Incobrable</span><strong>{money((detail.classification?.credit_notes || 0) + (detail.classification?.writeoffs || 0))}</strong></article>
+              <article className={styles.statChip}><span>Ajustes</span><strong>{money((detail.classification?.adjustments || 0) + (detail.classification?.opening_balance || 0))}</strong></article>
             </div>
 
             <div className={styles.tableWrap}>
@@ -494,24 +640,28 @@ export default function CuentasCorrientesPage() {
                 <thead>
                   <tr>
                     <th>Fecha</th>
-                    <th>Tipo</th>
+                    <th>Concepto</th>
                     <th>Detalle</th>
                     <th>Importe</th>
+                    <th>Estado</th>
                     <th>Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.movements.length === 0 ? (
-                    <tr><td colSpan={5}>Sin movimientos.</td></tr>
+                  {visibleMovements.length === 0 ? (
+                    <tr><td colSpan={6}>Sin movimientos.</td></tr>
                   ) : (
-                    detail.movements.map((movement) => (
+                    visibleMovements.map((movement) => (
                       <tr key={movement.id}>
                         <td>{formatDate(movement.created_at)}</td>
-                        <td>{movement.document_type || (movement.movement_type === 'DEBIT' ? 'Debito' : 'Pago')}</td>
-                        <td>{movement.reference || movement.payment_method || (movement.invoice_id ? `Comprobante #${movement.invoice_id}` : '-')}</td>
+                        <td>{movement.entry_label || movement.document_type || (movement.movement_type === 'DEBIT' ? 'Debito' : 'Pago')}</td>
+                        <td>
+                          {movement.reference || movement.payment_method || (movement.invoice_id ? `Comprobante #${movement.invoice_id}` : '-')}
+                        </td>
                         <td className={movement.signed_amount >= 0 ? styles.debit : styles.credit}>
                           {money(movement.signed_amount)}
                         </td>
+                        <td>{movement.status_label || '-'}</td>
                         <td className={styles.balanceCell}>{money(movement.running_balance)}</td>
                       </tr>
                     ))
@@ -522,6 +672,23 @@ export default function CuentasCorrientesPage() {
           </div>
 
           <div className={styles.sideColumn}>
+            <section className={styles.invoiceCard}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h3>Estado de cuenta</h3>
+                  <p>Separado por cobranza, vencimiento, notas de credito y ajustes.</p>
+                </div>
+              </div>
+              <div className={styles.breakdownList}>
+                <div className={styles.breakdownRowCompact}><span>Pendiente</span><strong>{money(detail.classification?.pending || detail.balance)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Vencido</span><strong>{money(detail.classification?.overdue || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Cobranzas</span><strong>{money(detail.classification?.payments || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Notas de credito</span><strong>{money(detail.classification?.credit_notes || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Incobrables</span><strong>{money(detail.classification?.writeoffs || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Ajustes / saldo inicial</span><strong>{money((detail.classification?.adjustments || 0) + (detail.classification?.opening_balance || 0))}</strong></div>
+              </div>
+            </section>
+
             <section className={styles.invoiceCard}>
               <div className={styles.sectionHeader}>
                 <div>
@@ -580,6 +747,19 @@ export default function CuentasCorrientesPage() {
                 </div>
 
                 <div className={styles.formGrid}>
+                  <label>
+                    <span>Concepto</span>
+                    <select
+                      value={form.entry_kind}
+                      onChange={(e) => setForm((current) => ({ ...current, entry_kind: e.target.value }))}
+                    >
+                      {movementConceptOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label>
                     <span>Importe</span>
                     <input
@@ -674,6 +854,22 @@ export default function CuentasCorrientesPage() {
               >
                 {deleting ? 'Eliminando...' : 'Eliminar cuenta'}
               </button>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => requestOutput('print')}
+                disabled={!selectedId}
+              >
+                Imprimir
+              </button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => requestOutput('pdf')}
+                disabled={!selectedId}
+              >
+                Exportar PDF
+              </button>
               <button type="button" className={styles.secondaryButton} onClick={() => void refreshAll()}>
                 Actualizar
               </button>
@@ -683,7 +879,9 @@ export default function CuentasCorrientesPage() {
           <section className={styles.customerBoard}>
             <div className={styles.boardHeader}>
               <span>{filteredCustomers.length} clientes visibles</span>
-              <strong>Total deuda: {money(filteredCustomers.reduce((sum, customer) => sum + Math.max(0, customer.balance), 0))}</strong>
+              <strong>
+                Pendiente: {money(summary.pending)} - Vencido: {money(summary.overdue)}
+              </strong>
             </div>
             <div className={styles.boardHint}>Doble click sobre un cliente para abrir su detalle listo para imprimir o exportar.</div>
             <div className={styles.customerTableWrap}>
@@ -710,7 +908,13 @@ export default function CuentasCorrientesPage() {
                         <td>
                           <div className={styles.customerNameCell}>
                             <strong>{customer.name}</strong>
-                            <span>{customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : (customer.email || customer.phone || customer.cuit || 'Sin dato')}</span>
+                            <span>
+                              {customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : (customer.email || customer.phone || customer.cuit || 'Sin dato')}
+                            </span>
+                            <span>
+                              Pend.: {money(customer.classification?.pending || Math.max(0, customer.balance))} ·
+                              Venc.: {money(customer.classification?.overdue || 0)}
+                            </span>
                           </div>
                         </td>
                         <td className={styles.customerBalanceCell}>
@@ -776,6 +980,56 @@ export default function CuentasCorrientesPage() {
                 disabled={deleting}
               >
                 {deleting ? 'Eliminando...' : 'Confirmar eliminacion'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {showDateRangeModal ? (
+        <div className={styles.modalOverlay} onClick={() => setShowDateRangeModal(false)}>
+          <aside
+            className={styles.confirmModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="date-range-title"
+          >
+            <div className={styles.confirmHeader}>
+              <div>
+                <h2 id="date-range-title">{outputMode === 'pdf' ? 'Exportar cuenta a PDF' : 'Imprimir cuenta corriente'}</h2>
+                <p>Elegí el rango de fechas para mostrar solo los movimientos necesarios.</p>
+              </div>
+            </div>
+
+            <div className={styles.confirmBody}>
+              <label className={styles.confirmField}>
+                <span>Desde</span>
+                <input
+                  type="date"
+                  value={dateRangeDraft.from}
+                  onChange={(event) => setDateRangeDraft((current) => ({ ...current, from: event.target.value }))}
+                />
+              </label>
+              <label className={styles.confirmField}>
+                <span>Hasta</span>
+                <input
+                  type="date"
+                  value={dateRangeDraft.to}
+                  onChange={(event) => setDateRangeDraft((current) => ({ ...current, to: event.target.value }))}
+                />
+              </label>
+              <div className={styles.confirmWarning}>
+                Si dejás las fechas vacías, se va a usar el historial completo de la cuenta.
+              </div>
+            </div>
+
+            <div className={styles.confirmActions}>
+              <button type="button" className={styles.secondaryButton} onClick={() => setShowDateRangeModal(false)}>
+                Cancelar
+              </button>
+              <button type="button" className={styles.primaryButton} onClick={() => void confirmOutput()}>
+                {outputMode === 'pdf' ? 'Continuar a PDF' : 'Continuar a impresión'}
               </button>
             </div>
           </aside>
