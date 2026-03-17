@@ -2807,7 +2807,7 @@ def admin_sellers(
             SELECT id, name, commission_percent, is_active, created_at, updated_at
             FROM sellers
             WHERE {' AND '.join(where_parts)}
-            ORDER BY name COLLATE NOCASE ASC, id ASC
+            ORDER BY LOWER(TRIM(name)) ASC, id ASC
             LIMIT ? OFFSET ?
             """,
             params + [limit, offset],
