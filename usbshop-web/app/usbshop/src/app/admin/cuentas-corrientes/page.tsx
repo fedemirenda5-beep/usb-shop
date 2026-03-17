@@ -359,108 +359,161 @@ export default function CuentasCorrientesPage() {
     }));
   };
 
+  const refreshAll = async () => {
+    try {
+      setError('');
+      await loadOverview();
+      if (selectedId) {
+        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error cargando cuentas corrientes');
+    }
+  };
+
   return (
     <div className={styles.page}>
       <section className={styles.header}>
         <div>
           <h1>Cuentas corrientes</h1>
-          <p>Vista inspirada en la app de escritorio: saldos, aging y movimientos por cliente.</p>
+          <p>Vista operativa inspirada en la app de escritorio: clientes, saldo y movimientos en una sola pantalla.</p>
         </div>
       </section>
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
-      <section className={styles.summaryGrid}>
-        <article className={styles.metricCard}><span>Clientes</span><strong>{summary.customers}</strong></article>
-        <article className={styles.metricCard}><span>Debe</span><strong>{money(summary.debit)}</strong></article>
-        <article className={styles.metricCard}><span>Haber</span><strong>{money(summary.credit)}</strong></article>
-        <article className={styles.metricCard}><span>Saldo abierto</span><strong>{money(summary.balance)}</strong></article>
-      </section>
-
-      <div className={styles.layout}>
-        <aside className={styles.sidebar}>
+      <section className={styles.desktopToolbar}>
+        <div className={styles.searchBar}>
+          <span>Buscar</span>
           <input
             className={styles.search}
-            placeholder="Buscar cliente, CUIT o localidad..."
+            placeholder="Buscar cliente por nombre, CUIT, telefono o localidad..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <div className={styles.sidebarHint}>
-            <span>{filteredCustomers.length} clientes visibles</span>
-            <span>{money(filteredCustomers.reduce((sum, customer) => sum + customer.balance, 0))}</span>
-          </div>
-          <div className={styles.customerList}>
-            {loading ? <p>Cargando...</p> : null}
-            {filteredCustomers.map((customer) => (
-              <button
-                key={customer.id}
-                type="button"
-                className={`${styles.customerItem} ${selectedId === customer.id ? styles.active : ''}`}
-                onClick={() => setSelectedId(customer.id)}
-              >
-                <div className={styles.customerMain}>
-                  <strong>{customer.name}</strong>
-                  <span>{customer.email || customer.phone || customer.cuit || 'Sin dato'}</span>
-                  <small>{customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : 'Sin movimientos recientes'}</small>
-                </div>
-                <div className={styles.customerAmounts}>
-                  <em>{money(customer.balance)}</em>
-                  <small>{money(customer.aging.d90_plus)} vencido</small>
-                </div>
-              </button>
-            ))}
-          </div>
-        </aside>
+        </div>
+        <div className={styles.toolbarActions}>
+          <button type="button" className={styles.primaryButton} onClick={() => setMode('payment')}>
+            Registrar pago
+          </button>
+          <button type="button" className={styles.secondaryButton} onClick={() => setMode('debt')}>
+            Registrar deuda historica
+          </button>
+          <button type="button" className={styles.secondaryButton} onClick={() => void refreshAll()}>
+            Actualizar
+          </button>
+        </div>
+      </section>
 
-        <section className={styles.content}>
-          {detail ? (
-            <>
-              <div className={styles.customerHeader}>
-                <div>
-                  <h2>{detail.customer.name}</h2>
-                  <p>
-                    {detail.customer.tax_condition || 'Sin condicion fiscal'} · {detail.customer.cuit || 'Sin CUIT/DNI'}
-                  </p>
-                  <p>{detail.customer.address || detail.customer.locality || 'Sin domicilio'}</p>
+      <section className={styles.customerBoard}>
+        <div className={styles.boardHeader}>
+          <span>{filteredCustomers.length} clientes visibles</span>
+          <strong>Total deuda: {money(filteredCustomers.reduce((sum, customer) => sum + Math.max(0, customer.balance), 0))}</strong>
+        </div>
+        <div className={styles.customerTableWrap}>
+          <table className={styles.customerTable}>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={2}>Cargando...</td></tr>
+              ) : filteredCustomers.length === 0 ? (
+                <tr><td colSpan={2}>No hay clientes para mostrar.</td></tr>
+              ) : (
+                filteredCustomers.map((customer) => (
+                  <tr
+                    key={customer.id}
+                    className={selectedId === customer.id ? styles.customerRowActive : ''}
+                    onClick={() => setSelectedId(customer.id)}
+                  >
+                    <td>
+                      <div className={styles.customerNameCell}>
+                        <strong>{customer.name}</strong>
+                        <span>{customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : (customer.email || customer.phone || customer.cuit || 'Sin dato')}</span>
+                      </div>
+                    </td>
+                    <td className={styles.customerBalanceCell}>
+                      <strong>{customer.balance >= 0 ? `Debe ${money(customer.balance)}` : `Haber ${money(Math.abs(customer.balance))}`}</strong>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className={styles.content}>
+        {detail ? (
+          <>
+            <div className={styles.accountHeader}>
+              <div className={styles.accountSummary}>
+                <strong>
+                  {detail.customer.name} (#{detail.customer.id}) - Saldo: {money(detail.balance)} - Facturas:{' '}
+                  {money(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} - Pagos: {money(movementSummary.credits)}
+                </strong>
+                <span>
+                  {detail.customer.tax_condition || 'Sin condicion fiscal'} - {detail.customer.cuit || 'Sin CUIT/DNI'} -{' '}
+                  {detail.customer.address || detail.customer.locality || 'Sin domicilio'}
+                </span>
+              </div>
+              <div className={styles.accountActions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => setMode('payment')}>
+                  Registrar pago
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={() => setMode('debt')}>
+                  Registrar deuda
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.detailGrid}>
+              <div className={styles.mainColumn}>
+                <div className={styles.desktopStats}>
+                  <article className={styles.statChip}><span>Contacto</span><strong>{detail.customer.phone || detail.customer.email || 'Sin dato'}</strong></article>
+                  <article className={styles.statChip}><span>Modo</span><strong>{detail.customer.sale_mode || 'Sin definir'}</strong></article>
+                  <article className={styles.statChip}><span>Debe</span><strong>{money(selectedOverview?.debit || movementSummary.debits)}</strong></article>
+                  <article className={styles.statChip}><span>Pagado</span><strong>{money(selectedOverview?.credit || movementSummary.credits)}</strong></article>
+                  <article className={styles.statChip}><span>Vencido 90+</span><strong>{money(detail.aging.d90_plus)}</strong></article>
                 </div>
-                <div className={styles.balanceBox}>
-                  <span>Saldo actual</span>
-                  <strong>{money(detail.balance)}</strong>
+
+                <div className={styles.tableWrap}>
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Tipo</th>
+                        <th>Detalle</th>
+                        <th>Importe</th>
+                        <th>Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detail.movements.length === 0 ? (
+                        <tr><td colSpan={5}>Sin movimientos.</td></tr>
+                      ) : (
+                        detail.movements.map((movement) => (
+                          <tr key={movement.id}>
+                            <td>{formatDate(movement.created_at)}</td>
+                            <td>{movement.document_type || (movement.movement_type === 'DEBIT' ? 'Debito' : 'Pago')}</td>
+                            <td>{movement.reference || movement.payment_method || (movement.invoice_id ? `Comprobante #${movement.invoice_id}` : '-')}</td>
+                            <td className={movement.signed_amount >= 0 ? styles.debit : styles.credit}>
+                              {money(movement.signed_amount)}
+                            </td>
+                            <td className={styles.balanceCell}>{money(movement.running_balance)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
-              <div className={styles.infoGrid}>
-                <article className={styles.infoCard}>
-                  <span>Contacto</span>
-                  <strong>{detail.customer.phone || detail.customer.email || 'Sin dato'}</strong>
-                  <small>{detail.customer.email && detail.customer.phone ? detail.customer.email : selectedOverview?.locality || 'Sin localidad'}</small>
-                </article>
-                <article className={styles.infoCard}>
-                  <span>Modo</span>
-                  <strong>{detail.customer.sale_mode || 'Sin definir'}</strong>
-                  <small>{selectedOverview?.last_movement ? `Ultimo movimiento ${formatDate(selectedOverview.last_movement)}` : 'Sin historial reciente'}</small>
-                </article>
-                <article className={styles.infoCard}>
-                  <span>Debe acumulado</span>
-                  <strong>{money(selectedOverview?.debit || movementSummary.debits)}</strong>
-                  <small>{money(selectedOverview?.credit || movementSummary.credits)} cobrado</small>
-                </article>
-                <article className={styles.infoCard}>
-                  <span>Movimientos</span>
-                  <strong>{movementSummary.movements}</strong>
-                  <small>{money(detail.aging.total)} total en cartera</small>
-                </article>
-              </div>
-
-              <div className={styles.agingGrid}>
-                <div><span>Al dia</span><strong>{money(detail.aging.current)}</strong></div>
-                <div><span>1-30</span><strong>{money(detail.aging.d1_30)}</strong></div>
-                <div><span>31-60</span><strong>{money(detail.aging.d31_60)}</strong></div>
-                <div><span>61-90</span><strong>{money(detail.aging.d61_90)}</strong></div>
-                <div className={styles.overdueCard}><span>90+</span><strong>{money(detail.aging.d90_plus)}</strong></div>
-              </div>
-
-              <div className={styles.detailGrid}>
+              <div className={styles.sideColumn}>
                 <section className={styles.invoiceCard}>
                   <div className={styles.sectionHeader}>
                     <div>
@@ -492,11 +545,11 @@ export default function CuentasCorrientesPage() {
                 <form className={styles.formCard} onSubmit={submitMovement}>
                   <div className={styles.formHeader}>
                     <div>
-                      <h3>Movimientos manuales</h3>
-                      <p>Registra pagos o deudas historicas con el detalle que necesites.</p>
+                      <h3>{movementMode === 'payment' ? 'Registrar pago' : 'Registrar deuda historica'}</h3>
+                      <p>Impacta directamente en la cuenta del cliente.</p>
                     </div>
                     <button type="submit" className={styles.primaryButton} disabled={saving}>
-                      {saving ? 'Guardando...' : movementMode === 'payment' ? 'Registrar pago' : 'Guardar deuda'}
+                      {saving ? 'Guardando...' : movementMode === 'payment' ? 'Guardar pago' : 'Guardar deuda'}
                     </button>
                   </div>
 
@@ -506,25 +559,18 @@ export default function CuentasCorrientesPage() {
                       className={`${styles.modeButton} ${movementMode === 'payment' ? styles.modeButtonActive : ''}`}
                       onClick={() => setMode('payment')}
                     >
-                      Registrar pago
+                      Pago
                     </button>
                     <button
                       type="button"
                       className={`${styles.modeButton} ${movementMode === 'debt' ? styles.modeButtonActive : ''}`}
                       onClick={() => setMode('debt')}
                     >
-                      Crear deuda historica
+                      Deuda
                     </button>
                   </div>
 
                   <div className={styles.formGrid}>
-                    <label>
-                      <span>Tipo</span>
-                      <input
-                        value={movementMode === 'payment' ? 'Cobranza / pago del cliente' : 'Debito manual / deuda historica'}
-                        readOnly
-                      />
-                    </label>
                     <label>
                       <span>Importe</span>
                       <input
@@ -538,18 +584,26 @@ export default function CuentasCorrientesPage() {
                       />
                     </label>
                     <label>
-                      <span>{movementMode === 'payment' ? 'Metodo' : 'Origen / soporte'}</span>
+                      <span>{movementMode === 'payment' ? 'Metodo' : 'Origen'}</span>
                       <input
                         value={form.payment_method}
                         onChange={(e) => setForm((current) => ({ ...current, payment_method: e.target.value }))}
+                        placeholder={movementMode === 'payment' ? 'Transferencia, efectivo...' : 'Saldo previo, ajuste...'}
+                      />
+                    </label>
+                    <label className={styles.fullWidth}>
+                      <span>Detalle</span>
+                      <input
+                        value={form.reference}
+                        onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))}
                         placeholder={
                           movementMode === 'payment'
-                            ? 'Transferencia, efectivo, cheque...'
-                            : 'Ajuste manual, saldo previo, recibo...'
+                            ? 'Ej: Recibo manual, transferencia, pago parcial'
+                            : 'Ej: Faltante de pago, deuda previa, ajuste historico'
                         }
                       />
                     </label>
-                    <label>
+                    <label className={styles.fullWidth}>
                       <span>Comprobante</span>
                       <select
                         value={form.invoice_id}
@@ -564,60 +618,15 @@ export default function CuentasCorrientesPage() {
                         ))}
                       </select>
                     </label>
-                    <label className={styles.fullWidth}>
-                      <span>Detalle</span>
-                      <input
-                        value={form.reference}
-                        onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))}
-                        placeholder={
-                          movementMode === 'payment'
-                            ? 'Ej: Transferencia 15/03, recibo manual, ajuste de saldo'
-                            : 'Ej: Faltante de pago, deuda previa, ajuste historico'
-                        }
-                      />
-                    </label>
                   </div>
                 </form>
               </div>
-
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Tipo</th>
-                      <th>Comprobante</th>
-                      <th>Detalle</th>
-                      <th>Debe/Haber</th>
-                      <th>Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.movements.length === 0 ? (
-                      <tr><td colSpan={6}>Sin movimientos.</td></tr>
-                    ) : (
-                      detail.movements.map((movement) => (
-                        <tr key={movement.id}>
-                          <td>{formatDate(movement.created_at)}</td>
-                          <td>{movement.movement_type === 'DEBIT' ? 'Debito' : 'Credito'}</td>
-                          <td>{movement.document_type || '-'} {movement.invoice_id ? `#${movement.invoice_id}` : ''}</td>
-                          <td>{movement.reference || movement.payment_method || '-'}</td>
-                          <td className={movement.signed_amount >= 0 ? styles.debit : styles.credit}>
-                            {money(movement.signed_amount)}
-                          </td>
-                          <td className={styles.balanceCell}>{money(movement.running_balance)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <div className={styles.empty}>Selecciona un cliente para ver su cuenta corriente.</div>
-          )}
-        </section>
-      </div>
+            </div>
+          </>
+        ) : (
+          <div className={styles.empty}>Selecciona un cliente para ver su cuenta corriente.</div>
+        )}
+      </section>
     </div>
   );
 }
