@@ -1920,22 +1920,24 @@ def admin_list_orders(
 ) -> list[dict]:
     _require_admin(session_token)
     status_value = (status or "PENDING").strip().upper()
-    if status_value not in {"PENDING", "CONFIRMED", "CANCELLED"}:
+    if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "ALL"}:
         status_value = "PENDING"
 
     conn = _connect()
     try:
         _ensure_web_order_tables(conn)
+        where_clause = "" if status_value == "ALL" else "WHERE status = ?"
+        params: list[Any] = [] if status_value == "ALL" else [status_value]
         rows = conn.execute(
-            """
+            f"""
             SELECT id, customer_name, customer_phone, customer_email, notes, total, status,
                    created_at, confirmed_at, confirmed_invoice_id
             FROM web_orders
-            WHERE status = ?
+            {where_clause}
             ORDER BY created_at DESC
             LIMIT ?
             """,
-            (status_value, int(limit)),
+            params + [int(limit)],
         ).fetchall()
         orders = [
             {
@@ -3540,6 +3542,64 @@ def admin_cc_customer_detail(
         conn.close()
 
 
+@app.delete("/admin/cc/{customer_id}")
+def admin_cc_delete_customer(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        customer = conn.execute(
+            """
+            SELECT id, name
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        movement_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM account_movements WHERE customer_id = ?",
+                (customer_id,),
+            ).fetchone()["count"]
+        )
+        invoice_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM invoices WHERE customer_id = ?",
+                (customer_id,),
+            ).fetchone()["count"]
+        )
+        if movement_count > 0 or invoice_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar una cuenta con movimientos o comprobantes asociados",
+            )
+
+        conn.execute(
+            """
+            UPDATE customers
+               SET is_active = 0,
+                   deleted_at = ?
+             WHERE id = ?
+            """,
+            (datetime.utcnow().isoformat(), customer_id),
+        )
+        conn.commit()
+        return {
+            "id": int(customer["id"]),
+            "name": customer["name"],
+            "message": "Cuenta eliminada",
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/admin/invoices")
 def admin_list_invoices(
     request: Request,
@@ -4198,14 +4258,15 @@ def admin_reports_overview(
             seller_id = int(row["seller_id"] or 0)
             if seller_id > 0:
                 seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) + margin_value, 2)
-        monthly_sales = [
+        monthly_sales_all = [
             {
                 **monthly_map[key],
                 "sales": round(float(monthly_map[key]["sales"] or 0), 2),
                 "margin": round(float(monthly_map[key]["margin"] or 0), 2),
             }
             for key in sorted(monthly_map.keys())
-        ][-12:]
+        ]
+        monthly_sales = monthly_sales_all[-12:]
         product_names = {int(row["id"]): row["name"] for row in products}
         seller_names = {
             int(row["id"]): row["name"]
@@ -4309,11 +4370,22 @@ def admin_reports_overview(
             ),
             2,
         )
+        yearly_map: dict[int, dict[str, Any]] = {}
+        for item in monthly_sales_all:
+            try:
+                year = int(str(item["month"]).split("-")[0])
+            except Exception:
+                continue
+            entry = yearly_map.setdefault(year, {"year": year, "sales": 0.0, "margin": 0.0, "count": 0})
+            entry["sales"] += float(item["sales"] or 0)
+            entry["margin"] += float(item["margin"] or 0)
+            entry["count"] += int(item["count"] or 0)
+
         now_dt = datetime.utcnow()
         current_year = now_dt.year
         current_month = now_dt.month
-        current_year_months = [item for item in monthly_sales if str(item["month"]).startswith(f"{current_year}-")]
-        previous_year_months = [item for item in monthly_sales if str(item["month"]).startswith(f"{current_year - 1}-")]
+        current_year_months = [item for item in monthly_sales_all if str(item["month"]).startswith(f"{current_year}-")]
+        previous_year_months = [item for item in monthly_sales_all if str(item["month"]).startswith(f"{current_year - 1}-")]
         current_ytd_sales = round(sum(float(item["sales"] or 0) for item in current_year_months), 2)
         previous_ytd_sales = round(
             sum(
@@ -4340,6 +4412,87 @@ def admin_reports_overview(
             )
         else:
             trend_projection = round((current_ytd_sales / max(current_month, 1)) * 12, 2)
+
+        year_end_cc_balance: dict[int, float] = {}
+        running_cc_balance = 0.0
+        for row in cc_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            amount = float(row["amount"] or 0)
+            signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
+            running_cc_balance = round(running_cc_balance + signed, 2)
+            year_end_cc_balance[created.year] = running_cc_balance
+
+        annual_history: list[dict[str, Any]] = []
+        cumulative_margin = 0.0
+        previous_year_sales_value = 0.0
+        previous_year_capital_value = 0.0
+        for year in sorted(yearly_map.keys()):
+            payload = yearly_map[year]
+            cumulative_margin = round(cumulative_margin + float(payload["margin"] or 0), 2)
+            cc_balance_end = round(float(year_end_cc_balance.get(year, 0.0)), 2)
+            capital_total = round(stock_value_cost + cumulative_margin + cc_balance_end, 2)
+            sales_value = round(float(payload["sales"] or 0), 2)
+            sales_growth_pct = (
+                round(((sales_value - previous_year_sales_value) / previous_year_sales_value) * 100, 2)
+                if previous_year_sales_value > 0
+                else None
+            )
+            capital_growth_pct = (
+                round(((capital_total - previous_year_capital_value) / previous_year_capital_value) * 100, 2)
+                if previous_year_capital_value > 0
+                else None
+            )
+            annual_history.append(
+                {
+                    "year": year,
+                    "sales": sales_value,
+                    "margin": round(float(payload["margin"] or 0), 2),
+                    "invoice_count": int(payload["count"] or 0),
+                    "cc_balance_end": cc_balance_end,
+                    "capital_total": capital_total,
+                    "sales_growth_pct": sales_growth_pct,
+                    "capital_growth_pct": capital_growth_pct,
+                }
+            )
+            previous_year_sales_value = sales_value
+            previous_year_capital_value = capital_total
+
+        current_year_comparison: list[dict[str, Any]] = []
+        previous_month_map = {str(item["month"]): item for item in previous_year_months}
+        for item in current_year_months:
+            month_key = str(item["month"])
+            month_number = month_key.split("-")[1]
+            previous_key = f"{current_year - 1}-{month_number}"
+            previous_item = previous_month_map.get(previous_key, {})
+            sales_value = round(float(item["sales"] or 0), 2)
+            margin_value = round(float(item["margin"] or 0), 2)
+            previous_sales = round(float(previous_item.get("sales") or 0), 2)
+            previous_margin = round(float(previous_item.get("margin") or 0), 2)
+            sales_growth_pct = (
+                round(((sales_value - previous_sales) / previous_sales) * 100, 2)
+                if previous_sales > 0
+                else None
+            )
+            margin_growth_pct = (
+                round(((margin_value - previous_margin) / previous_margin) * 100, 2)
+                if previous_margin > 0
+                else None
+            )
+            current_year_comparison.append(
+                {
+                    "month": month_key,
+                    "sales": sales_value,
+                    "margin": margin_value,
+                    "count": int(item["count"] or 0),
+                    "previous_year_sales": previous_sales,
+                    "previous_year_margin": previous_margin,
+                    "sales_growth_pct": sales_growth_pct,
+                    "margin_growth_pct": margin_growth_pct,
+                }
+            )
+
         return {
             "summary": {
                 "products": len(products),
@@ -4356,12 +4509,21 @@ def admin_reports_overview(
                 "latest_invoice_at": invoices[-1]["created_at"] if invoices else None,
             },
             "monthly_sales": monthly_sales,
+            "monthly_sales_all": monthly_sales_all,
             "top_products": top_products,
             "top_customers": top_customers,
             "sales_by_category": sales_by_category,
             "sales_by_seller": sales_by_seller,
             "top_debtors": top_debtors,
             "low_stock": low_stock,
+            "current_year_detail": {
+                "year": current_year,
+                "capital_total": round(stock_value_cost + round(sum(customer_balance_map.values()), 2) + total_margin, 2),
+                "sales_total": current_ytd_sales,
+                "margin_total": round(sum(float(item["margin"] or 0) for item in current_year_months), 2),
+                "months": current_year_comparison,
+            },
+            "annual_history": annual_history,
             "year_projection": {
                 "year": current_year,
                 "current_ytd_sales": current_ytd_sales,
@@ -4607,6 +4769,52 @@ def admin_update_account_customer(
         )
         conn.commit()
         return {"id": customer_id, "message": "Cliente actualizado"}
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/account-customers/{customer_id}")
+def admin_delete_account_customer(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        customer = conn.execute(
+            "SELECT id, name FROM account_customers WHERE id = ?",
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        movement_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM account_movements WHERE customer_id = ?",
+                (customer_id,),
+            ).fetchone()["count"]
+        )
+        document_count = int(
+            conn.execute(
+                "SELECT COUNT(*) AS count FROM account_documents WHERE customer_id = ?",
+                (customer_id,),
+            ).fetchone()["count"]
+        )
+        if movement_count > 0 or document_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar una cuenta con movimientos o documentos asociados",
+            )
+
+        conn.execute("DELETE FROM account_customers WHERE id = ?", (customer_id,))
+        conn.commit()
+        return {
+            "id": int(customer["id"]),
+            "name": customer["name"],
+            "message": "Cuenta eliminada",
+        }
     finally:
         conn.close()
 

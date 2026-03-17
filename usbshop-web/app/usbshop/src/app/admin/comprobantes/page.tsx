@@ -88,6 +88,7 @@ export default function ComprobantesPage() {
   const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
 
   async function loadDetail(invoiceId: number) {
     try {
@@ -148,12 +149,11 @@ export default function ComprobantesPage() {
     );
   }, [items, search]);
 
-  const deleteInvoice = async (invoice: Invoice) => {
-    const confirmed = window.confirm(
-      `Vas a cancelar el comprobante #${invoice.id}. Esto eliminara el comprobante, revertira stock y quitara los movimientos de cuenta corriente asociados.`
-    );
-    if (!confirmed) return;
+  const requestDeleteInvoice = (invoice: Invoice) => {
+    setPendingDeleteInvoice(invoice);
+  };
 
+  const deleteInvoice = async (invoice: Invoice) => {
     try {
       setDeletingId(invoice.id);
       setError('');
@@ -165,6 +165,7 @@ export default function ComprobantesPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo cancelar el comprobante');
+      setPendingDeleteInvoice(null);
       await loadInvoices();
       if (selectedId === invoice.id) {
         setSelectedId(null);
@@ -263,6 +264,16 @@ export default function ComprobantesPage() {
                       </button>
                       <button
                         type="button"
+                        className={styles.pdfButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void openInvoice(item.id, true);
+                        }}
+                      >
+                        Exportar PDF
+                      </button>
+                      <button
+                        type="button"
                         className={styles.printButton}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -277,10 +288,10 @@ export default function ComprobantesPage() {
                         disabled={deletingId === item.id}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void deleteInvoice(item);
+                          requestDeleteInvoice(item);
                         }}
                       >
-                        {deletingId === item.id ? 'Cancelando...' : 'Cancelar'}
+                        {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
                       </button>
                     </td>
                   </tr>
@@ -310,6 +321,34 @@ export default function ComprobantesPage() {
             {!detailLoading && !detail ? <div className={styles.empty}>No se pudo abrir el comprobante.</div> : null}
             {detail ? (
               <div className={styles.printArea}>
+                <div className={styles.detailInlineActions}>
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    disabled={deletingId === detail.invoice.id}
+                    onClick={() =>
+                      requestDeleteInvoice({
+                        id: detail.invoice.id,
+                        customer_id: detail.invoice.customer_id,
+                        customer_name: detail.invoice.customer_name,
+                        seller_id: detail.invoice.seller_id,
+                        seller_name: detail.invoice.seller_name,
+                        total: detail.invoice.total,
+                        created_at: detail.invoice.created_at,
+                        document_type: detail.invoice.document_type,
+                        sale_mode: detail.invoice.sale_mode,
+                        price_list: detail.invoice.price_list,
+                        due_date: detail.invoice.due_date,
+                        notes: detail.invoice.notes,
+                        payment_method: detail.invoice.payment_method,
+                        commission_amount: detail.invoice.commission_amount,
+                        web_order_id: detail.invoice.web_order_id,
+                      })
+                    }
+                  >
+                    {deletingId === detail.invoice.id ? 'Eliminando...' : 'Eliminar comprobante'}
+                  </button>
+                </div>
                 <div className={styles.documentShell}>
                   <div className={styles.desktopAccentBar} />
 
@@ -433,6 +472,62 @@ export default function ComprobantesPage() {
                 </div>
               </div>
             ) : null}
+          </aside>
+        </div>
+      ) : null}
+
+      {pendingDeleteInvoice ? (
+        <div className={styles.confirmOverlay} onClick={() => (deletingId ? null : setPendingDeleteInvoice(null))}>
+          <aside
+            className={styles.confirmModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-invoice-title"
+          >
+            <div className={styles.confirmHeader}>
+              <div>
+                <h2 id="delete-invoice-title">Eliminar comprobante emitido</h2>
+                <p>Esta acción va a borrar el comprobante, revertir stock y quitar los movimientos de cuenta corriente asociados.</p>
+              </div>
+            </div>
+
+            <div className={styles.confirmBody}>
+              <div className={styles.confirmCard}>
+                <span>Comprobante</span>
+                <strong>#{pendingDeleteInvoice.id} {pendingDeleteInvoice.document_type || 'Comprobante'}</strong>
+              </div>
+              <div className={styles.confirmCard}>
+                <span>Cliente</span>
+                <strong>{pendingDeleteInvoice.customer_name}</strong>
+              </div>
+              <div className={styles.confirmCard}>
+                <span>Total</span>
+                <strong>{money(pendingDeleteInvoice.total)}</strong>
+              </div>
+              <div className={styles.confirmWarning}>
+                Si el comprobante ya tiene pagos o créditos aplicados, el sistema no lo va a dejar eliminar.
+              </div>
+            </div>
+
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setPendingDeleteInvoice(null)}
+                disabled={deletingId === pendingDeleteInvoice.id}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={styles.deleteButton}
+                onClick={() => void deleteInvoice(pendingDeleteInvoice)}
+                disabled={deletingId === pendingDeleteInvoice.id}
+              >
+                {deletingId === pendingDeleteInvoice.id ? 'Eliminando...' : 'Confirmar eliminación'}
+              </button>
+            </div>
           </aside>
         </div>
       ) : null}

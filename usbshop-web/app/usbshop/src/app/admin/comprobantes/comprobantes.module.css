@@ -9,6 +9,16 @@
 .detailPane { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; padding: 16px; box-shadow: 0 4px 16px var(--shadow); }
 .modalOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: 24px; z-index: 220; }
 .detailModal { width: min(1180px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: white; border: 1px solid var(--bg-soft); border-radius: 18px; padding: 16px; box-shadow: 0 20px 48px rgba(15, 23, 42, 0.2); }
+.confirmOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.58); display: grid; place-items: center; padding: 24px; z-index: 240; }
+.confirmModal { width: min(540px, 100%); background: white; border: 1px solid var(--bg-soft); border-radius: 18px; padding: 18px; box-shadow: 0 20px 48px rgba(15, 23, 42, 0.25); display: grid; gap: 16px; }
+.confirmHeader h2 { margin: 0; color: var(--ink); font-size: 22px; }
+.confirmHeader p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.confirmBody { display: grid; gap: 12px; }
+.confirmCard { border: 1px solid var(--bg-soft); border-radius: 12px; padding: 12px; background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1)); display: grid; gap: 4px; }
+.confirmCard span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.confirmCard strong { color: var(--ink); font-size: 15px; }
+.confirmWarning { border-radius: 12px; padding: 12px; background: rgba(127, 29, 29, 0.08); color: #991b1b; border: 1px solid rgba(127, 29, 29, 0.14); font-size: 13px; line-height: 1.45; }
+.confirmActions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .tableWrap { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; overflow: auto; box-shadow: 0 4px 16px var(--shadow); }
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { padding: 10px 9px; border-bottom: 1px solid var(--bg-soft); text-align: left; font-size: 13px; }
@@ -21,6 +31,7 @@
 .originBadge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(15, 118, 110, 0.12); color: #0f766e; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .originMuted { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .printArea { display: grid; gap: 16px; }
+.detailInlineActions { display: flex; justify-content: flex-end; }
 .documentShell { display: grid; gap: 12px; padding: 18px; border-radius: 18px; background: #f7f8fb; border: 1px solid #0b0b0b; }
 .desktopAccentBar { height: 4px; background: #2d0a5b; border-radius: 10px; margin: 0 10px 2px; }
 .printBanner { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 16px; align-items: center; padding: 8px 10px; background: white; border: 1px solid #0b0b0b; border-radius: 12px; }
@@ -114,6 +125,7 @@
   .layout, .detailMeta, .summaryGrid, .formGrid, .documentFooter, .signatureRow, .documentMeta { grid-template-columns: 1fr; }
   .movementItem { grid-template-columns: 1fr; }
   .headerActions, .createHeader { flex-direction: column; align-items: stretch; }
+  .detailInlineActions { justify-content: stretch; }
   .desktopPickerBar, .invoiceLinesHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .itemRow { grid-template-columns: 1fr; }
   .detailHeader { flex-direction: column; }
@@ -122,9 +134,11 @@
   .brandHead, .docCenter { justify-content: flex-start; text-align: left; }
   .modalOverlay { padding: 12px; }
   .detailModal { max-height: calc(100vh - 24px); padding: 12px; }
+  .confirmOverlay { padding: 12px; }
+  .confirmActions { flex-direction: column; }
 }
 @media print {
-  .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar { display: none !important; }
+  .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay { display: none !important; }
   .page, .layout, .detailPane, .detailModal, .printArea, .documentShell { display: block; }
   .modalOverlay { position: static; inset: auto; background: white; padding: 0; display: block; }
   .detailPane, .detailModal, .tableWrap, .documentTableWrap, .documentShell { box-shadow: none; border: 0; padding: 0; background: white; }

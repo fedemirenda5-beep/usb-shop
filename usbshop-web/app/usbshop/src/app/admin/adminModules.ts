@@ -35,10 +35,10 @@ export const ADMIN_MODULES: AdminModule[] = [
   },
   {
     id: 'pedidos',
-    title: 'Pedidos',
+    title: 'Pedidos Web',
     href: '/admin/pedidos',
-    navLabel: 'Pedidos',
-    dashboardLabel: 'Seguimiento de pedidos web',
+    navLabel: 'Pedidos Web',
+    dashboardLabel: 'Seguimiento de ordenes de compra web',
   },
   {
     id: 'clientes',
@@ -63,9 +63,9 @@ export const ADMIN_MODULES: AdminModule[] = [
   },
   {
     id: 'comprobantes',
-    title: 'Comprobantes',
+    title: 'Comprobantes emitidos',
     href: '/admin/comprobantes',
-    navLabel: 'Comprobantes',
+    navLabel: 'Comprobantes emitidos',
     dashboardLabel: 'Comprobantes emitidos e historial',
   },
   {
