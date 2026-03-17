@@ -43,6 +43,8 @@ export default function PedidosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<number | null>(null);
+  const [pendingDeleteOrder, setPendingDeleteOrder] = useState<Order | null>(null);
 
   const loadOrders = async () => {
     try {
@@ -92,6 +94,29 @@ export default function PedidosPage() {
     });
   };
 
+  const deleteOrder = async (order: Order) => {
+    try {
+      setDeletingOrderId(order.id);
+      setError('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/orders/${order.id}/status`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'DELETED' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo eliminar la orden de compra');
+      setPendingDeleteOrder(null);
+      setDetailOrderId((current) => (current === order.id ? null : current));
+      await loadOrders();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error eliminando orden de compra');
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
   const renderRows = (source: Order[], history = false) =>
     source.flatMap((order) => {
       const color = statusColors[order.status];
@@ -119,6 +144,13 @@ export default function PedidosPage() {
                 Procesar orden
               </Link>
             ) : null}
+            <button
+              className={styles.btnDelete}
+              onClick={() => setPendingDeleteOrder(order)}
+              disabled={deletingOrderId === order.id}
+            >
+              {deletingOrderId === order.id ? 'Eliminando...' : 'Eliminar'}
+            </button>
           </td>
         </tr>,
       ];
@@ -288,6 +320,49 @@ export default function PedidosPage() {
           </div>
         </details>
       </section>
+
+      {pendingDeleteOrder ? (
+        <div className={styles.modalOverlay} onClick={() => (deletingOrderId ? null : setPendingDeleteOrder(null))}>
+          <aside className={styles.confirmModal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.confirmHeader}>
+              <h2>Eliminar pedido web</h2>
+              <p>Usalo para pedidos duplicados o cargados por error. Si ya fue procesado con comprobante, el sistema no lo va a dejar borrar.</p>
+            </div>
+            <div className={styles.confirmBody}>
+              <div className={styles.confirmCard}>
+                <span>Orden</span>
+                <strong>Orden de compra #{pendingDeleteOrder.id}</strong>
+              </div>
+              <div className={styles.confirmCard}>
+                <span>Cliente</span>
+                <strong>{pendingDeleteOrder.customer_name}</strong>
+              </div>
+              <div className={styles.confirmCard}>
+                <span>Total</span>
+                <strong>{money(pendingDeleteOrder.total)}</strong>
+              </div>
+            </div>
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.btnDetails}
+                onClick={() => setPendingDeleteOrder(null)}
+                disabled={deletingOrderId === pendingDeleteOrder.id}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={styles.btnDelete}
+                onClick={() => void deleteOrder(pendingDeleteOrder)}
+                disabled={deletingOrderId === pendingDeleteOrder.id}
+              >
+                {deletingOrderId === pendingDeleteOrder.id ? 'Eliminando...' : 'Confirmar eliminación'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }

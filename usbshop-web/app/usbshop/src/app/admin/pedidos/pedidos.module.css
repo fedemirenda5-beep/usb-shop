@@ -137,13 +137,15 @@
 }
 
 .btnDetails,
-.btnInvoice {
+.btnInvoice,
+.btnDelete {
   border-radius: 9px;
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
+  border: 1px solid transparent;
 }
 
 .btnDetails {
@@ -156,6 +158,17 @@
   border: 1px solid rgba(15, 118, 110, 0.24);
   background: rgba(15, 118, 110, 0.08);
   color: #0f766e;
+}
+
+.btnDelete {
+  border: 1px solid rgba(185, 28, 28, 0.16);
+  background: rgba(185, 28, 28, 0.08);
+  color: #b91c1c;
+}
+
+.btnDelete:disabled {
+  opacity: 0.7;
+  cursor: wait;
 }
 
 .detailsRow {
@@ -275,6 +288,72 @@
   font-size: 14px;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  z-index: 220;
+}
+
+.confirmModal {
+  width: min(520px, 100%);
+  background: white;
+  border: 1px solid var(--bg-soft);
+  border-radius: 18px;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.22);
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.confirmHeader h2 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.confirmHeader p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.confirmBody {
+  display: grid;
+  gap: 10px;
+}
+
+.confirmCard {
+  border: 1px solid var(--bg-soft);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+  padding: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.confirmCard span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.confirmCard strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 980px) {
   .summaryGrid,
   .detailsColumns {
@@ -302,8 +381,13 @@
   }
 
   .btnDetails,
-  .btnInvoice {
+  .btnInvoice,
+  .btnDelete {
     width: 100%;
     text-align: center;
+  }
+
+  .confirmActions {
+    flex-direction: column;
   }
 }

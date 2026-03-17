@@ -2166,13 +2166,20 @@ def admin_update_order_status(
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT id FROM web_orders WHERE id = ?",
+            "SELECT id, status, confirmed_invoice_id FROM web_orders WHERE id = ?",
             (int(order_id),),
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
 
         if status_value == "DELETED":
+            confirmed_invoice_id = row["confirmed_invoice_id"] if isinstance(row, dict) else row[2]
+            current_status = (row["status"] if isinstance(row, dict) else row[1]) or "PENDING"
+            if confirmed_invoice_id not in (None, "", 0, "0") or str(current_status).upper() == "CONFIRMED":
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se puede eliminar un pedido web que ya fue procesado y tiene comprobante asociado",
+                )
             conn.execute("DELETE FROM web_orders WHERE id = ?", (int(order_id),))
             conn.commit()
             return {"status": "ok", "id": int(order_id), "action": "deleted"}

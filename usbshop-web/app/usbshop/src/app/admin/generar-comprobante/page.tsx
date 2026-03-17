@@ -125,10 +125,10 @@ export default function GenerarComprobantePage() {
   }, [customerSearch, customers]);
   const filteredProducts = useMemo(() => {
     const needle = productSearch.trim().toLowerCase();
-    if (!needle) return products.slice(0, 12);
+    if (!needle) return [];
     return products
       .filter((product) => [product.name, product.sku, String(product.id)].join(' ').toLowerCase().includes(needle))
-      .slice(0, 60);
+      .slice(0, 12);
   }, [productSearch, products]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formTotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
@@ -350,7 +350,7 @@ export default function GenerarComprobantePage() {
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     onKeyDown={handleProductSearchKeyDown}
-                    placeholder="Buscar por nombre, SKU o ID y presionar Enter"
+                    placeholder="Buscar por nombre, SKU o ID"
                   />
                 </label>
                 <label className={styles.desktopPickerQty}>
@@ -359,47 +359,32 @@ export default function GenerarComprobantePage() {
                 </label>
               </div>
               <div className={styles.desktopPickerResults}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>SKU</th>
-                      <th>Producto</th>
-                      <th>Stock</th>
-                      <th>Especial</th>
-                      <th>Lista 1</th>
-                      <th>Lista 2</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                {!productSearch.trim() ? (
+                  <div className={styles.emptyCell}>Escribí para buscar productos y ver coincidencias.</div>
+                ) : filteredProducts.length === 0 ? (
+                  <div className={styles.emptyCell}>No hay productos que coincidan con la búsqueda.</div>
+                ) : (
+                  <div className={styles.productSearchList}>
                     {filteredProducts.map((product) => (
-                      <tr key={product.id}>
-                        <td>{product.id}</td>
-                        <td>{product.sku}</td>
-                        <td>
-                          <button type="button" className={styles.linkButton} onClick={() => addProductToInvoice(product)}>
-                            {product.name}
-                          </button>
-                        </td>
-                        <td>{product.stock}</td>
-                        <td>{money(product.price)}</td>
-                        <td>{money(Number(product.price_list_1 || product.price || 0))}</td>
-                        <td>{money(Number(product.price_list_2 || product.price || 0))}</td>
-                        <td className={styles.rowActions}>
-                          <button type="button" className={styles.secondaryButton} onClick={() => addProductToInvoice(product)}>
-                            Agregar
-                          </button>
-                        </td>
-                      </tr>
+                      <button
+                        key={product.id}
+                        type="button"
+                        className={styles.productSearchItem}
+                        onClick={() => addProductToInvoice(product)}
+                      >
+                        <div className={styles.productSearchMain}>
+                          <strong>{product.name}</strong>
+                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Stock {product.stock}</span>
+                        </div>
+                        <div className={styles.productSearchPrices}>
+                          <span>Esp. {money(product.price)}</span>
+                          <span>L1 {money(Number(product.price_list_1 || product.price || 0))}</span>
+                          <span>L2 {money(Number(product.price_list_2 || product.price || 0))}</span>
+                        </div>
+                      </button>
                     ))}
-                    {filteredProducts.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className={styles.emptyCell}>No hay productos que coincidan con la busqueda.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
             </section>
             <div className={styles.invoiceLinesPanel}>
