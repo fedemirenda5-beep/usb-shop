@@ -2451,6 +2451,7 @@ def admin_create_product(
     price = float(payload.get("price") or 0)
     cost = float(payload.get("cost") or 0)
     stock = int(payload.get("stock") or 0)
+    category_id = int(payload.get("category_id") or 0) or None
     is_featured = 1 if bool(payload.get("is_featured")) else 0
     is_offer = 1 if bool(payload.get("is_offer")) else 0
     image_values = _normalize_image_entries(payload)
@@ -2476,6 +2477,9 @@ def admin_create_product(
         if _has_column(conn, "products", "image_path"):
             columns.append("image_path")
             values.append(primary_image)
+        if _has_column(conn, "products", "category_id"):
+            columns.append("category_id")
+            values.append(category_id)
         if _has_column(conn, "products", "is_active"):
             columns.append("is_active")
             values.append(1)
@@ -2507,6 +2511,7 @@ def admin_create_product(
             "price": price,
             "cost": cost,
             "stock": stock,
+            "category_id": category_id,
             "image_path": primary_image,
             "is_featured": bool(is_featured),
             "is_offer": bool(is_offer),
@@ -2590,6 +2595,11 @@ def admin_update_product(
         if "stock" in payload:
             updates.append("stock = ?")
             params.append(int(payload["stock"]))
+        if "category_id" in payload and _has_column(conn, "products", "category_id"):
+            raw_category_id = payload.get("category_id")
+            parsed_category_id = int(raw_category_id or 0) if raw_category_id not in (None, "", 0, "0") else None
+            updates.append("category_id = ?")
+            params.append(parsed_category_id)
         if "image_path" in payload or "image_url" in payload or "image_urls" in payload:
             image_values = _normalize_image_entries(payload)
             updates.append("image_path = ?")
@@ -3913,6 +3923,94 @@ def admin_invoice_detail(
                 "payments_total": round(total_payments, 2),
                 "balance_due": balance_due,
             },
+        }
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/invoices/{invoice_id}")
+def admin_delete_invoice(
+    invoice_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_payment_method_column(conn)
+        invoice = conn.execute(
+            """
+            SELECT id, customer_id, total, document_type, sale_mode
+            FROM invoices
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        ).fetchone()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+
+        cc_movements = conn.execute(
+            """
+            SELECT id, amount, movement_type
+            FROM account_movements
+            WHERE invoice_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (invoice_id,),
+        ).fetchall()
+        credit_movements = [
+            row for row in cc_movements if str(row["movement_type"] or "").strip().upper() == "CREDIT"
+        ]
+        if credit_movements:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede cancelar un comprobante con pagos o creditos aplicados",
+            )
+
+        items = conn.execute(
+            """
+            SELECT product_id, quantity
+            FROM invoice_items
+            WHERE invoice_id = ?
+            """,
+            (invoice_id,),
+        ).fetchall()
+
+        for item in items:
+            product_id = int(item["product_id"] or 0)
+            quantity = int(item["quantity"] or 0)
+            if product_id <= 0 or quantity <= 0:
+                continue
+            conn.execute(
+                "UPDATE products SET stock = stock + ? WHERE id = ?",
+                (quantity, product_id),
+            )
+
+        conn.execute("DELETE FROM account_movements WHERE invoice_id = ?", (invoice_id,))
+        conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
+        conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
+
+        if _has_table(conn, "web_orders") and _has_column(conn, "web_orders", "confirmed_invoice_id"):
+            conn.execute(
+                """
+                UPDATE web_orders
+                   SET status = 'PENDING', confirmed_at = NULL, confirmed_invoice_id = NULL
+                 WHERE confirmed_invoice_id = ?
+                """,
+                (invoice_id,),
+            )
+
+        conn.commit()
+        return {
+            "id": int(invoice["id"]),
+            "customer_id": int(invoice["customer_id"]) if invoice["customer_id"] is not None else None,
+            "document_type": invoice["document_type"],
+            "sale_mode": invoice["sale_mode"],
+            "total": round(float(invoice["total"] or 0), 2),
+            "restocked_items": len(items),
+            "deleted_account_movements": len(cc_movements),
+            "message": "Comprobante cancelado",
         }
     finally:
         conn.close()

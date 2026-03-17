@@ -164,7 +164,7 @@ export default function PedidosPage() {
                         Ver
                       </button>
                       {order.status === 'PENDING' ? (
-                        <Link href={`/admin/comprobantes?order_id=${order.id}`} className={styles.btnInvoice}>
+                        <Link href={`/admin/generar-comprobante?order_id=${order.id}`} className={styles.btnInvoice}>
                           Generar comprobante
                         </Link>
                       ) : null}

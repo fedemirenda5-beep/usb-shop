@@ -1,11 +1,26 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ProductForm } from '../components/ProductForm';
 
 export default function NuevaProductoPage() {
   const router = useRouter();
+  const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/categories`, {
+        credentials: 'include',
+      });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
+      setCategories(Array.isArray(data) ? data : []);
+    };
+    void loadCategories();
+  }, []);
 
   const handleSubmit = async (data: any) => {
     await loadRuntimeConfig();
@@ -37,6 +52,7 @@ export default function NuevaProductoPage() {
     <ProductForm
       title="Crear Nuevo Producto"
       onSubmit={handleSubmit}
+      categories={categories}
     />
   );
 }

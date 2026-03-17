@@ -18,11 +18,17 @@ interface Product {
   stock: number;
   imageUrl?: string | null;
   category_id: number | null;
+  category?: string | null;
   is_active: boolean;
   is_featured: boolean;
   is_offer: boolean;
   image_path?: string | null;
   image_urls?: string[];
+}
+
+interface Category {
+  id: number;
+  name: string;
 }
 
 const calculateMargin = (cost: number, price: number) => {
@@ -75,10 +81,17 @@ export default function ProductosPage() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [categoryDraft, setCategoryDraft] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
+  const [categoryError, setCategoryError] = useState('');
 
   const loadProducts = async () => {
     try {
@@ -113,8 +126,26 @@ export default function ProductosPage() {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      setCategoriesLoading(true);
+      setCategoryError('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/categories`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('No se pudieron cargar los rubros');
+      const data = await res.json();
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : 'Error cargando rubros');
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
   useEffect(() => {
-    loadProducts();
+    void Promise.all([loadProducts(), loadCategories()]);
   }, []);
 
   useEffect(() => {
@@ -128,16 +159,19 @@ export default function ProductosPage() {
 
   const filteredProducts = useMemo(() => {
     const tokens = buildSearchTokens(search);
-    if (tokens.length === 0) {
-      return products;
-    }
     return products.filter((product) => {
+      if (categoryFilter && String(product.category_id || '') !== categoryFilter) {
+        return false;
+      }
+      if (tokens.length === 0) {
+        return true;
+      }
       const haystack = normalizeSearchValue(
-        [product.name, product.sku, product.image_path || '', ...(product.image_urls || [])].join(' ')
+        [product.name, product.sku, product.category || '', product.image_path || '', ...(product.image_urls || [])].join(' ')
       );
       return tokens.every((token) => haystack.includes(token));
     });
-  }, [products, search]);
+  }, [products, search, categoryFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
 
@@ -153,6 +187,10 @@ export default function ProductosPage() {
   }, [filteredProducts, page]);
 
   const baseUrl = getApiBaseUrl();
+  const categoryMap = useMemo(
+    () => new Map(categories.map((category) => [category.id, category.name])),
+    [categories]
+  );
 
   const openEditor = (productId: number) => {
     router.push(`/admin/productos?edit=${productId}`);
@@ -197,6 +235,59 @@ export default function ProductosPage() {
       );
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error actualizando');
+    }
+  };
+
+  const resetCategoryEditor = () => {
+    setCategoryDraft('');
+    setEditingCategoryId(null);
+    setCategoryError('');
+  };
+
+  const submitCategory = async () => {
+    const name = categoryDraft.trim();
+    if (!name) {
+      setCategoryError('Nombre de rubro requerido');
+      return;
+    }
+    try {
+      setCategoryError('');
+      await loadRuntimeConfig();
+      const url = editingCategoryId
+        ? `${getApiBaseUrl()}/admin/categories/${editingCategoryId}`
+        : `${getApiBaseUrl()}/admin/categories`;
+      const res = await fetch(url, {
+        method: editingCategoryId ? 'PUT' : 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo guardar el rubro');
+      await loadCategories();
+      resetCategoryEditor();
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : 'Error guardando rubro');
+    }
+  };
+
+  const deleteCategory = async (category: Category) => {
+    if (!confirm(`Eliminar rubro "${category.name}"?`)) return;
+    try {
+      setCategoryError('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/categories/${category.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo eliminar el rubro');
+      if (categoryFilter === String(category.id)) {
+        setCategoryFilter('');
+      }
+      await Promise.all([loadCategories(), loadProducts()]);
+    } catch (err) {
+      setCategoryError(err instanceof Error ? err.message : 'Error eliminando rubro');
     }
   };
 
@@ -345,6 +436,13 @@ export default function ProductosPage() {
               PDF con imagenes
             </button>
           </div>
+          <button
+            type="button"
+            className={styles.btnSecondary}
+            onClick={() => setShowCategoriesModal(true)}
+          >
+            Rubros
+          </button>
           <Link href="/admin/productos/nueva" className={styles.btnNew}>
             + Nuevo producto
           </Link>
@@ -364,6 +462,21 @@ export default function ProductosPage() {
           }}
           className={styles.searchInput}
         />
+        <select
+          value={categoryFilter}
+          onChange={(e) => {
+            setCategoryFilter(e.target.value);
+            setPage(1);
+          }}
+          className={styles.categoryFilter}
+        >
+          <option value="">Todos los rubros</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className={styles.pagination}>
@@ -388,6 +501,7 @@ export default function ProductosPage() {
                 <th>Imagen</th>
                 <th>Nombre</th>
                 <th>SKU</th>
+                <th>Rubro</th>
                 <th>Precio</th>
                 <th>Costo</th>
                 <th>Margen</th>
@@ -418,6 +532,7 @@ export default function ProductosPage() {
                     </td>
                     <td className={styles.name}>{product.name}</td>
                     <td className={styles.skuCell} title={product.sku}>{product.sku}</td>
+                    <td>{product.category || categoryMap.get(product.category_id || 0) || 'Sin rubro'}</td>
                     <td className={styles.price}>${product.price.toFixed(2)}</td>
                     <td className={styles.price}>${product.cost.toFixed(2)}</td>
                     <td className={styles.margin}>
@@ -501,12 +616,14 @@ export default function ProductosPage() {
             <ProductForm
               initialData={{
                 ...editProduct,
+                category_id: editProduct.category_id,
                 image_path: editProduct.image_path || '',
                 image_urls_text: Array.isArray(editProduct.image_urls)
                   ? editProduct.image_urls.join('\n')
                   : '',
               }}
               title="Editar producto"
+              categories={categories}
               onSubmit={async (data) => {
                 await loadRuntimeConfig();
                 const res = await fetch(`${getApiBaseUrl()}/admin/products/${editProduct.id}`, {
@@ -525,6 +642,81 @@ export default function ProductosPage() {
                 loadProducts();
               }}
             />
+          </div>
+        </div>
+      ) : null}
+
+      {showCategoriesModal ? (
+        <div className={styles.modal}>
+          <div className={styles.modalContent}>
+            <button
+              className={styles.modalClose}
+              onClick={() => {
+                setShowCategoriesModal(false);
+                resetCategoryEditor();
+              }}
+            >
+              x
+            </button>
+            <div className={styles.categoryModalHeader}>
+              <h2>Rubros</h2>
+              <p>Rubros creados en la base actual.</p>
+            </div>
+
+            {categoryError ? <div className={styles.error}>{categoryError}</div> : null}
+
+            <div className={styles.categoryEditor}>
+              <input
+                type="text"
+                value={categoryDraft}
+                onChange={(e) => setCategoryDraft(e.target.value)}
+                placeholder="Nombre del rubro"
+                className={styles.searchInput}
+              />
+              <button type="button" className={styles.btnSecondary} onClick={() => void submitCategory()}>
+                {editingCategoryId ? 'Guardar' : 'Crear'}
+              </button>
+              {editingCategoryId ? (
+                <button type="button" className={styles.btnSecondary} onClick={resetCategoryEditor}>
+                  Cancelar
+                </button>
+              ) : null}
+            </div>
+
+            <div className={styles.categoryList}>
+              {categoriesLoading ? (
+                <div className={styles.loading}>Cargando rubros...</div>
+              ) : categories.length === 0 ? (
+                <div className={styles.empty}>
+                  <p>No hay rubros cargados.</p>
+                </div>
+              ) : (
+                categories.map((category) => (
+                  <div key={category.id} className={styles.categoryRow}>
+                    <strong>{category.name}</strong>
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        className={styles.btnEdit}
+                        onClick={() => {
+                          setEditingCategoryId(category.id);
+                          setCategoryDraft(category.name);
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.btnDelete}
+                        onClick={() => void deleteCategory(category)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       ) : null}

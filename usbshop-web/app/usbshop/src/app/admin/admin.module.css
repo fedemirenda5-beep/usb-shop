@@ -234,3 +234,32 @@
     display: none;
   }
 }
+
+@media print {
+  .adminContainer {
+    display: block;
+    height: auto;
+    background: white;
+  }
+
+  .sidebar,
+  .navbar {
+    display: none !important;
+  }
+
+  .main {
+    display: block;
+    margin-left: 0;
+  }
+
+  .content {
+    overflow: visible;
+    padding: 0;
+    background: white;
+  }
+
+  .contentInner {
+    max-width: none;
+    margin: 0;
+  }
+}

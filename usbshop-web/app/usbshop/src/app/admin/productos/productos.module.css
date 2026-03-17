@@ -95,6 +95,7 @@
 .searchForm {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .searchInput {
@@ -114,6 +115,17 @@
   outline: none;
   border-color: var(--lime);
   box-shadow: 0 0 0 3px var(--glow);
+}
+
+.categoryFilter {
+  min-width: 220px;
+  padding: 10px 14px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 8px;
+  background: white;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--ink);
 }
 
 .btnSearch {
@@ -458,4 +470,37 @@
 
 .modalClose:hover {
   color: var(--ink);
+}
+
+.categoryModalHeader h2 {
+  margin: 0 0 6px;
+}
+
+.categoryModalHeader p {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.categoryEditor {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.categoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.categoryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 10px;
+  background: #fff;
 }

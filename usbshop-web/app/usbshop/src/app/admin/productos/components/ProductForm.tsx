@@ -11,6 +11,7 @@ interface ProductFormData {
   price: number;
   cost: number;
   stock: number;
+  category_id?: number | null;
   is_featured: boolean;
   is_offer: boolean;
   image_path: string;
@@ -23,6 +24,7 @@ interface ProductFormState {
   price: string;
   cost: string;
   stock: string;
+  category_id: string;
   margin: string;
   is_featured: boolean;
   is_offer: boolean;
@@ -30,10 +32,16 @@ interface ProductFormState {
   image_urls_text: string;
 }
 
+interface CategoryOption {
+  id: number;
+  name: string;
+}
+
 interface ProductFormProps {
   initialData?: ProductFormData & { id?: number };
   title: string;
   onSubmit: (data: ProductFormData & { image_urls: string[] }) => Promise<void>;
+  categories?: CategoryOption[];
 }
 
 const toDecimalString = (value: number) => {
@@ -92,6 +100,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     price: 0,
     cost: 0,
     stock: 0,
+    category_id: null,
     is_featured: false,
     is_offer: false,
     image_path: '',
@@ -103,6 +112,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     price: toDecimalString(source.price),
     cost: toDecimalString(source.cost),
     stock: toIntegerString(source.stock),
+    category_id: source.category_id ? String(source.category_id) : '',
     margin: formatMargin(calculateMargin(source.cost, source.price)),
     is_featured: source.is_featured,
     is_offer: source.is_offer,
@@ -111,7 +121,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
   };
 };
 
-export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) {
+export function ProductForm({ initialData, title, onSubmit, categories = [] }: ProductFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
   const [loading, setLoading] = useState(false);
@@ -283,6 +293,7 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
         price,
         cost,
         stock,
+        category_id: formData.category_id ? Number(formData.category_id) : null,
         is_featured: formData.is_featured,
         is_offer: formData.is_offer,
         image_path: finalImagePath,
@@ -337,6 +348,25 @@ export function ProductForm({ initialData, title, onSubmit }: ProductFormProps) 
             disabled={loading}
             className={styles.input}
           />
+        </div>
+
+        <div className={styles.field}>
+          <label htmlFor="category_id">Rubro</label>
+          <select
+            id="category_id"
+            name="category_id"
+            value={formData.category_id}
+            onChange={(e) => handleFieldChange('category_id', e.target.value)}
+            disabled={loading}
+            className={styles.input}
+          >
+            <option value="">Sin rubro</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className={styles.fieldRowTriple}>

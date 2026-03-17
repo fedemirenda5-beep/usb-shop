@@ -35,6 +35,7 @@
 .detailHeader p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .actions { display: flex; gap: 10px; }
 .printButton { border: 0; border-radius: 10px; background: var(--ink); color: white; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
+.pdfButton { border: 0; border-radius: 10px; background: #1d4ed8; color: white; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
 .documentMeta { min-width: 320px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .detailMeta, .summaryGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .documentMeta div, .detailMeta div, .summaryGrid div { background: var(--bg); border-radius: 12px; padding: 10px; display: grid; gap: 4px; }
@@ -67,10 +68,12 @@
 .totalBox .metaRow strong { color: #f8fafc; }
 .signatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
 .signatureBox { min-height: 88px; border-top: 1px solid #94a3b8; display: flex; align-items: flex-end; padding-top: 10px; color: var(--muted); font-size: 12px; }
-.createButton, .secondaryButton, .removeButton { border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
+.createButton, .secondaryButton, .removeButton, .deleteButton { border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
 .createButton { background: linear-gradient(135deg, #0f766e, #1d4ed8); color: white; }
 .secondaryButton { background: #e2e8f0; color: var(--ink); }
 .removeButton { background: #fff1f2; color: #be123c; }
+.deleteButton { background: #7f1d1d; color: #fff; }
+.deleteButton:disabled { opacity: 0.7; cursor: wait; }
 .createPanel { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; padding: 18px; box-shadow: 0 4px 16px var(--shadow); display: grid; gap: 16px; }
 .createHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .createHeader h2 { margin: 0; color: var(--ink); }
@@ -90,7 +93,7 @@
 .formActions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .empty { padding: 14px; border-radius: 12px; background: var(--bg); color: var(--muted); }
 .error { padding: 14px; border-radius: 12px; background: rgba(220,38,38,.1); color: #b91c1c; border: 1px solid rgba(220,38,38,.25); }
-.detailToolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; position: sticky; top: 0; background: white; padding-bottom: 8px; z-index: 2; }
+.detailToolbar { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 12px; position: sticky; top: 0; background: white; padding-bottom: 8px; z-index: 2; }
 @media (max-width: 1100px) {
   .header { flex-direction: column; align-items: stretch; }
   .search { min-width: 0; width: 100%; }
@@ -105,7 +108,7 @@
   .detailModal { max-height: calc(100vh - 24px); padding: 12px; }
 }
 @media print {
-  .header, .tablePane, .printButton, .createPanel, .detailToolbar { display: none !important; }
+  .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar { display: none !important; }
   .page, .layout, .detailPane, .detailModal, .printArea, .documentShell { display: block; }
   .modalOverlay { position: static; inset: auto; background: white; padding: 0; display: block; }
   .detailPane, .detailModal, .tableWrap, .documentTableWrap, .documentShell { box-shadow: none; border: 0; padding: 0; background: white; }
@@ -114,4 +117,5 @@
   .detailPane, .detailModal { padding: 0; max-height: none; overflow: visible; }
   .table th, .table td { font-size: 12px; padding: 8px 6px; }
   .total, .movementItem em { color: #111827; }
+  @page { size: A4; margin: 12mm; }
 }

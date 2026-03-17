@@ -1,7 +1,7 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import styles from './comprobantes.module.css';
 
@@ -61,58 +61,6 @@ type InvoiceDetail = {
   };
 };
 
-type CustomerOption = {
-  id: number;
-  name: string;
-  email?: string | null;
-  phone?: string | null;
-  sale_mode?: string | null;
-  cuit?: string | null;
-};
-
-type ProductOption = {
-  id: number;
-  name: string;
-  sku: string;
-  price: number;
-  price_list_1?: number | null;
-  price_list_2?: number | null;
-  stock: number;
-};
-
-type SellerOption = {
-  id: number;
-  name: string;
-  commission_percent: number;
-  is_active: boolean;
-};
-
-type OrderDraft = {
-  id: number;
-  customer_name: string;
-  customer_phone?: string | null;
-  customer_email?: string | null;
-  notes?: string | null;
-  total: number;
-  status: string;
-  created_at: string;
-  confirmed_invoice_id?: string | null;
-  items: Array<{
-    product_id: number;
-    sku?: string | null;
-    name?: string | null;
-    quantity: number;
-    unit_price: number;
-  }>;
-};
-
-type InvoiceFormItem = {
-  product_id: string;
-  product_query: string;
-  quantity: string;
-  unit_price: string;
-};
-
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
@@ -122,22 +70,6 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('es-AR');
 };
 
-const emptyItem = (): InvoiceFormItem => ({
-  product_id: '',
-  product_query: '',
-  quantity: '1',
-  unit_price: '0',
-});
-
-const nowInputValue = () => new Date().toISOString().slice(0, 16);
-
-const formatInputDateTime = (value?: string | null) => {
-  if (!value) return null;
-  const normalized = value.length === 16 ? `${value}:00` : value;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-};
-
 const getPriceListLabel = (value?: number | null) => {
   if (value === 1) return 'Lista 1';
   if (value === 2) return 'Lista 2';
@@ -145,37 +77,16 @@ const getPriceListLabel = (value?: number | null) => {
 };
 
 export default function ComprobantesPage() {
-  const searchParams = useSearchParams();
-  const orderIdParam = Number(searchParams?.get('order_id') || 0);
   const [items, setItems] = useState<Invoice[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
-  const [customers, setCustomers] = useState<CustomerOption[]>([]);
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
   const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [form, setForm] = useState({
-    order_id: '',
-    customer_id: '',
-    document_type: 'FACTURA',
-    sale_mode: 'CONTADO',
-    seller_id: '',
-    price_list: '0',
-    payment_method: 'EFECTIVO',
-    created_at: nowInputValue(),
-    due_date: '',
-    notes: '',
-    items: [emptyItem()],
-  });
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   async function loadDetail(invoiceId: number) {
     try {
@@ -214,38 +125,11 @@ export default function ComprobantesPage() {
     if (data.length > 0) setSelectedId((current: number | null) => current ?? data[0].id);
   }
 
-  async function loadOptions() {
-    await loadRuntimeConfig();
-    const [customersRes, productsRes, sellersRes] = await Promise.all([
-      fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=300`, { credentials: 'include' }),
-      fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, { credentials: 'include' }),
-      fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' }),
-    ]);
-    if (!customersRes.ok) throw new Error('No se pudieron cargar los clientes');
-    if (!productsRes.ok) throw new Error('No se pudieron cargar los productos');
-    if (!sellersRes.ok) throw new Error('No se pudieron cargar los vendedores');
-    setCustomers(await customersRes.json());
-    setProducts(await productsRes.json());
-    setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
-  }
-
-  async function loadOrderDraft(orderId: number) {
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderId}`, { credentials: 'include' });
-    if (!res.ok) throw new Error('No se pudo cargar el pedido');
-    return (await res.json()) as OrderDraft;
-  }
-
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
         await loadInvoices();
-        try {
-          await loadOptions();
-        } catch (optionsError) {
-          console.error('No se pudieron cargar las opciones de comprobantes:', optionsError);
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando comprobantes');
       } finally {
@@ -255,47 +139,6 @@ export default function ComprobantesPage() {
     void load();
   }, []);
 
-  useEffect(() => {
-    if (!orderIdParam || customers.length === 0 || products.length === 0) return;
-    const prefill = async () => {
-      try {
-        const draft = await loadOrderDraft(orderIdParam);
-        const matchedCustomer =
-          customers.find((customer) => {
-            return (
-              (draft.customer_email && customer.email && draft.customer_email.toLowerCase() === String(customer.email).toLowerCase()) ||
-              (draft.customer_phone && customer.phone && draft.customer_phone === customer.phone) ||
-              draft.customer_name === customer.name
-            );
-          }) || null;
-        setForm({
-          order_id: String(draft.id),
-          customer_id: matchedCustomer ? String(matchedCustomer.id) : '',
-          document_type: 'FACTURA',
-          sale_mode: matchedCustomer?.sale_mode || 'CONTADO',
-          seller_id: '',
-          price_list: '0',
-          payment_method: 'EFECTIVO',
-          created_at: nowInputValue(),
-          due_date: '',
-          notes: draft.notes || '',
-          items: draft.items.length
-            ? draft.items.map((item) => ({
-                product_id: String(item.product_id),
-              quantity: String(item.quantity),
-              product_query: item.name || '',
-              unit_price: String(item.unit_price),
-            }))
-            : [emptyItem()],
-        });
-        setShowCreateForm(true);
-      } catch (err) {
-        setCreateError(err instanceof Error ? err.message : 'Error cargando el pedido');
-      }
-    };
-    void prefill();
-  }, [orderIdParam, customers, products]);
-
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return items;
@@ -304,152 +147,42 @@ export default function ComprobantesPage() {
     );
   }, [items, search]);
 
-  const customerMap = useMemo(
-    () => new Map(customers.map((customer) => [customer.id, customer])),
-    [customers]
-  );
-
-  const filteredCustomerOptions = useMemo(() => {
-    const needle = customerSearch.trim().toLowerCase();
-    if (!needle) return customers;
-    return customers.filter((customer) =>
-      [customer.name, customer.email || '', customer.phone || '', customer.cuit || '']
-        .join(' ')
-        .toLowerCase()
-        .includes(needle)
+  const deleteInvoice = async (invoice: Invoice) => {
+    const confirmed = window.confirm(
+      `Vas a cancelar el comprobante #${invoice.id}. Esto eliminara el comprobante, revertira stock y quitara los movimientos de cuenta corriente asociados.`
     );
-  }, [customerSearch, customers]);
+    if (!confirmed) return;
 
-  const productMap = useMemo(
-    () => new Map(products.map((product) => [product.id, product])),
-    [products]
-  );
-  const sellerMap = useMemo(
-    () => new Map(sellers.map((seller) => [seller.id, seller])),
-    [sellers]
-  );
-  const selectedSeller = sellerMap.get(Number(form.seller_id));
-
-  const formTotal = useMemo(
-    () =>
-      form.items.reduce((acc, item) => {
-        const quantity = Number(item.quantity || 0);
-        const unitPrice = Number(item.unit_price || 0);
-        return acc + quantity * unitPrice;
-      }, 0),
-    [form.items]
-  );
-  const commissionPreview = useMemo(() => {
-    if (!selectedSeller) return 0;
-    return (formTotal * Number(selectedSeller.commission_percent || 0)) / 100;
-  }, [formTotal, selectedSeller]);
-
-  const getProductPriceByList = (product: ProductOption, priceList: string) => {
-    if (priceList === '1') {
-      return Number(product.price_list_1 || product.price || 0);
-    }
-    if (priceList === '2') {
-      return Number(product.price_list_2 || product.price || 0);
-    }
-    return Number(product.price || 0);
-  };
-
-  const updateItem = (index: number, field: keyof InvoiceFormItem, value: string) => {
-    setForm((current) => {
-      const nextItems = current.items.map((item, itemIndex) => {
-        if (itemIndex !== index) return item;
-        const nextItem = { ...item, [field]: value };
-        if (field === 'product_id') {
-          const selected = productMap.get(Number(value));
-          if (selected) {
-            nextItem.product_query = selected.name;
-            nextItem.unit_price = String(getProductPriceByList(selected, current.price_list));
-          }
-        }
-        return nextItem;
-      });
-      return { ...current, items: nextItems };
-    });
-  };
-
-  const recalculateItemsForPriceList = (nextPriceList: string) => {
-    setForm((current) => ({
-      ...current,
-      price_list: nextPriceList,
-      items: current.items.map((item) => {
-        const selected = productMap.get(Number(item.product_id));
-        if (!selected) return item;
-        return { ...item, unit_price: String(getProductPriceByList(selected, nextPriceList)) };
-      }),
-    }));
-  };
-
-  const addItem = () => setForm((current) => ({ ...current, items: [...current.items, emptyItem()] }));
-
-  const removeItem = (index: number) =>
-    setForm((current) => ({
-      ...current,
-      items: current.items.filter((_, itemIndex) => itemIndex !== index),
-    }));
-
-  const resetForm = () => {
-    setForm({
-      order_id: '',
-      customer_id: '',
-      document_type: 'FACTURA',
-      sale_mode: 'CONTADO',
-      seller_id: '',
-      price_list: '0',
-      payment_method: 'EFECTIVO',
-      created_at: nowInputValue(),
-      due_date: '',
-      notes: '',
-      items: [emptyItem()],
-    });
-    setCustomerSearch('');
-    setCreateError('');
-  };
-
-  const submitInvoice = async (event: React.FormEvent) => {
-    event.preventDefault();
     try {
-      setCreating(true);
-      setCreateError('');
+      setDeletingId(invoice.id);
+      setError('');
+      setDetailError('');
       await loadRuntimeConfig();
-      const payload = {
-        order_id: form.order_id ? Number(form.order_id) : null,
-        customer_id: Number(form.customer_id),
-        document_type: form.document_type,
-        sale_mode: form.sale_mode,
-        seller_id: form.seller_id ? Number(form.seller_id) : null,
-        price_list: Number(form.price_list || 0),
-        payment_method: form.payment_method || null,
-        created_at: formatInputDateTime(form.created_at),
-        due_date: form.due_date || null,
-        notes: form.notes || null,
-        items: form.items.map((item) => ({
-                product_id: Number(item.product_id),
-                quantity: Number(item.quantity),
-                unit_price: Number(item.unit_price),
-        })),
-      };
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
-        method: 'POST',
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoice.id}`, {
+        method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
-      await Promise.all([loadInvoices(), loadOptions()]);
-      setSelectedId(data.id);
-      setShowCreateForm(false);
-      resetForm();
+      if (!res.ok) throw new Error(data.detail || 'No se pudo cancelar el comprobante');
+      await loadInvoices();
+      if (selectedId === invoice.id) {
+        setSelectedId(null);
+        setDetail(null);
+        setDetailOnly(false);
+      }
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Error creando comprobante');
+      setError(err instanceof Error ? err.message : 'Error cancelando comprobante');
     } finally {
-      setCreating(false);
+      setDeletingId(null);
     }
+  };
+
+  const printDocument = () => {
+    window.print();
+  };
+
+  const exportPdf = () => {
+    window.print();
   };
 
   return (
@@ -460,9 +193,9 @@ export default function ComprobantesPage() {
           <p>Historial de facturas, remitos y ventas reales tomadas desde la base actual.</p>
         </div>
         <div className={styles.headerActions}>
-          <button type="button" className={styles.createButton} onClick={() => setShowCreateForm((current) => !current)}>
-            {showCreateForm ? 'Cerrar formulario' : 'Nuevo comprobante'}
-          </button>
+          <Link href="/admin/generar-comprobante" className={styles.createButton}>
+            Generar comprobante
+          </Link>
           <input
             className={styles.search}
             placeholder="Buscar por cliente, tipo o numero..."
@@ -474,311 +207,93 @@ export default function ComprobantesPage() {
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
-      {showCreateForm ? (
-        <section className={styles.createPanel}>
-          <div className={styles.createHeader}>
-            <div>
-              <h2>Emitir comprobante real</h2>
-              <p>Genera venta, descuenta stock y, si corresponde, impacta en cuenta corriente.</p>
-              <p className={styles.modelNote}>
-                Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comision.
-              </p>
-              {form.order_id ? (
-                <p className={styles.orderDraftInfo}>
-                  Pedido web #{form.order_id} cargado como borrador editable.
-                </p>
-              ) : null}
-            </div>
-            <div className={styles.createTotal}>{money(formTotal)}</div>
-          </div>
-
-          {createError ? <div className={styles.error}>{createError}</div> : null}
-
-          <form onSubmit={submitInvoice} className={styles.createForm}>
-            <div className={styles.formGrid}>
-              <label>
-                Cliente
-                <input
-                  type="text"
-                  value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
-                  placeholder="Buscar cliente por nombre, mail, telefono o CUIT"
-                />
-                <select
-                  value={form.customer_id}
-                  onChange={(e) => {
-                    const customer = customerMap.get(Number(e.target.value));
-                    setForm((current) => ({
-                      ...current,
-                      customer_id: e.target.value,
-                      sale_mode: customer?.sale_mode || current.sale_mode,
-                    }));
-                  }}
-                  required
-                >
-                  <option value="">Seleccionar cliente</option>
-                  {filteredCustomerOptions.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} {customer.cuit ? `- ${customer.cuit}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <small className={styles.fieldHint}>
-                  {filteredCustomerOptions.length} cliente{filteredCustomerOptions.length === 1 ? '' : 's'} encontrado{filteredCustomerOptions.length === 1 ? '' : 's'}
-                </small>
-              </label>
-
-              <label>
-                Tipo
-                <select
-                  value={form.document_type}
-                  onChange={(e) => setForm((current) => ({ ...current, document_type: e.target.value }))}
-                >
-                  <option value="FACTURA">Factura</option>
-                  <option value="REMITO">Remito</option>
-                  <option value="NOTA_DEBITO">Nota de debito</option>
-                </select>
-              </label>
-
-              <label>
-                Fecha y hora
-                <input
-                  type="datetime-local"
-                  value={form.created_at}
-                  onChange={(e) => setForm((current) => ({ ...current, created_at: e.target.value }))}
-                />
-              </label>
-
-              <label>
-                Modalidad
-                <select
-                  value={form.sale_mode}
-                  onChange={(e) => setForm((current) => ({ ...current, sale_mode: e.target.value }))}
-                >
-                  <option value="CONTADO">Contado</option>
-                  <option value="CUENTA_CORRIENTE">Cuenta corriente</option>
-                </select>
-              </label>
-
-              <label>
-                Vendedor
-                <select
-                  value={form.seller_id}
-                  onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))}
-                >
-                  <option value="">Sin vendedor</option>
-                  {sellers.map((seller) => (
-                    <option key={seller.id} value={seller.id}>
-                      {seller.name} - {seller.commission_percent}%
-                    </option>
-                  ))}
-                </select>
-                <small className={styles.fieldHint}>
-                  {selectedSeller
-                    ? `Comision estimada: ${money(commissionPreview)}`
-                    : 'Selecciona un vendedor para imputar comision'}
-                </small>
-              </label>
-
-              <label>
-                Lista de precios
-                <select
-                  value={form.price_list}
-                  onChange={(e) => recalculateItemsForPriceList(e.target.value)}
-                >
-                  <option value="0">Lista especial</option>
-                  <option value="1">Lista 1</option>
-                  <option value="2">Lista 2</option>
-                </select>
-              </label>
-
-              <label>
-                Forma de pago
-                <select
-                  value={form.payment_method}
-                  onChange={(e) => setForm((current) => ({ ...current, payment_method: e.target.value }))}
-                >
-                  <option value="EFECTIVO">Efectivo</option>
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                  <option value="TARJETA">Tarjeta</option>
-                  <option value="CHEQUE">Cheque</option>
-                  <option value="CUENTA_CORRIENTE">Cuenta corriente</option>
-                  <option value="MIXTO">Mixto</option>
-                </select>
-              </label>
-
-              <label>
-                Vencimiento
-                <input
-                  type="date"
-                  value={form.due_date}
-                  onChange={(e) => setForm((current) => ({ ...current, due_date: e.target.value }))}
-                />
-              </label>
-
-              <label className={styles.fullWidth}>
-                Notas
-                <textarea
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))}
-                />
-              </label>
-            </div>
-
-            <div className={styles.itemList}>
-              {form.items.map((item, index) => {
-                const selectedProduct = productMap.get(Number(item.product_id));
-                const filteredProductOptions = products.filter((product) =>
-                  !item.product_query.trim()
-                    ? true
-                    : [product.name, product.sku, String(product.id)]
-                        .join(' ')
-                        .toLowerCase()
-                        .includes(item.product_query.trim().toLowerCase())
-                );
-                return (
-                  <div key={index} className={styles.itemRow}>
-                    <div className={styles.productPicker}>
-                      <input
-                        type="text"
-                        value={item.product_query}
-                        onChange={(e) => updateItem(index, 'product_query', e.target.value)}
-                        placeholder="Buscar producto por nombre o SKU"
-                      />
-                      <select
-                        value={item.product_id}
-                        onChange={(e) => updateItem(index, 'product_id', e.target.value)}
-                        required
-                      >
-                        <option value="">Producto</option>
-                        {filteredProductOptions.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name} - {product.sku} - stock {product.stock}
-                          </option>
-                        ))}
-                      </select>
-                      <small className={styles.fieldHint}>
-                        {filteredProductOptions.length} producto{filteredProductOptions.length === 1 ? '' : 's'} encontrado{filteredProductOptions.length === 1 ? '' : 's'}
-                      </small>
-                    </div>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(index, 'quantity', e.target.value)}
-                      required
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.unit_price}
-                      onChange={(e) => updateItem(index, 'unit_price', e.target.value)}
-                      required
-                    />
-                    <div className={styles.itemMeta}>
-                      {selectedProduct ? `Stock actual ${selectedProduct.stock}` : 'Sin producto'}
-                    </div>
-                    <button
-                      type="button"
-                      className={styles.removeButton}
-                      onClick={() => removeItem(index)}
-                      disabled={form.items.length === 1}
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className={styles.formActions}>
-              <button type="button" className={styles.secondaryButton} onClick={addItem}>
-                Agregar item
-              </button>
-              <button type="button" className={styles.secondaryButton} onClick={resetForm}>
-                Limpiar
-              </button>
-              <button type="submit" className={styles.createButton} disabled={creating}>
-                {creating ? 'Guardando...' : 'Emitir comprobante'}
-              </button>
-            </div>
-          </form>
-        </section>
-      ) : null}
-
       <div className={styles.tablePane}>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Tipo</th>
-                  <th>Cliente</th>
-                  <th>Modo</th>
-                  <th>Total</th>
-                  <th>Emision</th>
-                  <th>Vencimiento</th>
-                  <th>Notas</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={9}>Cargando comprobantes...</td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan={9}>No hay comprobantes para mostrar.</td></tr>
-                ) : (
-                  filtered.map((item) => (
-                    <tr
-                      key={item.id}
-                      className={selectedId === item.id ? styles.selectedRow : ''}
-                      onClick={() => setSelectedId(item.id)}
-                    >
-                      <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
-                      <td>{item.document_type || '-'}</td>
-                      <td>{item.customer_name}</td>
-                      <td>{item.sale_mode || '-'}</td>
-                      <td className={styles.total}>{money(item.total)}</td>
-                      <td>{formatDate(item.created_at)}</td>
-                      <td>{formatDate(item.due_date)}</td>
-                      <td>{item.notes || '-'}</td>
-                      <td className={styles.rowActions}>
-                        <button
-                          type="button"
-                          className={styles.secondaryButton}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openInvoice(item.id, false);
-                          }}
-                        >
-                          Ver comprobante
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.printButton}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openInvoice(item.id, true);
-                          }}
-                        >
-                          Imprimir
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Tipo</th>
+                <th>Cliente</th>
+                <th>Modo</th>
+                <th>Total</th>
+                <th>Emision</th>
+                <th>Vencimiento</th>
+                <th>Notas</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={9}>Cargando comprobantes...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={9}>No hay comprobantes para mostrar.</td></tr>
+              ) : (
+                filtered.map((item) => (
+                  <tr
+                    key={item.id}
+                    className={selectedId === item.id ? styles.selectedRow : ''}
+                    onClick={() => setSelectedId(item.id)}
+                  >
+                    <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
+                    <td>{item.document_type || '-'}</td>
+                    <td>{item.customer_name}</td>
+                    <td>{item.sale_mode || '-'}</td>
+                    <td className={styles.total}>{money(item.total)}</td>
+                    <td>{formatDate(item.created_at)}</td>
+                    <td>{formatDate(item.due_date)}</td>
+                    <td>{item.notes || '-'}</td>
+                    <td className={styles.rowActions}>
+                      <button
+                        type="button"
+                        className={styles.secondaryButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void openInvoice(item.id, false);
+                        }}
+                      >
+                        Ver comprobante
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.printButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void openInvoice(item.id, true);
+                        }}
+                      >
+                        Imprimir
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.deleteButton}
+                        disabled={deletingId === item.id}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void deleteInvoice(item);
+                        }}
+                      >
+                        {deletingId === item.id ? 'Cancelando...' : 'Cancelar'}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
+      </div>
 
       {detailOnly ? (
         <div className={styles.modalOverlay} onClick={() => setDetailOnly(false)}>
           <aside className={styles.detailModal} onClick={(event) => event.stopPropagation()}>
             <div className={styles.detailToolbar}>
+              <button type="button" className={styles.pdfButton} onClick={exportPdf}>
+                Exportar PDF
+              </button>
+              <button type="button" className={styles.printButton} onClick={printDocument}>
+                Imprimir
+              </button>
               <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
                 Cerrar
               </button>
@@ -823,7 +338,7 @@ export default function ComprobantesPage() {
 
                   <div className={styles.desktopPanel}>
                     <div className={styles.sectionTitle}>Resumen</div>
-                      <div className={styles.summaryRows}>
+                    <div className={styles.summaryRows}>
                       <div className={styles.metaRow}><span>Numero</span><strong>#{detail.invoice.id}</strong></div>
                       <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
                       <div className={styles.metaRow}><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
@@ -846,26 +361,26 @@ export default function ComprobantesPage() {
                   <div className={styles.desktopPanel}>
                     <div className={styles.sectionTitle}>Detalle</div>
                     <div className={styles.documentTableWrap}>
-                    <table className={styles.table}>
-                      <thead>
-                        <tr>
-                          <th>Cant.</th>
-                          <th>Producto</th>
-                          <th>Unitario</th>
-                          <th>Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detail.items.map((item) => (
-                          <tr key={item.id}>
-                            <td>{item.quantity}</td>
-                            <td>{item.product_name}</td>
-                            <td>{money(item.unit_price)}</td>
-                            <td className={styles.total}>{money(item.line_total)}</td>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>Cant.</th>
+                            <th>Producto</th>
+                            <th>Unitario</th>
+                            <th>Total</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {detail.items.map((item) => (
+                            <tr key={item.id}>
+                              <td>{item.quantity}</td>
+                              <td>{item.product_name}</td>
+                              <td>{money(item.unit_price)}</td>
+                              <td className={styles.total}>{money(item.line_total)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
