@@ -160,11 +160,21 @@ export default function BalancesPage() {
   const currentMonth = monthly[monthly.length - 1];
   const previousMonth = monthly[monthly.length - 2];
   const monthlyDelta = useMemo(() => {
-    const current = currentMonth?.sales || 0;
-    const previous = previousMonth?.sales || 0;
+    const current =
+      metricMode === 'margin'
+        ? currentMonth?.margin || 0
+        : metricMode === 'count'
+          ? currentMonth?.count || 0
+          : currentMonth?.sales || 0;
+    const previous =
+      metricMode === 'margin'
+        ? previousMonth?.margin || 0
+        : metricMode === 'count'
+          ? previousMonth?.count || 0
+          : previousMonth?.sales || 0;
     if (!previous) return current ? 100 : 0;
     return ((current - previous) / previous) * 100;
-  }, [currentMonth, previousMonth]);
+  }, [currentMonth, metricMode, previousMonth]);
 
   const grossPosition = useMemo(() => {
     if (!summary) return 0;
@@ -200,13 +210,15 @@ export default function BalancesPage() {
   }, [metricMode, monthly, summary]);
 
   const annualMetricPath = useMemo(
-    () => buildLinePath(monthlyMetricPoints, 380, 124),
+    () => buildLinePath(monthlyMetricPoints, 520, 168),
     [monthlyMetricPoints]
   );
   const annualBarData = useMemo(
     () =>
       monthly.map((item, index) => ({
         month: item.month,
+        sales: item.sales || 0,
+        margin: item.margin || 0,
         value: monthlyMetricPoints[index] || 0,
         count: item.count || 0,
       })),
@@ -215,9 +227,9 @@ export default function BalancesPage() {
   const chartPoints = useMemo(() => {
     if (monthlyMetricPoints.length === 0) return [];
     return monthlyMetricPoints.map((value, index) => {
-      const x = monthlyMetricPoints.length === 1 ? 190 : (index / (monthlyMetricPoints.length - 1)) * 380;
+      const x = monthlyMetricPoints.length === 1 ? 260 : (index / (monthlyMetricPoints.length - 1)) * 520;
       const max = Math.max(1, ...monthlyMetricPoints);
-      const y = 124 - (value / max) * 124;
+      const y = 168 - (value / max) * 168;
       return {
         key: annualBarData[index]?.month || String(index),
         x,
@@ -260,7 +272,8 @@ export default function BalancesPage() {
   const selectedMonthValue = useMemo(() => {
     if (!selectedMonthData) return 0;
     if (metricMode === 'count') return selectedMonthData.count;
-    return selectedMonthData.value;
+    if (metricMode === 'margin') return selectedMonthData.margin || 0;
+    return selectedMonthData.sales || selectedMonthData.value;
   }, [metricMode, selectedMonthData]);
   const monthOptions = annualBarData.map((item) => ({
     value: item.month,
@@ -480,10 +493,10 @@ export default function BalancesPage() {
                 </div>
               </div>
               <div className={styles.chartBox}>
-                <svg viewBox="0 0 380 172" className={styles.lineChart} aria-hidden="true">
-                  <path d="M 0 124 L 380 124" className={styles.chartBaseline} />
-                  {[24, 48, 72, 96].map((y) => (
-                    <path key={y} d={`M 0 ${y} L 380 ${y}`} className={styles.chartGrid} />
+                <svg viewBox="0 0 520 222" className={styles.lineChart} aria-hidden="true">
+                  <path d="M 0 168 L 520 168" className={styles.chartBaseline} />
+                  {[34, 68, 102, 136].map((y) => (
+                    <path key={y} d={`M 0 ${y} L 520 ${y}`} className={styles.chartGrid} />
                   ))}
                   {annualMetricPath ? <path d={annualMetricPath} className={styles.linePrimary} /> : null}
                   {chartPoints.map((point) => (
@@ -504,7 +517,7 @@ export default function BalancesPage() {
                       </text>
                       <text
                         x={point.x}
-                        y="154"
+                        y="202"
                         textAnchor="middle"
                         className={styles.axisLabel}
                       >

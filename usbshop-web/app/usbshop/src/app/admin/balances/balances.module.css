@@ -243,7 +243,7 @@
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.72));
   border: 1px solid var(--bg-soft);
-  max-width: 860px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
@@ -285,13 +285,13 @@
 
 .pointLabel {
   fill: #0f172a;
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
 }
 
 .axisLabel {
   fill: #64748b;
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .monthList,
