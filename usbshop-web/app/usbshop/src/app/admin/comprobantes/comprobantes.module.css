@@ -7,7 +7,7 @@
 .layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(360px, 0.9fr); gap: 18px; align-items: start; }
 .tablePane, .detailPane { min-width: 0; }
 .detailPane { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; padding: 16px; box-shadow: 0 4px 16px var(--shadow); }
-.modalOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: 24px; z-index: 50; }
+.modalOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: 24px; z-index: 220; }
 .detailModal { width: min(1180px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: white; border: 1px solid var(--bg-soft); border-radius: 18px; padding: 16px; box-shadow: 0 20px 48px rgba(15, 23, 42, 0.2); }
 .tableWrap { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; overflow: auto; box-shadow: 0 4px 16px var(--shadow); }
 .table { width: 100%; border-collapse: collapse; }
