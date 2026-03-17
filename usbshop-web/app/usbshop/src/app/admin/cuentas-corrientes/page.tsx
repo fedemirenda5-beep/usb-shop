@@ -66,6 +66,8 @@ type InvoiceOption = {
   total: number;
   created_at: string;
   document_type?: string | null;
+  sale_mode?: string | null;
+  status?: string | null;
 };
 
 const money = (value: number) =>
@@ -88,6 +90,7 @@ export default function CuentasCorrientesPage() {
   const [search, setSearch] = useState('');
   const [summary, setSummary] = useState({ customers: 0, debit: 0, credit: 0, balance: 0 });
   const [saving, setSaving] = useState(false);
+  const [movementMode, setMovementMode] = useState<'payment' | 'debt'>('payment');
   const [form, setForm] = useState({
     movement_type: 'CREDIT',
     amount: '',
@@ -345,6 +348,17 @@ export default function CuentasCorrientesPage() {
     );
   }, [detail]);
 
+  const setMode = (mode: 'payment' | 'debt') => {
+    setMovementMode(mode);
+    setForm((current) => ({
+      ...current,
+      movement_type: mode === 'payment' ? 'CREDIT' : 'DEBIT',
+      payment_method: mode === 'payment' ? current.payment_method || 'Transferencia' : '',
+      invoice_id: mode === 'payment' ? current.invoice_id : '',
+      reference: mode === 'payment' ? current.reference : current.reference || 'Faltante de pago / deuda historica',
+    }));
+  };
+
   return (
     <div className={styles.page}>
       <section className={styles.header}>
@@ -446,72 +460,125 @@ export default function CuentasCorrientesPage() {
                 <div className={styles.overdueCard}><span>90+</span><strong>{money(detail.aging.d90_plus)}</strong></div>
               </div>
 
-              <form className={styles.formCard} onSubmit={submitMovement}>
-                <div className={styles.formHeader}>
-                  <div>
-                    <h3>Registrar cobranza o ajuste</h3>
-                    <p>Impacta directamente en la cuenta corriente del cliente.</p>
+              <div className={styles.detailGrid}>
+                <section className={styles.invoiceCard}>
+                  <div className={styles.sectionHeader}>
+                    <div>
+                      <h3>Comprobantes emitidos</h3>
+                      <p>Detalle de comprobantes generados a nombre de este cliente.</p>
+                    </div>
+                    <span className={styles.sectionMeta}>{invoices.length} comprobantes</span>
                   </div>
-                  <button type="submit" className={styles.primaryButton} disabled={saving}>
-                    {saving ? 'Guardando...' : 'Guardar movimiento'}
-                  </button>
-                </div>
+                  <div className={styles.invoiceList}>
+                    {invoices.length === 0 ? (
+                      <div className={styles.emptyPanel}>No hay comprobantes asociados a este cliente.</div>
+                    ) : (
+                      invoices.map((invoice) => (
+                        <article key={invoice.id} className={styles.invoiceItem}>
+                          <div>
+                            <strong>#{invoice.id} - {invoice.document_type || 'Comprobante'}</strong>
+                            <span>{formatDate(invoice.created_at)}</span>
+                          </div>
+                          <div className={styles.invoiceAmounts}>
+                            <em>{money(invoice.total)}</em>
+                            <small>{invoice.sale_mode || invoice.status || 'Emitido'}</small>
+                          </div>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </section>
 
-                <div className={styles.formGrid}>
-                  <label>
-                    <span>Tipo</span>
-                    <select
-                      value={form.movement_type}
-                      onChange={(e) => setForm((current) => ({ ...current, movement_type: e.target.value }))}
+                <form className={styles.formCard} onSubmit={submitMovement}>
+                  <div className={styles.formHeader}>
+                    <div>
+                      <h3>Movimientos manuales</h3>
+                      <p>Registra pagos o deudas historicas con el detalle que necesites.</p>
+                    </div>
+                    <button type="submit" className={styles.primaryButton} disabled={saving}>
+                      {saving ? 'Guardando...' : movementMode === 'payment' ? 'Registrar pago' : 'Guardar deuda'}
+                    </button>
+                  </div>
+
+                  <div className={styles.modeSwitcher}>
+                    <button
+                      type="button"
+                      className={`${styles.modeButton} ${movementMode === 'payment' ? styles.modeButtonActive : ''}`}
+                      onClick={() => setMode('payment')}
                     >
-                      <option value="CREDIT">Cobranza / pago del cliente</option>
-                      <option value="DEBIT">Debito manual</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Importe</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={form.amount}
-                      onChange={(e) => setForm((current) => ({ ...current, amount: e.target.value }))}
-                      placeholder="0.00"
-                      required
-                    />
-                  </label>
-                  <label>
-                    <span>Metodo</span>
-                    <input
-                      value={form.payment_method}
-                      onChange={(e) => setForm((current) => ({ ...current, payment_method: e.target.value }))}
-                      placeholder="Transferencia, efectivo, cheque..."
-                    />
-                  </label>
-                  <label>
-                    <span>Comprobante</span>
-                    <select
-                      value={form.invoice_id}
-                      onChange={(e) => setForm((current) => ({ ...current, invoice_id: e.target.value }))}
+                      Registrar pago
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.modeButton} ${movementMode === 'debt' ? styles.modeButtonActive : ''}`}
+                      onClick={() => setMode('debt')}
                     >
-                      <option value="">Sin asociar</option>
-                      {invoices.map((invoice) => (
-                        <option key={invoice.id} value={invoice.id}>
-                          #{invoice.id} · {invoice.document_type || 'Comprobante'} · {money(invoice.total)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className={styles.fullWidth}>
-                    <span>Referencia</span>
-                    <input
-                      value={form.reference}
-                      onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))}
-                      placeholder="Ej: Transferencia 15/03, recibo manual, ajuste de saldo"
-                    />
-                  </label>
-                </div>
-              </form>
+                      Crear deuda historica
+                    </button>
+                  </div>
+
+                  <div className={styles.formGrid}>
+                    <label>
+                      <span>Tipo</span>
+                      <input
+                        value={movementMode === 'payment' ? 'Cobranza / pago del cliente' : 'Debito manual / deuda historica'}
+                        readOnly
+                      />
+                    </label>
+                    <label>
+                      <span>Importe</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.amount}
+                        onChange={(e) => setForm((current) => ({ ...current, amount: e.target.value }))}
+                        placeholder="0.00"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>{movementMode === 'payment' ? 'Metodo' : 'Origen / soporte'}</span>
+                      <input
+                        value={form.payment_method}
+                        onChange={(e) => setForm((current) => ({ ...current, payment_method: e.target.value }))}
+                        placeholder={
+                          movementMode === 'payment'
+                            ? 'Transferencia, efectivo, cheque...'
+                            : 'Ajuste manual, saldo previo, recibo...'
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Comprobante</span>
+                      <select
+                        value={form.invoice_id}
+                        onChange={(e) => setForm((current) => ({ ...current, invoice_id: e.target.value }))}
+                        disabled={movementMode === 'debt'}
+                      >
+                        <option value="">Sin asociar</option>
+                        {invoices.map((invoice) => (
+                          <option key={invoice.id} value={invoice.id}>
+                            #{invoice.id} - {invoice.document_type || 'Comprobante'} - {money(invoice.total)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={styles.fullWidth}>
+                      <span>Detalle</span>
+                      <input
+                        value={form.reference}
+                        onChange={(e) => setForm((current) => ({ ...current, reference: e.target.value }))}
+                        placeholder={
+                          movementMode === 'payment'
+                            ? 'Ej: Transferencia 15/03, recibo manual, ajuste de saldo'
+                            : 'Ej: Faltante de pago, deuda previa, ajuste historico'
+                        }
+                      />
+                    </label>
+                  </div>
+                </form>
+              </div>
 
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
