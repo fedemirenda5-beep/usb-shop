@@ -51,6 +51,13 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-AR');
 };
 
+const formatMonthLabel = (value: string) => {
+  const [year, month] = value.split('-');
+  const parsed = new Date(Number(year), Number(month) - 1, 1);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+};
+
 const buildLinePath = (points: number[], width: number, height: number) => {
   if (points.length === 0) return '';
   const max = Math.max(1, ...points);
@@ -70,6 +77,7 @@ export default function BalancesPage() {
   const [sellerBalances, setSellerBalances] = useState<SellerBalance[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
   const [metricMode, setMetricMode] = useState<AnnualMetricMode>('sales');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -84,6 +92,10 @@ export default function BalancesPage() {
         setLowStock(data.low_stock || []);
         setSellerBalances(data.sales_by_seller || []);
         setYearProjection(data.year_projection || null);
+        const monthlySales = data.monthly_sales || [];
+        if (monthlySales.length > 0) {
+          setSelectedMonth((current) => current || monthlySales[monthlySales.length - 1].month);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando balances');
       }
@@ -140,9 +152,6 @@ export default function BalancesPage() {
     () => buildLinePath(monthlyMetricPoints, 520, 170),
     [monthlyMetricPoints]
   );
-
-  const maxAnnualMetric = useMemo(() => Math.max(1, ...monthlyMetricPoints, 0), [monthlyMetricPoints]);
-
   const annualBarData = useMemo(
     () =>
       monthly.map((item, index) => ({
@@ -152,6 +161,21 @@ export default function BalancesPage() {
       })),
     [monthly, monthlyMetricPoints]
   );
+  const chartPoints = useMemo(() => {
+    if (monthlyMetricPoints.length === 0) return [];
+    return monthlyMetricPoints.map((value, index) => {
+      const x = monthlyMetricPoints.length === 1 ? 260 : (index / (monthlyMetricPoints.length - 1)) * 520;
+      const max = Math.max(1, ...monthlyMetricPoints);
+      const y = 170 - (value / max) * 170;
+      return {
+        key: annualBarData[index]?.month || String(index),
+        x,
+        y,
+        month: annualBarData[index]?.month || '',
+        value,
+      };
+    });
+  }, [annualBarData, monthlyMetricPoints]);
 
   const annualSummaryRows = useMemo(() => {
     if (!summary) return [];
@@ -162,13 +186,6 @@ export default function BalancesPage() {
       { label: 'Cierre comercial', value: money(grossPosition), help: 'Stock a costo + cuenta corriente abierta' },
     ];
   }, [annualCapital, grossPosition, summary]);
-
-  const metricLabel =
-    metricMode === 'margin'
-      ? 'Ganancia'
-      : metricMode === 'count'
-        ? 'Comprobantes'
-        : 'Ventas';
 
   const monthlyDetailRows = useMemo(
     () =>
@@ -185,6 +202,20 @@ export default function BalancesPage() {
     () => Math.max(1, ...sellerBalances.map((item) => item.sales || 0), 0),
     [sellerBalances]
   );
+  const selectedMonthData = useMemo(
+    () => annualBarData.find((item) => item.month === selectedMonth) || annualBarData[annualBarData.length - 1] || null,
+    [annualBarData, selectedMonth]
+  );
+  const selectedMonthValue = useMemo(() => {
+    if (!selectedMonthData) return 0;
+    if (metricMode === 'count') return selectedMonthData.count;
+    return selectedMonthData.value;
+  }, [metricMode, selectedMonthData]);
+  const monthOptions = annualBarData.map((item) => ({
+    value: item.month,
+    label: formatMonthLabel(item.month),
+  }));
+  const viewLabel = metricMode === 'sales' ? 'Ventas' : metricMode === 'margin' ? 'Ganancia' : 'Comprobantes';
 
   return (
     <div className={styles.page}>
@@ -241,42 +272,44 @@ export default function BalancesPage() {
 
           <section className={styles.grid}>
             <article className={`${styles.panel} ${styles.primaryPanel}`}>
+              <div className={styles.chartToolbar}>
+                <label className={styles.chartField}>
+                  <span>Mes:</span>
+                  <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+                    {monthOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={styles.chartField}>
+                  <span>Vista:</span>
+                  <select
+                    value={metricMode}
+                    onChange={(e) => setMetricMode(e.target.value as AnnualMetricMode)}
+                  >
+                    <option value="sales">Ventas</option>
+                    <option value="margin">Ganancia</option>
+                    <option value="count">Comprobantes</option>
+                  </select>
+                </label>
+              </div>
               <div className={styles.panelHeader}>
                 <div>
-                  <h2>Ventas mensuales</h2>
-                  <p className={styles.panelNote}>Comparativo mensual del balance anual, como en escritorio.</p>
-                </div>
-                <div className={styles.metricSwitch}>
-                  <button
-                    type="button"
-                    className={metricMode === 'sales' ? styles.metricSwitchActive : ''}
-                    onClick={() => setMetricMode('sales')}
-                  >
-                    Ventas
-                  </button>
-                  <button
-                    type="button"
-                    className={metricMode === 'margin' ? styles.metricSwitchActive : ''}
-                    onClick={() => setMetricMode('margin')}
-                  >
-                    Ganancia
-                  </button>
-                  <button
-                    type="button"
-                    className={metricMode === 'count' ? styles.metricSwitchActive : ''}
-                    onClick={() => setMetricMode('count')}
-                  >
-                    Comprobantes
-                  </button>
+                  <h2>{viewLabel} de los ultimos 12 meses</h2>
+                  <p className={styles.panelNote}>
+                    El mes actual se actualiza con cada comprobante emitido.
+                  </p>
                 </div>
               </div>
               <div className={styles.highlight}>
                 <div>
-                  <span>{metricLabel} actual</span>
+                  <span>{viewLabel} del mes</span>
                   <strong>
                     {metricMode === 'count'
-                      ? integer(monthlyMetricPoints[monthlyMetricPoints.length - 1] || 0)
-                      : money(monthlyMetricPoints[monthlyMetricPoints.length - 1] || 0)}
+                      ? integer(selectedMonthValue)
+                      : money(selectedMonthValue)}
                   </strong>
                 </div>
                 <div>
@@ -286,24 +319,40 @@ export default function BalancesPage() {
                   </strong>
                 </div>
               </div>
-              <div className={styles.desktopChartPanel}>
-                <div className={styles.chartBox}>
-                  <svg viewBox="0 0 520 190" className={styles.lineChart} aria-hidden="true">
-                    <path d="M 0 170 L 520 170" className={styles.chartBaseline} />
-                    {annualMetricPath ? <path d={annualMetricPath} className={styles.linePrimary} /> : null}
-                  </svg>
-                </div>
-                <div className={styles.barChart}>
-                  {annualBarData.slice(-8).map((item) => (
-                    <div key={item.month} className={styles.barItem}>
-                      <div
-                        className={styles.barFill}
-                        style={{ height: `${Math.max(8, (item.value / maxAnnualMetric) * 100)}%` }}
-                      />
-                      <span>{item.month}</span>
-                    </div>
+              <div className={styles.chartBox}>
+                <svg viewBox="0 0 520 235" className={styles.lineChart} aria-hidden="true">
+                  <path d="M 0 170 L 520 170" className={styles.chartBaseline} />
+                  {[34, 68, 102, 136].map((y) => (
+                    <path key={y} d={`M 0 ${y} L 520 ${y}`} className={styles.chartGrid} />
                   ))}
-                </div>
+                  {annualMetricPath ? <path d={annualMetricPath} className={styles.linePrimary} /> : null}
+                  {chartPoints.map((point) => (
+                    <g key={point.key}>
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={point.month === selectedMonth ? 8 : 6}
+                        className={point.month === selectedMonth ? styles.pointSelected : styles.point}
+                      />
+                      <text
+                        x={point.x}
+                        y={Math.max(18, point.y - 12)}
+                        textAnchor="middle"
+                        className={styles.pointLabel}
+                      >
+                        {metricMode === 'count' ? integer(point.value) : money(point.value)}
+                      </text>
+                      <text
+                        x={point.x}
+                        y="214"
+                        textAnchor="middle"
+                        className={styles.axisLabel}
+                      >
+                        {formatMonthLabel(point.month)}
+                      </text>
+                    </g>
+                  ))}
+                </svg>
               </div>
               <div className={styles.monthList}>
                 {monthlyDetailRows.map((item) => (

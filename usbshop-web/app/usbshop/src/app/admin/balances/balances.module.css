@@ -151,10 +151,36 @@
   font-size: 13px;
 }
 
-.metricSwitch {
+.chartToolbar {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.chartField {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.chartField span {
+  font-weight: 600;
+}
+
+.chartField select {
+  border: 1px solid var(--bg-soft);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 9px 12px;
+  font: inherit;
+  min-width: 170px;
+}
+
+.metricSwitch {
+  display: none;
 }
 
 .metricSwitch button {
@@ -224,44 +250,40 @@
   stroke-width: 1.5;
 }
 
+.chartGrid {
+  stroke: rgba(148, 163, 184, 0.18);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+}
+
 .linePrimary {
   fill: none;
-  stroke: #0f766e;
-  stroke-width: 4;
+  stroke: #0891b2;
+  stroke-width: 4.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.barChart {
-  height: 190px;
-  display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
-  gap: 10px;
-  align-items: end;
-  padding: 10px 8px 0;
-  border: 1px solid var(--bg-soft);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+.point,
+.pointSelected {
+  stroke: #065f73;
+  stroke-width: 2;
+  fill: #22d3ee;
 }
 
-.barItem {
-  display: grid;
-  justify-items: center;
-  align-items: end;
-  gap: 8px;
-  height: 100%;
+.pointSelected {
+  fill: #0ea5e9;
 }
 
-.barFill {
-  width: 100%;
-  min-height: 8%;
-  border-radius: 10px 10px 4px 4px;
-  background: linear-gradient(180deg, #2563eb, #0f766e);
-}
-
-.barItem span {
+.pointLabel {
+  fill: #0f172a;
   font-size: 11px;
-  color: var(--muted);
+  font-weight: 700;
+}
+
+.axisLabel {
+  fill: #64748b;
+  font-size: 11px;
 }
 
 .monthList,
@@ -498,7 +520,6 @@
   .desktopHero,
   .grid,
   .compactComposition,
-  .desktopChartPanel,
   .projectionGrid {
     grid-template-columns: 1fr;
   }
@@ -526,6 +547,16 @@
   .summaryStrip,
   .highlight {
     grid-template-columns: 1fr;
+  }
+
+  .chartField {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .chartField select {
+    min-width: 0;
+    flex: 1;
   }
 
   .sellerMeta {

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 import urllib.request
+from urllib.error import HTTPError, URLError
 from pathlib import Path
 
 API_BASE_URL = (os.getenv("USBSHOP_SYNC_API_BASE_URL") or "https://usbshop-api.onrender.com").rstrip("/")
@@ -12,7 +14,9 @@ SOURCE_DB_CANDIDATES = [
     Path(r"C:\Users\Fede\ControlStock\documentos\controlStock.db"),
     Path(__file__).resolve().parents[1] / "data" / "controlStock.db",
 ]
-CHUNK_SIZE = 500
+DEFAULT_CHUNK_SIZE = int((os.getenv("USBSHOP_SYNC_CHUNK_SIZE") or "250").strip() or "250")
+RETRY_ATTEMPTS = int((os.getenv("USBSHOP_SYNC_RETRIES") or "4").strip() or "4")
+RETRYABLE_STATUS_CODES = {502, 503, 504}
 DELETE_ORDER = ["invoice_items", "account_movements", "invoices", "customers"]
 IMPORT_ORDER = ["customers", "invoices", "invoice_items", "account_movements"]
 TABLE_COLUMNS: dict[str, list[str]] = {
@@ -63,6 +67,12 @@ TABLE_COLUMNS: dict[str, list[str]] = {
         "payment_method",
     ],
 }
+TABLE_CHUNK_SIZES: dict[str, int] = {
+    "customers": min(DEFAULT_CHUNK_SIZE, 250),
+    "invoices": min(DEFAULT_CHUNK_SIZE, 250),
+    "invoice_items": min(DEFAULT_CHUNK_SIZE, 150),
+    "account_movements": min(DEFAULT_CHUNK_SIZE, 250),
+}
 
 
 def _source_db() -> Path:
@@ -75,17 +85,32 @@ def _source_db() -> Path:
 
 def _request_json(path: str, payload: dict) -> dict:
     data = json.dumps(payload).encode("utf-8")
-    request = urllib.request.Request(
-        f"{API_BASE_URL}{path}",
-        data=data,
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {SYNC_TOKEN}",
-            "Content-Type": "application/json",
-        },
-    )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return json.loads(response.read().decode("utf-8"))
+    last_error: Exception | None = None
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        request = urllib.request.Request(
+            f"{API_BASE_URL}{path}",
+            data=data,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {SYNC_TOKEN}",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code not in RETRYABLE_STATUS_CODES or attempt >= RETRY_ATTEMPTS:
+                raise
+        except URLError as exc:
+            last_error = exc
+            if attempt >= RETRY_ATTEMPTS:
+                raise
+        time.sleep(min(8, attempt * 2))
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("No se pudo completar la solicitud")
 
 
 def _fetch_rows(conn: sqlite3.Connection, table_name: str, columns: list[str]) -> list[dict]:
@@ -114,19 +139,20 @@ def main() -> None:
             if not rows:
                 print(f"{table_name}: sin filas")
                 continue
-            for index in range(0, len(rows), CHUNK_SIZE):
-                chunk = rows[index : index + CHUNK_SIZE]
+            chunk_size = TABLE_CHUNK_SIZES.get(table_name, DEFAULT_CHUNK_SIZE)
+            for index in range(0, len(rows), chunk_size):
+                chunk = rows[index : index + chunk_size]
                 result = _request_json(
                     "/admin/sync/table",
                     {
                         "table": table_name,
                         "rows": chunk,
                         "replace": False,
-                        "finalize": index + CHUNK_SIZE >= len(rows),
+                        "finalize": index + chunk_size >= len(rows),
                     },
                 )
                 print(
-                    f"{table_name}: lote {index // CHUNK_SIZE + 1} "
+                    f"{table_name}: lote {index // chunk_size + 1} "
                     f"({len(chunk)} filas) -> {result.get('status')}"
                 )
     finally:
