@@ -19,7 +19,7 @@ type Summary = {
   latest_invoice_at?: string | null;
 };
 
-type MonthPoint = { month: string; sales: number; count: number };
+type MonthPoint = { month: string; sales: number; count: number; margin?: number };
 type LowStock = { id: number; name: string; stock: number; reorder_point: number };
 type DailySummary = {
   sales: number;
@@ -194,10 +194,7 @@ export default function BalancesPage() {
     if (!summary) return [];
     return monthly.map((item) => {
       if (metricMode === 'count') return item.count || 0;
-      if (metricMode === 'margin') {
-        const ratio = summary.sales_total > 0 ? (item.sales || 0) / summary.sales_total : 0;
-        return summary.estimated_margin * ratio;
-      }
+      if (metricMode === 'margin') return item.margin || 0;
       return item.sales || 0;
     });
   }, [metricMode, monthly, summary]);

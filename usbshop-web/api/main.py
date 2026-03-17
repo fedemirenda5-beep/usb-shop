@@ -4097,7 +4097,14 @@ def admin_reports_overview(
             seller_id = int(row["seller_id"] or 0)
             if seller_id > 0:
                 seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) + margin_value, 2)
-        monthly_sales = [monthly_map[key] for key in sorted(monthly_map.keys())][-12:]
+        monthly_sales = [
+            {
+                **monthly_map[key],
+                "sales": round(float(monthly_map[key]["sales"] or 0), 2),
+                "margin": round(float(monthly_map[key]["margin"] or 0), 2),
+            }
+            for key in sorted(monthly_map.keys())
+        ][-12:]
         product_names = {int(row["id"]): row["name"] for row in products}
         seller_names = {
             int(row["id"]): row["name"]
