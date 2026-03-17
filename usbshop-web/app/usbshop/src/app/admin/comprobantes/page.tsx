@@ -108,6 +108,7 @@ type OrderDraft = {
 
 type InvoiceFormItem = {
   product_id: string;
+  product_query: string;
   quantity: string;
   unit_price: string;
 };
@@ -123,6 +124,7 @@ const formatDate = (value?: string | null) => {
 
 const emptyItem = (): InvoiceFormItem => ({
   product_id: '',
+  product_query: '',
   quantity: '1',
   unit_price: '0',
 });
@@ -280,9 +282,10 @@ export default function ComprobantesPage() {
           items: draft.items.length
             ? draft.items.map((item) => ({
                 product_id: String(item.product_id),
-                quantity: String(item.quantity),
-                unit_price: String(item.unit_price),
-              }))
+              quantity: String(item.quantity),
+              product_query: item.name || '',
+              unit_price: String(item.unit_price),
+            }))
             : [emptyItem()],
         });
         setShowCreateForm(true);
@@ -359,6 +362,7 @@ export default function ComprobantesPage() {
         if (field === 'product_id') {
           const selected = productMap.get(Number(value));
           if (selected) {
+            nextItem.product_query = selected.name;
             nextItem.unit_price = String(getProductPriceByList(selected, current.price_list));
           }
         }
@@ -424,9 +428,9 @@ export default function ComprobantesPage() {
         due_date: form.due_date || null,
         notes: form.notes || null,
         items: form.items.map((item) => ({
-          product_id: Number(item.product_id),
-          quantity: Number(item.quantity),
-          unit_price: Number(item.unit_price),
+                product_id: Number(item.product_id),
+                quantity: Number(item.quantity),
+                unit_price: Number(item.unit_price),
         })),
       };
       const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
@@ -625,20 +629,39 @@ export default function ComprobantesPage() {
             <div className={styles.itemList}>
               {form.items.map((item, index) => {
                 const selectedProduct = productMap.get(Number(item.product_id));
+                const filteredProductOptions = products.filter((product) =>
+                  !item.product_query.trim()
+                    ? true
+                    : [product.name, product.sku, String(product.id)]
+                        .join(' ')
+                        .toLowerCase()
+                        .includes(item.product_query.trim().toLowerCase())
+                );
                 return (
                   <div key={index} className={styles.itemRow}>
-                    <select
-                      value={item.product_id}
-                      onChange={(e) => updateItem(index, 'product_id', e.target.value)}
-                      required
-                    >
-                      <option value="">Producto</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} - {product.sku} - stock {product.stock}
-                        </option>
-                      ))}
-                    </select>
+                    <div className={styles.productPicker}>
+                      <input
+                        type="text"
+                        value={item.product_query}
+                        onChange={(e) => updateItem(index, 'product_query', e.target.value)}
+                        placeholder="Buscar producto por nombre o SKU"
+                      />
+                      <select
+                        value={item.product_id}
+                        onChange={(e) => updateItem(index, 'product_id', e.target.value)}
+                        required
+                      >
+                        <option value="">Producto</option>
+                        {filteredProductOptions.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.name} - {product.sku} - stock {product.stock}
+                          </option>
+                        ))}
+                      </select>
+                      <small className={styles.fieldHint}>
+                        {filteredProductOptions.length} producto{filteredProductOptions.length === 1 ? '' : 's'} encontrado{filteredProductOptions.length === 1 ? '' : 's'}
+                      </small>
+                    </div>
                     <input
                       type="number"
                       min="1"
