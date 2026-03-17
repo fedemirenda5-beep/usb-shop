@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 18px;
   width: 100%;
-  max-width: 1360px;
+  max-width: 1240px;
   margin: 0 auto;
   min-width: 0;
 }
@@ -243,6 +243,8 @@
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.72));
   border: 1px solid var(--bg-soft);
+  max-width: 860px;
+  margin: 0 auto;
 }
 
 .lineChart {
@@ -283,13 +285,13 @@
 
 .pointLabel {
   fill: #0f172a;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
 }
 
 .axisLabel {
   fill: #64748b;
-  font-size: 9px;
+  font-size: 8px;
 }
 
 .monthList,
@@ -311,6 +313,12 @@
   border-radius: 12px;
   padding: 10px;
   min-width: 0;
+}
+
+.monthList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .monthRow strong,
@@ -613,6 +621,10 @@
   .summaryStrip,
   .dailySummaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .monthList {
+    grid-template-columns: 1fr;
   }
 
 }
