@@ -2985,13 +2985,14 @@ def admin_sellers_monthly_summary(
 
         invoices = conn.execute(
             """
-            SELECT id, seller_id, total, commission_amount, created_at
+            SELECT id, seller_id, total, commission_amount, created_at, document_type
             FROM invoices
             WHERE seller_id IS NOT NULL
             """
         ).fetchall()
         invoice_ids: list[int] = []
         invoice_seller_map: dict[int, int] = {}
+        invoice_sign_map: dict[int, float] = {}
         for row in invoices:
             created = _safe_parse_datetime(row["created_at"])
             if created is None or created.strftime("%Y-%m") != period_key:
@@ -2999,12 +3000,17 @@ def admin_sellers_monthly_summary(
             seller_id = int(row["seller_id"] or 0)
             if seller_id <= 0 or seller_id not in summary_map:
                 continue
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
             invoice_id = int(row["id"] or 0)
             invoice_ids.append(invoice_id)
             invoice_seller_map[invoice_id] = seller_id
-            summary_map[seller_id]["sales"] = round(summary_map[seller_id]["sales"] + float(row["total"] or 0), 2)
+            invoice_sign_map[invoice_id] = sign
+            summary_map[seller_id]["sales"] = round(summary_map[seller_id]["sales"] + (float(row["total"] or 0) * sign), 2)
             summary_map[seller_id]["commission"] = round(
-                summary_map[seller_id]["commission"] + float(row["commission_amount"] or 0), 2
+                summary_map[seller_id]["commission"] + (float(row["commission_amount"] or 0) * sign), 2
             )
             summary_map[seller_id]["invoice_count"] += 1
 
@@ -3024,10 +3030,13 @@ def admin_sellers_monthly_summary(
                 seller_id = invoice_seller_map.get(invoice_id)
                 if seller_id is None:
                     continue
+                sign = invoice_sign_map.get(invoice_id, 1.0)
                 quantity = float(row["quantity"] or 0)
                 revenue = quantity * float(row["unit_price"] or 0)
                 cost_total = quantity * float(row["cost"] or 0)
-                summary_map[seller_id]["profit"] = round(summary_map[seller_id]["profit"] + (revenue - cost_total), 2)
+                summary_map[seller_id]["profit"] = round(
+                    summary_map[seller_id]["profit"] + ((revenue - cost_total) * sign), 2
+                )
 
         return {
             "period": period_key,
