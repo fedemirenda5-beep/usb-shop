@@ -21,14 +21,15 @@
 .printArea { display: grid; gap: 16px; }
 .documentShell { display: grid; gap: 12px; padding: 18px; border-radius: 18px; background: #f7f8fb; border: 1px solid #0b0b0b; }
 .desktopAccentBar { height: 4px; background: #2d0a5b; border-radius: 10px; margin: 0 10px 2px; }
-.printBanner { display: grid; grid-template-columns: 110px minmax(160px, 1fr) minmax(220px, auto); gap: 16px; align-items: center; padding: 8px 10px; background: white; border: 1px solid #0b0b0b; border-radius: 12px; }
-.logoBox { width: 110px; height: 110px; border: 1px solid #0b0b0b; border-radius: 10px; background: white; display: grid; place-items: center; padding: 6px; box-sizing: border-box; }
+.printBanner { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 16px; align-items: center; padding: 8px 10px; background: white; border: 1px solid #0b0b0b; border-radius: 12px; }
+.brandLockup { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.logoBox { width: 84px; height: 84px; border: 1px solid #0b0b0b; border-radius: 10px; background: white; display: grid; place-items: center; padding: 6px; box-sizing: border-box; flex: 0 0 auto; }
 .logoImage { width: 100%; height: 100%; object-fit: contain; display: block; }
 .docCenter { display: flex; justify-content: center; }
 .docKindBadge { display: inline-block; padding: 8px 18px; border-radius: 12px; background: #2d0a5b; color: #a5f341; font-weight: 900; font-size: 16px; letter-spacing: 0.12em; text-transform: uppercase; text-align: center; }
-.brandHead { text-align: right; }
-.brandName { font-size: 28px; font-weight: 900; letter-spacing: 0.05em; color: #2d0a5b; text-transform: uppercase; }
-.brandMeta { color: #475569; line-height: 1.5; font-size: 12px; }
+.brandHead { text-align: left; display: grid; gap: 4px; }
+.brandName { font-size: 28px; font-weight: 900; letter-spacing: 0.05em; color: #2d0a5b; text-transform: uppercase; line-height: 1; }
+.brandMeta { color: #475569; line-height: 1.2; font-size: 12px; }
 .brandEyebrow, .sectionLabel { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #0f766e; }
 .detailHeader { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
 .detailHeader h3 { margin: 6px 0 0; color: var(--ink); font-size: 23px; }
@@ -103,6 +104,7 @@
   .itemRow { grid-template-columns: 1fr; }
   .detailHeader { flex-direction: column; }
   .printBanner { grid-template-columns: 1fr; }
+  .brandLockup { justify-content: flex-start; }
   .brandHead, .docCenter { justify-content: flex-start; text-align: left; }
   .modalOverlay { padding: 12px; }
   .detailModal { max-height: calc(100vh - 24px); padding: 12px; }

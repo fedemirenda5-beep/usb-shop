@@ -307,20 +307,18 @@ export default function ComprobantesPage() {
                   <div className={styles.desktopAccentBar} />
 
                   <div className={styles.printBanner}>
-                    <div className={styles.logoBox}>
-                      <img src="/logo-small.jpeg" alt="USB Shop" className={styles.logoImage} />
+                    <div className={styles.brandLockup}>
+                      <div className={styles.logoBox}>
+                        <img src="/logo-small.jpeg" alt="USB Shop" className={styles.logoImage} />
+                      </div>
+                      <div className={styles.brandHead}>
+                        <div className={styles.brandName}>USB Shop</div>
+                        <div className={styles.brandMeta}>Venta mayorista</div>
+                      </div>
                     </div>
                     <div className={styles.docCenter}>
                       <div className={styles.docKindBadge}>
                         {detail.invoice.document_type || 'Comprobante'}
-                      </div>
-                    </div>
-                    <div className={styles.brandHead}>
-                      <div className={styles.brandName}>USB Shop</div>
-                      <div className={styles.brandMeta}>
-                        Venta mayorista
-                        <br />
-                        Comprobante emitido desde admin
                       </div>
                     </div>
                   </div>
