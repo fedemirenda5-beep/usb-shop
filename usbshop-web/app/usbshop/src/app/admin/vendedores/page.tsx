@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './vendedores.module.css';
 
 type Seller = {
@@ -19,6 +20,16 @@ type SellerFormState = {
   is_active: boolean;
 };
 
+type SellerMonthlySummary = {
+  seller_id: number;
+  name: string;
+  commission_percent: number;
+  sales: number;
+  profit: number;
+  commission: number;
+  invoice_count: number;
+};
+
 const emptySellerForm = (): SellerFormState => ({
   name: '',
   commission_percent: '0',
@@ -31,6 +42,9 @@ const formatPercent = (value: number) =>
     maximumFractionDigits: 2,
   }).format(value || 0)}%`;
 
+const money = (value: number) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+
 const formatDate = (value?: string | null) => {
   if (!value) return '-';
   const parsed = new Date(value);
@@ -39,16 +53,29 @@ const formatDate = (value?: string | null) => {
 };
 
 export default function VendedoresPage() {
+  const { user } = useAdminSession();
   const [sellers, setSellers] = useState<Seller[]>([]);
+  const [monthlySummary, setMonthlySummary] = useState<SellerMonthlySummary[]>([]);
+  const [monthlyPeriod, setMonthlyPeriod] = useState('');
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showSellerForm, setShowSellerForm] = useState(false);
   const [sellerForm, setSellerForm] = useState<SellerFormState>(emptySellerForm);
 
   const selectedSeller = sellers.find((seller) => seller.id === selectedSellerId) ?? null;
+  const isFullAdmin = (user?.role || '').toLowerCase() === 'admin';
+  const formattedMonthlyPeriod = useMemo(() => {
+    if (!monthlyPeriod) return 'este mes';
+    const [year, month] = monthlyPeriod.split('-');
+    const parsed = new Date(Number(year), Number(month) - 1, 1);
+    return Number.isNaN(parsed.getTime())
+      ? monthlyPeriod
+      : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  }, [monthlyPeriod]);
 
   const loadSellers = async (query = '') => {
     try {
@@ -84,6 +111,35 @@ export default function VendedoresPage() {
     }, 250);
     return () => window.clearTimeout(timeoutId);
   }, [search]);
+
+  useEffect(() => {
+    if (!isFullAdmin) {
+      setMonthlySummary([]);
+      setMonthlyPeriod('');
+      return;
+    }
+    const loadMonthlySummary = async () => {
+      try {
+        setSummaryLoading(true);
+        await loadRuntimeConfig();
+        const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary`, {
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.detail || 'No se pudo cargar el resumen mensual');
+        }
+        const data = await res.json();
+        setMonthlySummary(Array.isArray(data.items) ? data.items : []);
+        setMonthlyPeriod(typeof data.period === 'string' ? data.period : '');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error cargando resumen mensual');
+      } finally {
+        setSummaryLoading(false);
+      }
+    };
+    void loadMonthlySummary();
+  }, [isFullAdmin]);
 
   const handleSellerFormChange = (
     e: React.ChangeEvent<HTMLInputElement>
@@ -239,6 +295,44 @@ export default function VendedoresPage() {
           )}
         </div>
       </div>
+
+      {isFullAdmin ? (
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h3>Resumen mensual por vendedor</h3>
+              <p>Ventas y ganancia estimada de {formattedMonthlyPeriod} para los vendedores activos.</p>
+            </div>
+          </div>
+
+          {summaryLoading ? (
+            <div className={styles.empty}>Cargando resumen mensual...</div>
+          ) : monthlySummary.length === 0 ? (
+            <div className={styles.empty}>No hay ventas registradas este mes para vendedores activos.</div>
+          ) : (
+            <div className={styles.monthlySummaryGrid}>
+              {monthlySummary.map((item) => (
+                <article key={item.seller_id} className={styles.summaryCard}>
+                  <div className={styles.summaryHeader}>
+                    <strong>{item.name}</strong>
+                    <span>{formatPercent(item.commission_percent)}</span>
+                  </div>
+                  <div className={styles.summaryMetrics}>
+                    <div>
+                      <span>Venta del mes</span>
+                      <strong>{money(item.sales)}</strong>
+                    </div>
+                    <div>
+                      <span>Ganancia</span>
+                      <strong>{money(item.profit)}</strong>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section className={styles.main}>
         {showSellerForm ? (

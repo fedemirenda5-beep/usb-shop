@@ -585,15 +585,21 @@ export default function CuentasCorrientesPage() {
         <div className={styles.accountHeader}>
           <div className={styles.accountSummary}>
             <strong>
-              {detail.customer.name} (#{detail.customer.id}) - Saldo: {money(detail.balance)} - Facturas:{' '}
-              {money(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} - Cobrado:{' '}
-              {money(detailOnly ? visibleMovementSummary.credits : detail.classification?.payments || movementSummary.credits)}
+              {detail.customer.name} (#{detail.customer.id}) -{' '}
+              {detail.balance >= 0 ? `Saldo deudor: ${money(detail.balance)}` : `Saldo a favor: ${money(Math.abs(detail.balance))}`}
             </strong>
             <span>
               {detail.customer.tax_condition || 'Sin condicion fiscal'} - {detail.customer.cuit || 'Sin CUIT/DNI'} -{' '}
               {detail.customer.address || detail.customer.locality || 'Sin domicilio'}
             </span>
-            {detailOnly ? <span>Período visible: {rangeLabel}</span> : null}
+            {detailOnly ? (
+              <span>Período visible: {rangeLabel}</span>
+            ) : (
+              <span>
+                Facturas: {money(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} - Cobrado:{' '}
+                {money(detail.classification?.payments || movementSummary.credits)}
+              </span>
+            )}
           </div>
           <div className={styles.accountActions}>
             {detailOnly ? (
@@ -629,15 +635,28 @@ export default function CuentasCorrientesPage() {
 
         <div className={styles.detailGrid}>
           <div className={styles.mainColumn}>
-            <div className={styles.desktopStats}>
-              <article className={styles.statChip}><span>Contacto</span><strong>{detail.customer.phone || detail.customer.email || 'Sin dato'}</strong></article>
-              <article className={styles.statChip}><span>Modo</span><strong>{detail.customer.sale_mode || 'Sin definir'}</strong></article>
-              <article className={styles.statChip}><span>Pendiente</span><strong>{money(detail.classification?.pending || detail.balance)}</strong></article>
-              <article className={styles.statChip}><span>Vencido</span><strong>{money(detail.classification?.overdue || 0)}</strong></article>
-              <article className={styles.statChip}><span>Cobrado</span><strong>{money(detail.classification?.collected || 0)}</strong></article>
-              <article className={styles.statChip}><span>NC / Incobrable</span><strong>{money((detail.classification?.credit_notes || 0) + (detail.classification?.writeoffs || 0))}</strong></article>
-              <article className={styles.statChip}><span>Ajustes</span><strong>{money((detail.classification?.adjustments || 0) + (detail.classification?.opening_balance || 0))}</strong></article>
-            </div>
+            {detailOnly ? (
+              <div className={styles.printSummaryBar}>
+                <div>
+                  <span>Saldo actual</span>
+                  <strong>{detail.balance >= 0 ? `Deudor ${money(detail.balance)}` : `A favor ${money(Math.abs(detail.balance))}`}</strong>
+                </div>
+                <div>
+                  <span>Movimiento neto del período</span>
+                  <strong>{money(visibleMovementSummary.debits - visibleMovementSummary.credits)}</strong>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.desktopStats}>
+                <article className={styles.statChip}><span>Contacto</span><strong>{detail.customer.phone || detail.customer.email || 'Sin dato'}</strong></article>
+                <article className={styles.statChip}><span>Modo</span><strong>{detail.customer.sale_mode || 'Sin definir'}</strong></article>
+                <article className={styles.statChip}><span>Pendiente</span><strong>{money(detail.classification?.pending || detail.balance)}</strong></article>
+                <article className={styles.statChip}><span>Vencido</span><strong>{money(detail.classification?.overdue || 0)}</strong></article>
+                <article className={styles.statChip}><span>Cobrado</span><strong>{money(detail.classification?.collected || 0)}</strong></article>
+                <article className={styles.statChip}><span>NC / Incobrable</span><strong>{money((detail.classification?.credit_notes || 0) + (detail.classification?.writeoffs || 0))}</strong></article>
+                <article className={styles.statChip}><span>Ajustes</span><strong>{money((detail.classification?.adjustments || 0) + (detail.classification?.opening_balance || 0))}</strong></article>
+              </div>
+            )}
 
             <div className={styles.tableWrap}>
               <table className={styles.table}>
@@ -675,7 +694,7 @@ export default function CuentasCorrientesPage() {
             </div>
           </div>
 
-          <div className={styles.sideColumn}>
+          {!detailOnly ? <div className={styles.sideColumn}>
             <section className={styles.invoiceCard}>
               <div className={styles.sectionHeader}>
                 <div>
@@ -721,8 +740,7 @@ export default function CuentasCorrientesPage() {
               </div>
             </section>
 
-            {!detailOnly ? (
-              <form className={styles.formCard} onSubmit={submitMovement}>
+            <form className={styles.formCard} onSubmit={submitMovement}>
                 <div className={styles.formHeader}>
                   <div>
                     <h3>{movementMode === 'payment' ? 'Registrar pago' : 'Registrar deuda historica'}</h3>
@@ -813,8 +831,7 @@ export default function CuentasCorrientesPage() {
                   </label>
                 </div>
               </form>
-            ) : null}
-          </div>
+          </div> : null}
         </div>
       </>
     );

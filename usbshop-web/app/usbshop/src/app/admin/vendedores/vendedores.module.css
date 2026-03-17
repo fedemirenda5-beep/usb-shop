@@ -130,6 +130,45 @@
   gap: 20px;
 }
 
+.monthlySummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.summaryCard {
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.summaryHeader,
+.summaryMetrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.summaryHeader strong,
+.summaryMetrics strong {
+  color: #132238;
+}
+
+.summaryHeader span,
+.summaryMetrics span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.summaryMetrics > div {
+  display: grid;
+  gap: 4px;
+}
+
 .formGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;

@@ -2951,6 +2951,106 @@ def admin_sellers(
         conn.close()
 
 
+@app.get("/admin/sellers/monthly-summary")
+def admin_sellers_monthly_summary(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_full_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_sellers_table(conn)
+        now_dt = datetime.utcnow()
+        period_key = now_dt.strftime("%Y-%m")
+        active_sellers = conn.execute(
+            """
+            SELECT id, name, commission_percent
+            FROM sellers
+            WHERE COALESCE(is_active, 1) = 1
+            ORDER BY LOWER(TRIM(name)) ASC, id ASC
+            """
+        ).fetchall()
+        summary_map: dict[int, dict[str, Any]] = {
+            int(row["id"]): {
+                "seller_id": int(row["id"]),
+                "name": row["name"],
+                "commission_percent": float(row["commission_percent"] or 0),
+                "sales": 0.0,
+                "profit": 0.0,
+                "commission": 0.0,
+                "invoice_count": 0,
+            }
+            for row in active_sellers
+        }
+
+        invoices = conn.execute(
+            """
+            SELECT id, seller_id, total, commission_amount, created_at
+            FROM invoices
+            WHERE seller_id IS NOT NULL
+            """
+        ).fetchall()
+        invoice_ids: list[int] = []
+        invoice_seller_map: dict[int, int] = {}
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None or created.strftime("%Y-%m") != period_key:
+                continue
+            seller_id = int(row["seller_id"] or 0)
+            if seller_id <= 0 or seller_id not in summary_map:
+                continue
+            invoice_id = int(row["id"] or 0)
+            invoice_ids.append(invoice_id)
+            invoice_seller_map[invoice_id] = seller_id
+            summary_map[seller_id]["sales"] = round(summary_map[seller_id]["sales"] + float(row["total"] or 0), 2)
+            summary_map[seller_id]["commission"] = round(
+                summary_map[seller_id]["commission"] + float(row["commission_amount"] or 0), 2
+            )
+            summary_map[seller_id]["invoice_count"] += 1
+
+        if invoice_ids:
+            placeholders = ",".join(["?"] * len(invoice_ids))
+            invoice_items = conn.execute(
+                f"""
+                SELECT ii.invoice_id, ii.quantity, ii.unit_price, p.cost
+                FROM invoice_items ii
+                LEFT JOIN products p ON p.id = ii.product_id
+                WHERE ii.invoice_id IN ({placeholders})
+                """,
+                tuple(invoice_ids),
+            ).fetchall()
+            for row in invoice_items:
+                invoice_id = int(row["invoice_id"] or 0)
+                seller_id = invoice_seller_map.get(invoice_id)
+                if seller_id is None:
+                    continue
+                quantity = float(row["quantity"] or 0)
+                revenue = quantity * float(row["unit_price"] or 0)
+                cost_total = quantity * float(row["cost"] or 0)
+                summary_map[seller_id]["profit"] = round(summary_map[seller_id]["profit"] + (revenue - cost_total), 2)
+
+        return {
+            "period": period_key,
+            "items": sorted(
+                [
+                    {
+                        "seller_id": seller_id,
+                        "name": payload["name"],
+                        "commission_percent": round(float(payload["commission_percent"] or 0), 2),
+                        "sales": round(float(payload["sales"] or 0), 2),
+                        "profit": round(float(payload["profit"] or 0), 2),
+                        "commission": round(float(payload["commission"] or 0), 2),
+                        "invoice_count": int(payload["invoice_count"] or 0),
+                    }
+                    for seller_id, payload in summary_map.items()
+                ],
+                key=lambda item: item["name"].lower(),
+            ),
+        }
+    finally:
+        conn.close()
+
+
 @app.post("/admin/sellers")
 def admin_create_seller(
     payload: SellerPayload,

@@ -106,6 +106,7 @@ export default function GenerarComprobantePage() {
             ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
             : [],
         });
+        setCustomerSearch(matchedCustomer?.name || draft.customer_name || '');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el pedido');
       }
@@ -116,12 +117,13 @@ export default function GenerarComprobantePage() {
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const sellerMap = useMemo(() => new Map(sellers.map((seller) => [seller.id, seller])), [sellers]);
+  const selectedCustomer = useMemo(() => customerMap.get(Number(form.customer_id)), [customerMap, form.customer_id]);
   const filteredCustomerOptions = useMemo(() => {
     const needle = customerSearch.trim().toLowerCase();
     if (!needle) return customers;
     return customers.filter((customer) =>
       [customer.name, customer.email || '', customer.phone || '', customer.cuit || ''].join(' ').toLowerCase().includes(needle)
-    );
+    ).slice(0, 10);
   }, [customerSearch, customers]);
   const filteredProducts = useMemo(() => {
     const needle = productSearch.trim().toLowerCase();
@@ -204,6 +206,15 @@ export default function GenerarComprobantePage() {
     setSearchQuantities((current) => ({ ...current, [productId]: value }));
   };
 
+  const selectCustomer = (customer: CustomerOption) => {
+    setCustomerSearch(customer.name);
+    setForm((current) => ({
+      ...current,
+      customer_id: String(customer.id),
+      sale_mode: customer.sale_mode || current.sale_mode,
+    }));
+  };
+
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
@@ -263,22 +274,38 @@ export default function GenerarComprobantePage() {
             <div className={styles.formGrid}>
               <label>
                 Cliente
-                <input type="text" value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} placeholder="Buscar cliente por nombre, mail, telefono o CUIT" />
-                <select
-                  value={form.customer_id}
-                  onChange={(e) => {
-                    const customer = customerMap.get(Number(e.target.value));
-                    setForm((current) => ({ ...current, customer_id: e.target.value, sale_mode: customer?.sale_mode || current.sale_mode }));
-                  }}
-                  required
-                >
-                  <option value="">Seleccionar cliente</option>
-                  {filteredCustomerOptions.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} {customer.cuit ? `- ${customer.cuit}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  placeholder="Buscar cliente por nombre, mail, telefono o CUIT"
+                  required={!form.customer_id}
+                />
+                <div className={styles.customerSearchResults}>
+                  {filteredCustomerOptions.length === 0 ? (
+                    <div className={styles.customerSearchEmpty}>No hay clientes que coincidan.</div>
+                  ) : (
+                    filteredCustomerOptions.map((customer) => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        className={`${styles.customerSearchItem} ${Number(form.customer_id) === customer.id ? styles.customerSearchItemActive : ''}`}
+                        onClick={() => selectCustomer(customer)}
+                      >
+                        <strong>{customer.name}</strong>
+                        <span>
+                          {[customer.cuit || null, customer.phone || null, customer.email || null].filter(Boolean).join(' · ') || 'Sin datos extra'}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <input type="hidden" value={form.customer_id} required readOnly />
+                {selectedCustomer ? (
+                  <small className={styles.customerSelected}>
+                    Cliente seleccionado: {selectedCustomer.name} {selectedCustomer.cuit ? `· ${selectedCustomer.cuit}` : ''}
+                  </small>
+                ) : null}
                 <small className={styles.fieldHint}>{filteredCustomerOptions.length} cliente{filteredCustomerOptions.length === 1 ? '' : 's'} encontrado{filteredCustomerOptions.length === 1 ? '' : 's'}</small>
               </label>
               <label>

@@ -102,6 +102,14 @@
 .formGrid label { display: grid; gap: 6px; color: var(--ink); font-size: 13px; }
 .formGrid input, .formGrid select, .formGrid textarea, .itemRow input, .itemRow select { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; }
 .fieldHint { color: var(--muted); font-size: 11px; }
+.customerSearchResults { border: 1px solid var(--bg-soft); border-radius: 12px; background: white; max-height: 240px; overflow: auto; display: grid; gap: 8px; padding: 8px; }
+.customerSearchItem { width: 100%; border: 1px solid var(--bg-soft); border-radius: 10px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); padding: 10px 12px; text-align: left; display: grid; gap: 4px; font: inherit; cursor: pointer; }
+.customerSearchItem:hover { border-color: rgba(29, 78, 216, 0.28); background: linear-gradient(180deg, rgba(239,246,255,.95), rgba(255,255,255,1)); }
+.customerSearchItem strong { color: var(--ink); }
+.customerSearchItem span, .customerSelected, .customerSearchEmpty { color: var(--muted); font-size: 12px; }
+.customerSearchItemActive { border-color: rgba(15, 118, 110, 0.28); background: linear-gradient(180deg, rgba(240,253,250,.98), rgba(255,255,255,1)); }
+.customerSelected { display: block; font-weight: 600; color: #0f766e; }
+.customerSearchEmpty { padding: 12px; text-align: center; }
 .fullWidth { grid-column: 1 / -1; }
 .itemRow { display: grid; grid-template-columns: minmax(0, 2fr) 110px 130px minmax(140px, 0.8fr) auto; gap: 10px; align-items: center; }
 .productPicker { display: grid; gap: 6px; min-width: 0; }

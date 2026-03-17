@@ -35,6 +35,10 @@
 .desktopStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
 .statChip { border: 1px solid var(--bg-soft); border-radius: 12px; padding: 10px; background: var(--bg); display: grid; gap: 4px; }
 .statChip strong { color: var(--ink); font-size: 14px; }
+.printSummaryBar { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--bg-soft); border-radius: 12px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); }
+.printSummaryBar div { display: grid; gap: 4px; }
+.printSummaryBar span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.printSummaryBar strong { color: var(--ink); font-size: 15px; }
 .breakdownList { display: grid; gap: 8px; }
 .breakdownRowCompact { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 12px; background: var(--bg); }
 .breakdownRowCompact span { color: var(--muted); font-size: 12px; text-transform: uppercase; }
@@ -95,6 +99,7 @@
 }
 @media (max-width: 1180px) {
   .detailGrid, .desktopStats, .formGrid { grid-template-columns: 1fr; }
+  .printSummaryBar { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 860px) {
   .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
