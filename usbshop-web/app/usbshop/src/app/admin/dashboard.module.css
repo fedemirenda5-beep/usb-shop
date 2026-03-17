@@ -1,28 +1,84 @@
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 26px;
   width: 100%;
   min-width: 0;
 }
 
 .header {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.headerCopy,
+.headerCallout {
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+}
+
+.headerCopy {
+  display: grid;
+  gap: 10px;
+  padding: 28px 30px;
+  background:
+    radial-gradient(circle at top right, rgba(132, 204, 22, 0.12), transparent 28%),
+    linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.94));
+}
+
+.headerCallout {
+  padding: 24px 24px 22px;
+  background: linear-gradient(150deg, rgba(15, 23, 42, 0.96), rgba(15, 118, 110, 0.92));
+  color: white;
+  display: grid;
   gap: 8px;
+  align-content: end;
+}
+
+.kicker {
+  color: #0f766e;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 800;
 }
 
 .header h1 {
   margin: 0;
   font-family: var(--font-head);
-  font-size: clamp(28px, 5vw, 38px);
+  font-size: clamp(30px, 5vw, 44px);
   color: var(--ink);
+  letter-spacing: -0.03em;
 }
 
 .header p {
   margin: 0;
   color: var(--muted);
   font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.65;
+  max-width: 760px;
+}
+
+.headerCallout span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.headerCallout strong {
+  font-family: var(--font-head);
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1;
+  color: white;
+}
+
+.headerCallout p {
+  color: rgba(226, 232, 240, 0.78);
 }
 
 .errorBox {
@@ -48,12 +104,32 @@
 .heroCard {
   background: linear-gradient(145deg, rgba(17, 24, 39, 0.96), rgba(31, 41, 55, 0.92));
   color: white;
-  border-radius: 18px;
-  padding: 20px;
-  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.16);
+  border-radius: 22px;
+  padding: 22px;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: relative;
+  overflow: hidden;
+}
+
+.heroCard::after {
+  content: "";
+  position: absolute;
+  inset: auto -40px -40px auto;
+  width: 140px;
+  height: 140px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255,255,255,0.16), transparent 68%);
+}
+
+.heroCardPrimary {
+  background: linear-gradient(145deg, rgba(17, 24, 39, 0.98), rgba(29, 78, 216, 0.92));
+}
+
+.heroCardAccent {
+  background: linear-gradient(145deg, rgba(11, 18, 32, 0.98), rgba(79, 70, 229, 0.9));
 }
 
 .heroCard span {
@@ -84,26 +160,36 @@
 .panel {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+  border-radius: 22px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
 }
 
 .statCard {
-  padding: 20px;
+  padding: 22px;
   text-decoration: none;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  position: relative;
+  overflow: hidden;
 }
 
 .statCard:hover {
-  transform: translateY(-2px);
-  border-color: rgba(132, 204, 22, 0.45);
-  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.1);
+  transform: translateY(-3px);
+  border-color: rgba(15, 118, 110, 0.28);
+  box-shadow: 0 22px 36px rgba(15, 23, 42, 0.12);
 }
 
 .statContent {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.statEyebrow {
+  color: #0f766e;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 800;
 }
 
 .statContent h3,
@@ -126,12 +212,23 @@
   line-height: 1.5;
 }
 
+.statAction {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  color: rgba(15, 23, 42, 0.48);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
 .insightGrid {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .panel {
-  padding: 20px;
+  padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -147,8 +244,11 @@
 }
 
 .panelHeader a {
-  color: var(--ink);
-  font-size: 13px;
+  color: #0f766e;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -163,9 +263,10 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(241, 245, 249, 0.9);
+  padding: 14px 15px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(248,250,252,0.94), rgba(241,245,249,0.94));
+  border: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .listRow strong,
@@ -181,10 +282,13 @@
 }
 
 .infoBox {
-  border-radius: 16px;
-  padding: 18px 20px;
-  background: linear-gradient(135deg, rgba(132, 204, 22, 0.12), rgba(59, 130, 246, 0.08));
-  border: 1px solid rgba(132, 204, 22, 0.24);
+  border-radius: 22px;
+  padding: 22px 24px;
+  background:
+    radial-gradient(circle at top right, rgba(132, 204, 22, 0.16), transparent 26%),
+    linear-gradient(135deg, rgba(255,255,255,0.94), rgba(239,246,255,0.94));
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06);
 }
 
 .infoBox p {
@@ -194,6 +298,10 @@
 }
 
 @media (max-width: 768px) {
+  .header {
+    grid-template-columns: 1fr;
+  }
+
   .panelHeader {
     flex-direction: column;
     align-items: flex-start;

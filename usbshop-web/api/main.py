@@ -4690,7 +4690,7 @@ def admin_reports_overview(
             payload = yearly_map[year]
             cc_balance_end = round(float(year_end_cc_balance.get(year, 0.0)), 2)
             cash_balance_end = round(float(cash_balance_end_by_year.get(year, 0.0)), 2)
-            capital_total = round(stock_value_cost + cc_balance_end + cash_balance_end, 2)
+            capital_total = round(stock_value_sale + cc_balance_end, 2)
             sales_value = round(float(payload["sales"] or 0), 2)
             expenses_value = round(float(payload["expenses"] or 0), 2)
             purchases_value = round(float(payload["purchases"] or 0), 2)
@@ -4790,7 +4790,7 @@ def admin_reports_overview(
             "low_stock": low_stock,
             "current_year_detail": {
                 "year": current_year,
-                "capital_total": round(stock_value_cost + round(sum(customer_balance_map.values()), 2) + cash_on_hand, 2),
+                "capital_total": round(stock_value_sale + round(sum(customer_balance_map.values()), 2), 2),
                 "sales_total": current_ytd_sales,
                 "margin_total": round(sum(float(item["margin"] or 0) for item in current_year_months), 2),
                 "purchases_total": round(

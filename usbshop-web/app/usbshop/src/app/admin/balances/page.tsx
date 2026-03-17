@@ -6,6 +6,7 @@ import styles from './balances.module.css';
 
 type Summary = {
   stock_value_cost: number;
+  stock_value_sale: number;
   estimated_margin: number;
   purchases_total: number;
   expenses_total: number;
@@ -84,8 +85,6 @@ export default function BalancesPage() {
   const [currentYear, setCurrentYear] = useState<CurrentYearDetail | null>(null);
   const [annualHistory, setAnnualHistory] = useState<AnnualHistoryEntry[]>([]);
   const [error, setError] = useState('');
-  const [cashBalanceInput, setCashBalanceInput] = useState('0');
-
   useEffect(() => {
     const load = async () => {
       try {
@@ -113,16 +112,10 @@ export default function BalancesPage() {
     [annualHistory]
   );
 
-  const manualCashBalance = useMemo(() => {
-    const normalized = cashBalanceInput.replace(',', '.').trim();
-    const parsed = Number(normalized || '0');
-    return Number.isFinite(parsed) ? parsed : 0;
-  }, [cashBalanceInput]);
-
   const currentCapitalTotal = useMemo(() => {
     if (!summary) return 0;
-    return summary.stock_value_cost + summary.cc_open_balance + manualCashBalance;
-  }, [manualCashBalance, summary]);
+    return summary.stock_value_sale + summary.cc_open_balance;
+  }, [summary]);
 
   return (
     <div className={styles.page}>
@@ -150,7 +143,7 @@ export default function BalancesPage() {
               <article className={styles.heroCard}>
                 <span>Capital total de la empresa</span>
                 <strong>{money(currentCapitalTotal)}</strong>
-                <p>Valorización de stock + cuentas corrientes + dinero en caja.</p>
+                <p>Stock a venta + saldo de cuentas corrientes.</p>
               </article>
               <article className={styles.statCard}>
                 <span>Venta total anual</span>
@@ -161,17 +154,6 @@ export default function BalancesPage() {
                 <span>Resultado operativo</span>
                 <strong>{money(currentYear.operating_result_total)}</strong>
                 <p>Ganancia bruta menos gastos y comisiones.</p>
-              </article>
-              <article className={styles.statCard}>
-                <span>Saldo de caja</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={cashBalanceInput}
-                  onChange={(event) => setCashBalanceInput(event.target.value)}
-                  className={styles.cashInput}
-                />
-                <p>Cargá manualmente el efectivo real que tenés en caja.</p>
               </article>
               <article className={styles.statCard}>
                 <span>Cuenta corriente abierta</span>
@@ -256,16 +238,12 @@ export default function BalancesPage() {
 
                 <div className={styles.breakdownList}>
                   <div className={styles.breakdownRow}>
-                    <span>Stock a costo actual</span>
-                    <strong>{money(summary.stock_value_cost)}</strong>
+                    <span>Stock a venta actual</span>
+                    <strong>{money(summary.stock_value_sale)}</strong>
                   </div>
                   <div className={styles.breakdownRow}>
                     <span>Cuenta corriente actual</span>
                     <strong>{money(summary.cc_open_balance)}</strong>
-                  </div>
-                  <div className={styles.breakdownRow}>
-                    <span>Saldo de caja manual</span>
-                    <strong>{money(manualCashBalance)}</strong>
                   </div>
                   <div className={`${styles.breakdownRow} ${styles.breakdownTotal}`}>
                     <span>Total actual</span>
@@ -309,7 +287,7 @@ export default function BalancesPage() {
             </div>
 
             <div className={styles.note}>
-              Las compras se informan como inversión y reposición de stock, no como gasto del período mientras sigan en stock. El capital histórico sigue siendo estimado porque no reconstruimos stock por fecha.
+              El capital total se calcula como stock valorizado a precio de venta más saldo de cuentas corrientes. Las compras se informan aparte como inversión y reposición de stock.
             </div>
 
             <div className={styles.tableWrap}>

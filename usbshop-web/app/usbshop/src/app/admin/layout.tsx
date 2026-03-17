@@ -1,7 +1,8 @@
 'use client';
 
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { NAV_MODULES } from './adminModules';
 import styles from './admin.module.css';
@@ -13,6 +14,7 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const { user, logout, isLoading } = useAdminSession();
   const router = useRouter();
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
@@ -33,22 +35,34 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     <div className={styles.adminContainer}>
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.open : ''}`}>
         <div className={styles.sidebarHeader}>
-          <h2>Admin</h2>
+          <Link href="/admin" className={styles.brandBlock}>
+            <div className={styles.brandLogoFrame}>
+              <img src="/logo-small.jpeg" alt="USB Shop" className={styles.brandLogo} />
+            </div>
+            <div className={styles.brandCopy}>
+              <strong>USB Shop</strong>
+              <span>Panel Administrativo</span>
+            </div>
+          </Link>
           <button
             className={styles.closeBtn}
             onClick={() => setSidebarOpen(false)}
             aria-label="Cerrar sidebar"
           >
-            x
+            ×
           </button>
         </div>
 
         <nav className={styles.sidebarNav}>
-          <a href="/admin" className={styles.navItem}>Dashboard</a>
+          <Link href="/admin" className={`${styles.navItem} ${pathname === '/admin' ? styles.navItemActive : ''}`}>Dashboard</Link>
           {NAV_MODULES.map((module) => (
-            <a key={module.id} href={module.href} className={styles.navItem}>
+            <Link
+              key={module.id}
+              href={module.href}
+              className={`${styles.navItem} ${pathname === module.href ? styles.navItemActive : ''}`}
+            >
               {module.navLabel}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -70,11 +84,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Abrir menu"
           >
-            =
+            ☰
           </button>
-          <div className={styles.navbarTitle}>USB Shop - Panel Administrativo</div>
+          <div className={styles.navbarTitle}>
+            <strong>USB Shop</strong>
+            <span>Gestión central del negocio</span>
+          </div>
           <div className={styles.navbarRight}>
-            <span className={styles.user}>{user?.username}</span>
+            <div className={styles.userBadge}>
+              <span className={styles.userLabel}>Sesión</span>
+              <strong className={styles.user}>{user?.username}</strong>
+            </div>
           </div>
         </header>
 

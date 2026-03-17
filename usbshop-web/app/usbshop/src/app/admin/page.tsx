@@ -118,15 +118,23 @@ export default function AdminDashboard() {
   return (
     <div className={styles.dashboard}>
       <div className={styles.header}>
-        <h1>Escritorio</h1>
-        <p>Bienvenido, {user?.username}. El resumen toma datos reales de la base actual.</p>
+        <div className={styles.headerCopy}>
+          <span className={styles.kicker}>Centro de control</span>
+          <h1>Escritorio</h1>
+          <p>Bienvenido, {user?.username}. El resumen toma datos reales de la base actual y prioriza lo que más usás en la operación diaria.</p>
+        </div>
+        <div className={styles.headerCallout}>
+          <span>Ventas acumuladas</span>
+          <strong>{summary ? money(summary.sales_total) : '...'}</strong>
+          <p>Último registro: {formatDate(summary?.latest_invoice_at)}</p>
+        </div>
       </div>
 
       {error ? <div className={styles.errorBox}>{error}</div> : null}
 
       {summary ? (
         <section className={styles.heroGrid}>
-          <article className={styles.heroCard}>
+          <article className={`${styles.heroCard} ${styles.heroCardPrimary}`}>
             <span>Comprobantes emitidos</span>
             <strong>{integer(summary.sales_count)}</strong>
             <p>Ultimo registro: {formatDate(summary.latest_invoice_at)}</p>
@@ -141,7 +149,7 @@ export default function AdminDashboard() {
             <strong>{integer(summary.active_customers)}</strong>
             <p>{integer(summary.account_movements)} movimientos de cuenta corriente</p>
           </article>
-          <article className={styles.heroCard}>
+          <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
             <span>Balance comercial</span>
             <strong>{money(summary.estimated_margin)}</strong>
             <p>Margen estimado sobre ventas por {money(summary.sales_total)}</p>
@@ -153,10 +161,12 @@ export default function AdminDashboard() {
         {sections.map((section) => (
           <a key={section.href} href={section.href} className={styles.statCard}>
             <div className={styles.statContent}>
+              <span className={styles.statEyebrow}>Panel</span>
               <h3>{section.title}</h3>
               <p className={styles.statValue}>{section.value}</p>
               <span className={styles.statLabel}>{section.label}</span>
             </div>
+            <span className={styles.statAction}>Abrir</span>
           </a>
         ))}
       </div>
