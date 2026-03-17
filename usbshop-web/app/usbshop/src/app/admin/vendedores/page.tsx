@@ -248,7 +248,7 @@ export default function VendedoresPage() {
                 <tr>
                   <th>ID</th>
                   <th>Vendedor</th>
-                  <th>Comision</th>
+                  {isFullAdmin ? <th>Comision</th> : null}
                   <th>Estado</th>
                   <th>Actualizado</th>
                   <th>Acciones</th>
@@ -269,7 +269,7 @@ export default function VendedoresPage() {
                         Creado: {formatDate(seller.created_at)}
                       </span>
                     </td>
-                    <td>{formatPercent(seller.commission_percent)}</td>
+                    {isFullAdmin ? <td>{formatPercent(seller.commission_percent)}</td> : null}
                     <td>
                       <span className={seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
                         {seller.is_active ? 'Activo' : 'Inactivo'}
@@ -354,18 +354,20 @@ export default function VendedoresPage() {
                   required
                 />
               </label>
-              <label>
-                Comision (%)
-                <input
-                  name="commission_percent"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={sellerForm.commission_percent}
-                  onChange={handleSellerFormChange}
-                  required
-                />
-              </label>
+              {isFullAdmin ? (
+                <label>
+                  Comision (%)
+                  <input
+                    name="commission_percent"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={sellerForm.commission_percent}
+                    onChange={handleSellerFormChange}
+                    required
+                  />
+                </label>
+              ) : null}
               <label className={styles.checkboxField}>
                 <input
                   name="is_active"
@@ -408,10 +410,12 @@ export default function VendedoresPage() {
                 <span>Nombre</span>
                 <strong>{selectedSeller.name}</strong>
               </div>
-              <div className={styles.detailItem}>
-                <span>Comision actual</span>
-                <strong>{formatPercent(selectedSeller.commission_percent)}</strong>
-              </div>
+              {isFullAdmin ? (
+                <div className={styles.detailItem}>
+                  <span>Comision actual</span>
+                  <strong>{formatPercent(selectedSeller.commission_percent)}</strong>
+                </div>
+              ) : null}
               <div className={styles.detailItem}>
                 <span>Estado</span>
                 <strong>{selectedSeller.is_active ? 'Activo' : 'Inactivo'}</strong>

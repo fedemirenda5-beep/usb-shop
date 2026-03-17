@@ -118,13 +118,15 @@ export default function GenerarComprobantePage() {
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const sellerMap = useMemo(() => new Map(sellers.map((seller) => [seller.id, seller])), [sellers]);
   const selectedCustomer = useMemo(() => customerMap.get(Number(form.customer_id)), [customerMap, form.customer_id]);
+  const normalizedCustomerSearch = customerSearch.trim().toLowerCase();
   const filteredCustomerOptions = useMemo(() => {
-    const needle = customerSearch.trim().toLowerCase();
+    const needle = normalizedCustomerSearch;
     if (!needle) return customers;
     return customers.filter((customer) =>
       [customer.name, customer.email || '', customer.phone || '', customer.cuit || ''].join(' ').toLowerCase().includes(needle)
     ).slice(0, 10);
-  }, [customerSearch, customers]);
+  }, [normalizedCustomerSearch, customers]);
+  const showCustomerResults = normalizedCustomerSearch.length > 0;
   const filteredProducts = useMemo(() => {
     const needle = productSearch.trim().toLowerCase();
     if (!needle) return [];
@@ -277,29 +279,37 @@ export default function GenerarComprobantePage() {
                 <input
                   type="text"
                   value={customerSearch}
-                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCustomerSearch(value);
+                    if (!value.trim()) {
+                      setForm((current) => ({ ...current, customer_id: '' }));
+                    }
+                  }}
                   placeholder="Buscar cliente por nombre, mail, telefono o CUIT"
                   required={!form.customer_id}
                 />
-                <div className={styles.customerSearchResults}>
-                  {filteredCustomerOptions.length === 0 ? (
-                    <div className={styles.customerSearchEmpty}>No hay clientes que coincidan.</div>
-                  ) : (
-                    filteredCustomerOptions.map((customer) => (
-                      <button
-                        key={customer.id}
-                        type="button"
-                        className={`${styles.customerSearchItem} ${Number(form.customer_id) === customer.id ? styles.customerSearchItemActive : ''}`}
-                        onClick={() => selectCustomer(customer)}
-                      >
-                        <strong>{customer.name}</strong>
-                        <span>
-                          {[customer.cuit || null, customer.phone || null, customer.email || null].filter(Boolean).join(' · ') || 'Sin datos extra'}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
+                {showCustomerResults ? (
+                  <div className={styles.customerSearchResults}>
+                    {filteredCustomerOptions.length === 0 ? (
+                      <div className={styles.customerSearchEmpty}>No hay clientes que coincidan.</div>
+                    ) : (
+                      filteredCustomerOptions.map((customer) => (
+                        <button
+                          key={customer.id}
+                          type="button"
+                          className={`${styles.customerSearchItem} ${Number(form.customer_id) === customer.id ? styles.customerSearchItemActive : ''}`}
+                          onClick={() => selectCustomer(customer)}
+                        >
+                          <strong>{customer.name}</strong>
+                          <span>
+                            {[customer.cuit || null, customer.phone || null, customer.email || null].filter(Boolean).join(' · ') || 'Sin datos extra'}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : null}
                 <input type="hidden" value={form.customer_id} required readOnly />
                 {selectedCustomer ? (
                   <small className={styles.customerSelected}>
