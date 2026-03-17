@@ -11,6 +11,13 @@
   gap: 16px;
 }
 
+.headerActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .header h1 {
   font-family: var(--font-head);
   font-size: clamp(24px, 5vw, 32px);
@@ -43,6 +50,25 @@
 .btnNew:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(132, 204, 22, 0.4);
+}
+
+.btnSecondary {
+  padding: 10px 16px;
+  background: white;
+  color: var(--ink);
+  border: 1px solid var(--bg-soft);
+  border-radius: 8px;
+  font-family: var(--font-head);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.btnSecondary:hover {
+  border-color: var(--lime);
+  background: var(--glow);
 }
 
 /* Search Form */
@@ -135,6 +161,12 @@
   color: var(--ink);
 }
 
+.table th:nth-child(4),
+.table td:nth-child(4) {
+  width: 96px;
+  max-width: 96px;
+}
+
 .clickableRow {
   cursor: pointer;
 }
@@ -149,6 +181,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.skuCell {
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .price {
@@ -324,9 +365,18 @@
     flex-direction: column;
   }
 
+  .headerActions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
   .btnNew {
     width: 100%;
     text-align: center;
+  }
+
+  .btnSecondary {
+    width: 100%;
   }
 
   .table {

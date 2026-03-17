@@ -33,6 +33,10 @@ const calculateMargin = (cost: number, price: number) => {
 };
 
 const PAGE_SIZE = 100;
+const currencyFormatter = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+});
 
 const normalizeSearchValue = (value: string) =>
   value
@@ -53,6 +57,14 @@ const buildSearchTokens = (value: string) => {
   }
   return Array.from(expanded);
 };
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 
 export default function ProductosPage() {
   const { user } = useAdminSession();
@@ -187,6 +199,105 @@ export default function ProductosPage() {
     }
   };
 
+  const exportPriceListPdf = (includeImages: boolean) => {
+    const exportItems = filteredProducts;
+    if (exportItems.length === 0) {
+      alert('No hay productos para exportar con el filtro actual.');
+      return;
+    }
+
+    const generatedAt = new Date().toLocaleString('es-AR');
+    const title = includeImages ? 'Lista de precios con imagenes' : 'Lista de precios';
+    const rows = exportItems
+      .map((product) => {
+        const imageUrl = resolveImageUrl(product.imageUrl, baseUrl);
+        const imageCell = includeImages
+          ? imageUrl
+            ? `<td class="imageCell"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" /></td>`
+            : '<td class="imageCell emptyImage">Sin imagen</td>'
+          : '';
+        return `
+          <tr>
+            ${imageCell}
+            <td class="nameCell">
+              <strong>${escapeHtml(product.name)}</strong>
+              <span>SKU ${escapeHtml(product.sku || '-')}</span>
+            </td>
+            <td>${product.stock}</td>
+            <td class="priceCell">${escapeHtml(currencyFormatter.format(product.price || 0))}</td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
+    if (!printWindow) {
+      alert('No se pudo abrir la ventana de exportacion.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(title)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
+            .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+            .header h1 { margin: 0 0 6px; font-size: 24px; }
+            .header p { margin: 0; color: #4b5563; font-size: 12px; }
+            .summary { margin-bottom: 14px; color: #374151; font-size: 13px; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border-bottom: 1px solid #d1d5db; padding: 10px 8px; text-align: left; vertical-align: middle; font-size: 12px; }
+            th { text-transform: uppercase; color: #4b5563; font-size: 11px; letter-spacing: 0.04em; }
+            .imageCell { width: 84px; }
+            .imageCell img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid #e5e7eb; display: block; }
+            .emptyImage { color: #9ca3af; font-size: 11px; }
+            .nameCell strong { display: block; font-size: 13px; }
+            .nameCell span { display: block; color: #6b7280; margin-top: 4px; font-size: 11px; }
+            .priceCell { white-space: nowrap; font-weight: 700; }
+            @media print { body { margin: 12mm; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1>USB Shop</h1>
+              <p>${escapeHtml(title)}</p>
+            </div>
+            <div>
+              <p>Generado: ${escapeHtml(generatedAt)}</p>
+              <p>Productos: ${exportItems.length}</p>
+            </div>
+          </div>
+          <div class="summary">
+            ${search ? `Filtro aplicado: <strong>${escapeHtml(search)}</strong>` : 'Sin filtro aplicado'}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                ${includeImages ? '<th>Imagen</th>' : ''}
+                <th>Producto</th>
+                <th>Stock</th>
+                <th>Precio</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <script>
+            window.onload = function () {
+              setTimeout(function () {
+                window.print();
+              }, 250);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -194,9 +305,25 @@ export default function ProductosPage() {
           <h1>Productos</h1>
           <p>Gestiona el catalogo de productos</p>
         </div>
-        <Link href="/admin/productos/nueva" className={styles.btnNew}>
-          + Nuevo producto
-        </Link>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.btnSecondary}
+            onClick={() => exportPriceListPdf(false)}
+          >
+            PDF sin imagenes
+          </button>
+          <button
+            type="button"
+            className={styles.btnSecondary}
+            onClick={() => exportPriceListPdf(true)}
+          >
+            PDF con imagenes
+          </button>
+          <Link href="/admin/productos/nueva" className={styles.btnNew}>
+            + Nuevo producto
+          </Link>
+        </div>
       </div>
 
       {error ? <div className={styles.error}>{error}</div> : null}
@@ -265,7 +392,7 @@ export default function ProductosPage() {
                       )}
                     </td>
                     <td className={styles.name}>{product.name}</td>
-                    <td>{product.sku}</td>
+                    <td className={styles.skuCell} title={product.sku}>{product.sku}</td>
                     <td className={styles.price}>${product.price.toFixed(2)}</td>
                     <td className={styles.price}>${product.cost.toFixed(2)}</td>
                     <td className={styles.margin}>
