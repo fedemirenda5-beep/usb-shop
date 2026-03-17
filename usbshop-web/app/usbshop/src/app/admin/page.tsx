@@ -101,9 +101,15 @@ export default function AdminDashboard() {
         if (module.id === 'cuentas-corrientes') {
           return {
             ...module,
-            value: summary ? money(summary.cc_open_balance) : '...',
+            value: summary
+              ? canViewFinancialModules(user?.role)
+                ? money(summary.cc_open_balance)
+                : integer(summary.debtors)
+              : '...',
             label: summary
-              ? `${integer(summary.account_movements)} movimientos registrados`
+              ? canViewFinancialModules(user?.role)
+                ? `${integer(summary.account_movements)} movimientos registrados`
+                : 'Clientes con cuenta corriente activa'
               : module.dashboardLabel,
           };
         }
@@ -113,7 +119,7 @@ export default function AdminDashboard() {
           label: module.dashboardLabel,
         };
       }),
-    [summary]
+    [summary, user?.role]
   );
 
   const visibleSections = useMemo(
@@ -130,9 +136,19 @@ export default function AdminDashboard() {
           <p>Bienvenido, {user?.username}. El resumen toma datos reales de la base actual y prioriza lo que más usás en la operación diaria.</p>
         </div>
         <div className={styles.headerCallout}>
-          <span>Ventas acumuladas</span>
-          <strong>{summary ? money(summary.sales_total) : '...'}</strong>
-          <p>Último registro: {formatDate(summary?.latest_invoice_at)}</p>
+          {canViewFinancialModules(user?.role) ? (
+            <>
+              <span>Ventas acumuladas</span>
+              <strong>{summary ? money(summary.sales_total) : '...'}</strong>
+              <p>Último registro: {formatDate(summary?.latest_invoice_at)}</p>
+            </>
+          ) : (
+            <>
+              <span>Operación activa</span>
+              <strong>{summary ? integer(summary.sales_count) : '...'}</strong>
+              <p>Comprobantes emitidos y gestión diaria disponible.</p>
+            </>
+          )}
         </div>
       </div>
 

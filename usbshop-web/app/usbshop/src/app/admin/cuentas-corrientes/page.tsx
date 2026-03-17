@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './cuentas-corrientes.module.css';
 
 type Aging = {
@@ -96,6 +97,7 @@ const formatDate = (value?: string | null) => {
 };
 
 export default function CuentasCorrientesPage() {
+  const { user } = useAdminSession();
   const detailRef = useRef<HTMLElement | null>(null);
   const [customers, setCustomers] = useState<CustomerOverview[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -491,6 +493,8 @@ export default function CuentasCorrientesPage() {
     [movementMode]
   );
 
+  const hideGlobalTotals = (user?.role || '').toLowerCase() === 'staff';
+
   const refreshAll = async () => {
     try {
       setError('');
@@ -879,9 +883,13 @@ export default function CuentasCorrientesPage() {
           <section className={styles.customerBoard}>
             <div className={styles.boardHeader}>
               <span>{filteredCustomers.length} clientes visibles</span>
-              <strong>
-                Pendiente: {money(summary.pending)} - Vencido: {money(summary.overdue)}
-              </strong>
+              {hideGlobalTotals ? (
+                <strong>Totales globales ocultos para este usuario</strong>
+              ) : (
+                <strong>
+                  Pendiente: {money(summary.pending)} - Vencido: {money(summary.overdue)}
+                </strong>
+              )}
             </div>
             <div className={styles.boardHint}>Doble click sobre un cliente para abrir su detalle listo para imprimir o exportar.</div>
             <div className={styles.customerTableWrap}>

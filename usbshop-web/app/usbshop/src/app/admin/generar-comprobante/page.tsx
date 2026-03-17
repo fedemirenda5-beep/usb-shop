@@ -39,7 +39,7 @@ export default function GenerarComprobantePage() {
   const [error, setError] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [productQuantity, setProductQuantity] = useState('1');
+  const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [form, setForm] = useState({
     order_id: '',
     customer_id: '',
@@ -150,7 +150,8 @@ export default function GenerarComprobantePage() {
   };
 
   const addProductToInvoice = (product: ProductOption, quantityOverride?: number) => {
-    const normalizedQuantity = Math.max(1, Number(quantityOverride || productQuantity || 1));
+    const inlineQuantity = searchQuantities[product.id];
+    const normalizedQuantity = Math.max(1, Number(quantityOverride || inlineQuantity || 1));
     setForm((current) => {
       const existingIndex = current.items.findIndex((item) => Number(item.product_id) === product.id);
       if (existingIndex >= 0) {
@@ -176,8 +177,7 @@ export default function GenerarComprobantePage() {
         ],
       };
     });
-    setProductSearch('');
-    setProductQuantity('1');
+    setSearchQuantities((current) => ({ ...current, [product.id]: '1' }));
   };
 
   const updateItem = (index: number, field: keyof InvoiceFormItem, value: string | boolean) => {
@@ -198,6 +198,10 @@ export default function GenerarComprobantePage() {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     if (filteredProducts.length > 0) addProductToInvoice(filteredProducts[0]);
+  };
+
+  const updateSearchQuantity = (productId: number, value: string) => {
+    setSearchQuantities((current) => ({ ...current, [productId]: value }));
   };
 
   const submitInvoice = async (event: React.FormEvent) => {
@@ -254,7 +258,6 @@ export default function GenerarComprobantePage() {
               <p className={styles.modelNote}>Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comisión.</p>
               {form.order_id ? <p className={styles.orderDraftInfo}>Pedido web #{form.order_id} cargado como borrador editable.</p> : null}
             </div>
-            <div className={styles.createTotal}>{money(formTotal)}</div>
           </div>
           <form onSubmit={submitInvoice} className={styles.createForm}>
             <div className={styles.formGrid}>
@@ -353,10 +356,6 @@ export default function GenerarComprobantePage() {
                     placeholder="Buscar por nombre, SKU o ID"
                   />
                 </label>
-                <label className={styles.desktopPickerQty}>
-                  Cantidad
-                  <input type="number" min="1" step="1" value={productQuantity} onChange={(e) => setProductQuantity(e.target.value)} />
-                </label>
               </div>
               <div className={styles.desktopPickerResults}>
                 {!productSearch.trim() ? (
@@ -366,12 +365,7 @@ export default function GenerarComprobantePage() {
                 ) : (
                   <div className={styles.productSearchList}>
                     {filteredProducts.map((product) => (
-                      <button
-                        key={product.id}
-                        type="button"
-                        className={styles.productSearchItem}
-                        onClick={() => addProductToInvoice(product)}
-                      >
+                      <div key={product.id} className={styles.productSearchItem}>
                         <div className={styles.productSearchMain}>
                           <strong>{product.name}</strong>
                           <span>#{product.id} · {product.sku || 'Sin SKU'} · Stock {product.stock}</span>
@@ -381,7 +375,29 @@ export default function GenerarComprobantePage() {
                           <span>L1 {money(Number(product.price_list_1 || product.price || 0))}</span>
                           <span>L2 {money(Number(product.price_list_2 || product.price || 0))}</span>
                         </div>
-                      </button>
+                        <div
+                          className={styles.productSearchActions}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <label className={styles.inlineQty}>
+                            <span>Cant.</span>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={searchQuantities[product.id] || '1'}
+                              onChange={(event) => updateSearchQuantity(product.id, event.target.value)}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className={styles.secondaryButton}
+                            onClick={() => addProductToInvoice(product)}
+                          >
+                            Agregar
+                          </button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -462,10 +478,14 @@ export default function GenerarComprobantePage() {
                 </table>
               </div>
             </div>
+            <div className={styles.createTotalBar}>
+              <span>Total del comprobante</span>
+              <strong className={styles.createTotal}>{money(formTotal)}</strong>
+            </div>
             <div className={styles.formActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => {
                 setProductSearch('');
-                setProductQuantity('1');
+                setSearchQuantities({});
                 setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', items: [] });
               }}>Limpiar</button>
               <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>
