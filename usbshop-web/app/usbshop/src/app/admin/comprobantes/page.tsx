@@ -141,7 +141,7 @@ const formatInputDateTime = (value?: string | null) => {
 const getPriceListLabel = (value?: number | null) => {
   if (value === 1) return 'Lista 1';
   if (value === 2) return 'Lista 2';
-  return 'Lista base';
+  return 'Lista especial';
 };
 
 export default function ComprobantesPage() {
@@ -586,7 +586,7 @@ export default function ComprobantesPage() {
                   value={form.price_list}
                   onChange={(e) => recalculateItemsForPriceList(e.target.value)}
                 >
-                  <option value="0">Lista base</option>
+                  <option value="0">Lista especial</option>
                   <option value="1">Lista 1</option>
                   <option value="2">Lista 2</option>
                 </select>
