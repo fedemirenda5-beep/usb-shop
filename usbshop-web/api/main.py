@@ -3563,10 +3563,12 @@ def admin_list_invoices(
             SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, i.sale_mode,
                    i.price_list, i.due_date, i.notes, i.payment_method,
                    i.seller_id, i.commission_amount,
-                   c.name AS customer_name, s.name AS seller_name
+                   c.name AS customer_name, s.name AS seller_name,
+                   wo.id AS web_order_id
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
             LEFT JOIN sellers s ON s.id = i.seller_id
+            LEFT JOIN web_orders wo ON wo.confirmed_invoice_id = i.id
             {where}
             ORDER BY i.created_at DESC, i.id DESC
             LIMIT ?
@@ -3589,6 +3591,7 @@ def admin_list_invoices(
                 "seller_id": int(row["seller_id"]) if row["seller_id"] is not None else None,
                 "seller_name": row["seller_name"],
                 "commission_amount": float(row["commission_amount"] or 0),
+                "web_order_id": int(row["web_order_id"]) if row["web_order_id"] is not None else None,
             }
             for row in rows
         ]

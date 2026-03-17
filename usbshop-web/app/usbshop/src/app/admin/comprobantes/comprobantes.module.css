@@ -18,6 +18,8 @@
 .linkButton { border: 0; background: transparent; padding: 0; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
 .rowActions { white-space: nowrap; display: flex; gap: 8px; }
 .total { color: var(--purple); font-weight: 700; }
+.originBadge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(15, 118, 110, 0.12); color: #0f766e; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.originMuted { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .printArea { display: grid; gap: 16px; }
 .documentShell { display: grid; gap: 12px; padding: 18px; border-radius: 18px; background: #f7f8fb; border: 1px solid #0b0b0b; }
 .desktopAccentBar { height: 4px; background: #2d0a5b; border-radius: 10px; margin: 0 10px 2px; }

@@ -20,6 +20,7 @@ type Invoice = {
   notes?: string | null;
   payment_method?: string | null;
   commission_amount?: number | null;
+  web_order_id?: number | null;
 };
 
 type InvoiceDetail = {
@@ -218,7 +219,7 @@ export default function ComprobantesPage() {
                 <th>Modo</th>
                 <th>Total</th>
                 <th>Emision</th>
-                <th>Vencimiento</th>
+                <th>Origen</th>
                 <th>Notas</th>
                 <th>Acciones</th>
               </tr>
@@ -241,7 +242,13 @@ export default function ComprobantesPage() {
                     <td>{item.sale_mode || '-'}</td>
                     <td className={styles.total}>{money(item.total)}</td>
                     <td>{formatDate(item.created_at)}</td>
-                    <td>{formatDate(item.due_date)}</td>
+                    <td>
+                      {item.web_order_id ? (
+                        <span className={styles.originBadge}>Pedido web #{item.web_order_id}</span>
+                      ) : (
+                        <span className={styles.originMuted}>Manual</span>
+                      )}
+                    </td>
                     <td>{item.notes || '-'}</td>
                     <td className={styles.rowActions}>
                       <button

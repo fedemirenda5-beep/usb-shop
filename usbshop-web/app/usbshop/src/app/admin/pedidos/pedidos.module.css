@@ -37,63 +37,6 @@
   font-size: 14px;
 }
 
-/* Filter Bar */
-.filterBar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.statusFilters {
-  display: flex;
-  gap: 10px;
-}
-
-.searchBox {
-  flex: 1;
-  max-width: 400px;
-}
-
-.searchInput {
-  width: 100%;
-  padding: 10px 16px;
-  border: 1px solid var(--bg-soft);
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.searchInput:focus {
-  border-color: var(--lime);
-}
-
-.filterBtn {
-  padding: 10px 16px;
-  background: var(--bg);
-  border: 2px solid var(--bg-soft);
-  border-radius: 8px;
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: var(--ink);
-}
-
-.filterBtn:hover {
-  border-color: var(--lime);
-}
-
-.filterBtn.active {
-  background: linear-gradient(135deg, var(--lime), var(--purple));
-  color: white;
-  border-color: transparent;
-}
-
 /* Table Wrapper */
 .tableWrapper {
   background: white;
@@ -209,24 +152,6 @@
 .btnInvoice:hover {
   transform: none;
   background: rgba(15, 118, 110, 0.14);
-}
-
-.statusSelect {
-  padding: 6px 8px;
-  border: 1px solid var(--bg-soft);
-  border-radius: 4px;
-  font-family: var(--font-body);
-  font-size: 12px;
-  cursor: pointer;
-  background: white;
-  color: var(--ink);
-  transition: all 0.2s ease;
-}
-
-.statusSelect:hover,
-.statusSelect:focus {
-  border-color: var(--lime);
-  outline: none;
 }
 
 /* Details Row */

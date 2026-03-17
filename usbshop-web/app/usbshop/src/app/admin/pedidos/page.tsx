@@ -34,27 +34,20 @@ const statusColors: Record<string, { bg: string; text: string; label: string }> 
   CANCELLED: { bg: 'rgba(220, 38, 38, 0.1)', text: '#dc2626', label: 'Cancelado' },
 };
 
-const statusOptions = [
-  { value: 'PENDING', label: 'Pendiente' },
-  { value: 'CONFIRMED', label: 'Confirmado' },
-  { value: 'CANCELLED', label: 'Cancelado' },
-];
-
 export default function PedidosPage() {
   useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState('PENDING');
   const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
 
-  const loadOrders = async (status: string) => {
+  const loadOrders = async () => {
     try {
       setLoading(true);
       setError('');
       await loadRuntimeConfig();
       const res = await fetch(
-        `${getApiBaseUrl()}/admin/orders?status=${status}&limit=200&include_items=true`,
+        `${getApiBaseUrl()}/admin/orders?status=PENDING&limit=200&include_items=true`,
         { credentials: 'include' }
       );
       if (!res.ok) throw new Error('No se pudieron cargar los pedidos');
@@ -68,24 +61,8 @@ export default function PedidosPage() {
   };
 
   useEffect(() => {
-    void loadOrders(selectedStatus);
-  }, [selectedStatus]);
-
-  const handleStatusChange = async (orderId: number, newStatus: string) => {
-    try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderId}/status`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!res.ok) throw new Error('No se pudo actualizar el estado');
-      await loadOrders(selectedStatus);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error actualizando estado');
-    }
-  };
+    void loadOrders();
+  }, []);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
@@ -103,30 +80,18 @@ export default function PedidosPage() {
       <div className={styles.header}>
         <div>
           <h1>Pedidos</h1>
-          <p>Gestiona los pedidos de clientes desde el mismo login admin.</p>
+          <p>Vista enfocada solo en pedidos pendientes de confirmar.</p>
         </div>
       </div>
 
       {error ? <div className={styles.error}>{error}</div> : null}
-
-      <div className={styles.filterBar}>
-        {statusOptions.map((opt) => (
-          <button
-            key={opt.value}
-            className={`${styles.filterBtn} ${selectedStatus === opt.value ? styles.active : ''}`}
-            onClick={() => setSelectedStatus(opt.value)}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
 
       <div className={styles.tableWrapper}>
         {loading ? (
           <div className={styles.loading}>Cargando pedidos...</div>
         ) : orders.length === 0 ? (
           <div className={styles.empty}>
-            <p>No hay pedidos {statusOptions.find((o) => o.value === selectedStatus)?.label.toLowerCase()}</p>
+            <p>No hay pedidos pendientes.</p>
           </div>
         ) : (
           <table className={styles.table}>
@@ -168,17 +133,6 @@ export default function PedidosPage() {
                           Generar comprobante
                         </Link>
                       ) : null}
-                      <select
-                        className={styles.statusSelect}
-                        value={order.status}
-                        onChange={(e) => void handleStatusChange(order.id, e.target.value)}
-                      >
-                        {statusOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
                     </td>
                   </tr>,
                 ];
