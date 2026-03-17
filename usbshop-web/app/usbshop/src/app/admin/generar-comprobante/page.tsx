@@ -133,6 +133,15 @@ export default function GenerarComprobantePage() {
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formTotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
+  const documentBehavior = useMemo(() => {
+    if (form.document_type === 'NOTA_CREDITO') {
+      return 'La nota de crédito repone stock y, si la operación es por cuenta corriente, genera crédito a favor del cliente.';
+    }
+    if (form.document_type === 'PRESUPUESTO') {
+      return 'El presupuesto solo guarda el documento. No mueve stock ni cuenta corriente.';
+    }
+    return 'La factura descuenta stock y, si la operación es por cuenta corriente, genera deuda del cliente.';
+  }, [form.document_type]);
 
   const getProductPriceByList = (product: ProductOption, priceList: string) => {
     if (priceList === '1') return Number(product.price_list_1 || product.price || 0);
@@ -231,7 +240,7 @@ export default function GenerarComprobantePage() {
       <section className={styles.header}>
         <div>
           <h1>Generar comprobante</h1>
-          <p>Alta operativa de facturas, remitos y notas desde la base actual.</p>
+          <p>Alta operativa de facturas, notas de crédito y presupuestos desde la base actual.</p>
         </div>
       </section>
       {loading ? <div className={styles.empty}>Cargando formulario...</div> : null}
@@ -241,8 +250,8 @@ export default function GenerarComprobantePage() {
           <div className={styles.createHeader}>
             <div>
               <h2>Emitir comprobante real</h2>
-              <p>Genera venta, descuenta stock y, si corresponde, impacta en cuenta corriente.</p>
-              <p className={styles.modelNote}>Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comision.</p>
+              <p>{documentBehavior}</p>
+              <p className={styles.modelNote}>Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comisión.</p>
               {form.order_id ? <p className={styles.orderDraftInfo}>Pedido web #{form.order_id} cargado como borrador editable.</p> : null}
             </div>
             <div className={styles.createTotal}>{money(formTotal)}</div>
@@ -270,11 +279,11 @@ export default function GenerarComprobantePage() {
                 <small className={styles.fieldHint}>{filteredCustomerOptions.length} cliente{filteredCustomerOptions.length === 1 ? '' : 's'} encontrado{filteredCustomerOptions.length === 1 ? '' : 's'}</small>
               </label>
               <label>
-                Tipo
+                Tipo de comprobante
                 <select value={form.document_type} onChange={(e) => setForm((current) => ({ ...current, document_type: e.target.value }))}>
                   <option value="FACTURA">Factura</option>
-                  <option value="REMITO">Remito</option>
-                  <option value="NOTA_DEBITO">Nota de debito</option>
+                  <option value="NOTA_CREDITO">Nota de crédito</option>
+                  <option value="PRESUPUESTO">Presupuesto</option>
                 </select>
               </label>
               <label>
@@ -474,7 +483,9 @@ export default function GenerarComprobantePage() {
                 setProductQuantity('1');
                 setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', items: [] });
               }}>Limpiar</button>
-              <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>{creating ? 'Guardando...' : 'Emitir comprobante'}</button>
+              <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>
+                {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
+              </button>
             </div>
           </form>
         </section>

@@ -3809,6 +3809,8 @@ def admin_create_invoice(
         raise HTTPException(status_code=400, detail="Agrega items al comprobante")
 
     document_type = str(payload.get("document_type") or "FACTURA").strip().upper() or "FACTURA"
+    if document_type not in {"FACTURA", "NOTA_CREDITO", "PRESUPUESTO"}:
+        raise HTTPException(status_code=400, detail="Tipo de comprobante invalido")
     sale_mode_input = str(payload.get("sale_mode") or "").strip().upper() or None
     due_date = str(payload.get("due_date") or "").strip() or None
     notes = str(payload.get("notes") or "").strip() or None
@@ -3848,6 +3850,12 @@ def admin_create_invoice(
             if not bool(seller["is_active"]):
                 raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
 
+        affects_stock = document_type in {"FACTURA", "NOTA_CREDITO"}
+        creates_cc_movement = document_type in {"FACTURA", "NOTA_CREDITO"}
+        stock_delta = -1 if document_type == "FACTURA" else 1 if document_type == "NOTA_CREDITO" else 0
+        cc_movement_type = "DEBIT" if document_type == "FACTURA" else "CREDIT"
+        cc_entry_kind = "SALE" if document_type == "FACTURA" else "CREDIT_NOTE"
+
         normalized_items: list[dict[str, Any]] = []
         total = 0.0
         price_list = int(payload.get("price_list") or 0)
@@ -3871,7 +3879,7 @@ def admin_create_invoice(
             if product is None:
                 raise HTTPException(status_code=404, detail=f"Producto {product_id} no encontrado")
             current_stock = int(product["stock"] or 0)
-            if current_stock < quantity:
+            if document_type == "FACTURA" and current_stock < quantity:
                 raise HTTPException(
                     status_code=400,
                     detail=f"Sin stock suficiente para {product['name']}",
@@ -3950,29 +3958,32 @@ def admin_create_invoice(
                 """,
                 (invoice_id, item["product_id"], item["quantity"], item["unit_price"]),
             )
-            conn.execute(
-                "UPDATE products SET stock = stock - ? WHERE id = ?",
-                (item["quantity"], item["product_id"]),
-            )
+            if affects_stock and stock_delta != 0:
+                conn.execute(
+                    "UPDATE products SET stock = stock + ? WHERE id = ?",
+                    (stock_delta * item["quantity"], item["product_id"]),
+                )
 
-        if sale_mode == "CUENTA_CORRIENTE":
+        if creates_cc_movement and sale_mode == "CUENTA_CORRIENTE":
             conn.execute(
                 """
                 INSERT INTO account_movements (
                     customer_id, invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method
-                ) VALUES (?, ?, ?, 'DEBIT', 'SALE', ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     customer_id,
                     invoice_id,
                     round(total, 2),
+                    cc_movement_type,
+                    cc_entry_kind,
                     f"{document_type} #{invoice_id}",
                     created_at,
                     payment_method,
                 ),
             )
 
-        if order_id:
+        if order_id and document_type == "FACTURA":
             conn.execute(
                 """
                 UPDATE web_orders

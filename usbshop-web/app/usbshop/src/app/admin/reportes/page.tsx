@@ -13,6 +13,7 @@ type Summary = {
   sales_count: number;
   sales_total: number;
   estimated_margin: number;
+  operating_result: number;
   cc_open_balance: number;
   account_movements: number;
   debtors: number;
@@ -34,11 +35,27 @@ type YearProjection = {
   trend_projection: number;
   recent_window_months: number;
 };
+type DailyInvoice = { id: number; customer_id: number; customer_name: string; total: number; created_at: string; document_type?: string | null };
+type DailyProduct = { product_id: number; name: string; quantity: number; sales: number; avg_price: number };
+type DailyCustomer = { customer_id: number; name: string; invoice_count: number; sales: number; avg_ticket: number };
+type DailyReport = {
+  date: string;
+  summary: {
+    sales: number;
+    margin: number;
+    invoice_count: number;
+    avg_ticket: number;
+  };
+  products: DailyProduct[];
+  customers: DailyCustomer[];
+  invoices: DailyInvoice[];
+};
 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
 const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
+const todayInput = () => new Date().toISOString().slice(0, 10);
 
 const buildLinePath = (points: number[], width: number, height: number) => {
   if (points.length === 0) return '';
@@ -61,15 +78,21 @@ export default function ReportesPage() {
   const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
+  const [dailyDate, setDailyDate] = useState(todayInput());
+  const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const load = async () => {
       try {
         await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/reports/overview`, { credentials: 'include' });
-        if (!res.ok) throw new Error('No se pudieron cargar los reportes');
-        const data = await res.json();
+        const [overviewRes, dailyRes] = await Promise.all([
+          fetch(`${getApiBaseUrl()}/admin/reports/overview`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, { credentials: 'include' }),
+        ]);
+        if (!overviewRes.ok || !dailyRes.ok) throw new Error('No se pudieron cargar los reportes');
+        const data = await overviewRes.json();
+        const dailyData = await dailyRes.json();
         setSummary(data.summary);
         setMonthly(data.monthly_sales || []);
         setTopProducts(data.top_products || []);
@@ -78,12 +101,13 @@ export default function ReportesPage() {
         setDebtors(data.top_debtors || []);
         setLowStock(data.low_stock || []);
         setYearProjection(data.year_projection || null);
+        setDailyReport(dailyData || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando reportes');
       }
     };
     load();
-  }, []);
+  }, [dailyDate]);
 
   const maxMonthly = useMemo(() => Math.max(1, ...monthly.map((item) => item.sales || 0)), [monthly]);
   const monthlyPath = useMemo(
@@ -121,6 +145,7 @@ export default function ReportesPage() {
           <article className={styles.kpi}><span>Ventas</span><strong>{money(summary.sales_total)}</strong></article>
           <article className={styles.kpi}><span>Comprobantes</span><strong>{summary.sales_count}</strong></article>
           <article className={styles.kpi}><span>Margen estimado</span><strong>{money(summary.estimated_margin)}</strong></article>
+          <article className={styles.kpi}><span>Resultado operativo</span><strong>{money(summary.operating_result)}</strong></article>
           <article className={styles.kpi}><span>Saldo cuenta corriente</span><strong>{money(summary.cc_open_balance)}</strong></article>
           <article className={styles.kpi}><span>Clientes activos</span><strong>{summary.active_customers}</strong></article>
           <article className={styles.kpi}><span>Movimientos CC</span><strong>{summary.account_movements}</strong></article>
@@ -132,6 +157,66 @@ export default function ReportesPage() {
       ) : null}
 
       <section className={styles.grid}>
+        <article className={`${styles.panel} ${styles.dailyPanel}`}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h2>Reporte diario</h2>
+              <p>Venta y ganancia del día con selección de fecha.</p>
+            </div>
+            <label className={styles.dateFilter}>
+              <span>Ver día</span>
+              <input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />
+            </label>
+          </div>
+          {dailyReport ? (
+            <>
+              <div className={styles.kpiGrid}>
+                <article className={styles.kpi}><span>Fecha</span><strong>{dailyReport.date}</strong></article>
+                <article className={styles.kpi}><span>Venta del día</span><strong>{money(dailyReport.summary.sales)}</strong></article>
+                <article className={styles.kpi}><span>Ganancia del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
+                <article className={styles.kpi}><span>Comprobantes</span><strong>{integer(dailyReport.summary.invoice_count)}</strong></article>
+                <article className={styles.kpi}><span>Ticket promedio</span><strong>{money(dailyReport.summary.avg_ticket)}</strong></article>
+              </div>
+              <div className={styles.dailyGrid}>
+                <div className={styles.list}>
+                  <div className={styles.subheading}>Comprobantes del día</div>
+                  {dailyReport.invoices.length === 0 ? (
+                    <div className={styles.empty}>No hubo comprobantes en esa fecha.</div>
+                  ) : (
+                    dailyReport.invoices.map((item) => (
+                      <div key={item.id} className={styles.listRow}>
+                        <div>
+                          <strong>#{item.id} · {item.document_type || 'Comprobante'}</strong>
+                          <span>{item.customer_name}</span>
+                        </div>
+                        <em>{money(item.total)}</em>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className={styles.list}>
+                  <div className={styles.subheading}>Productos vendidos</div>
+                  {dailyReport.products.length === 0 ? (
+                    <div className={styles.empty}>Sin productos vendidos en esa fecha.</div>
+                  ) : (
+                    dailyReport.products.slice(0, 8).map((item) => (
+                      <div key={item.product_id} className={styles.listRow}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <span>{integer(item.quantity)} unidades · Promedio {money(item.avg_price)}</span>
+                        </div>
+                        <em>{money(item.sales)}</em>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className={styles.empty}>Cargando reporte diario...</div>
+          )}
+        </article>
+
         <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Ventas por mes</h2>

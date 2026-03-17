@@ -10,6 +10,13 @@
 .panel { padding: 18px; display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow: hidden; }
 .panelHeader { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .panelHeader h2 { margin: 0; color: var(--ink); font-size: 18px; }
+.panelHeader p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.dailyPanel { grid-column: 1 / -1; }
+.dailyGrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 16px; }
+.dateFilter { display: grid; gap: 6px; min-width: 180px; }
+.dateFilter span, .subheading { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.dateFilter input { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; background: white; }
+.subheading { font-weight: 700; color: var(--ink); }
 .chartCard { display: grid; gap: 16px; }
 .lineChartWrap { padding: 16px 12px 0; border-radius: 16px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(241,245,249,.65)); border: 1px solid var(--bg-soft); overflow: hidden; }
 .lineChart { width: 100%; height: auto; display: block; }
@@ -50,6 +57,7 @@
   .page { gap: 16px; }
   .panel, .kpi { padding: 14px; }
   .kpiGrid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .dailyGrid { grid-template-columns: 1fr; }
   .chart { grid-template-columns: repeat(auto-fit, minmax(44px, 1fr)); gap: 8px; min-height: 220px; }
   .barTrack { height: 140px; }
   .listRow { flex-direction: column; align-items: flex-start; }
