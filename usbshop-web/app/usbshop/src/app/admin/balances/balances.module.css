@@ -302,17 +302,17 @@
   overflow-wrap: anywhere;
 }
 
-.ringWrap {
+.compactComposition {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 170px minmax(0, 1fr);
   gap: 18px;
   align-items: center;
 }
 
 .ringChart {
   position: relative;
-  width: 220px;
-  height: 220px;
+  width: 170px;
+  height: 170px;
   margin: 0 auto;
 }
 
@@ -324,7 +324,7 @@
 
 .ringChartCenter {
   position: absolute;
-  inset: 26px;
+  inset: 22px;
   border-radius: 50%;
   background: white;
   border: 1px solid var(--bg-soft);
@@ -342,7 +342,7 @@
 
 .ringChartCenter strong {
   color: var(--ink);
-  font-size: 22px;
+  font-size: 17px;
   line-height: 1.15;
 }
 
@@ -408,9 +408,73 @@
   color: #b91c1c;
 }
 
-.notes p {
+.sellerList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sellerCard {
+  border: 1px solid var(--bg-soft);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+}
+
+.sellerHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sellerHead strong {
+  color: var(--ink);
+  display: block;
+}
+
+.sellerHead span {
   color: var(--muted);
-  line-height: 1.5;
+  font-size: 12px;
+}
+
+.sellerHead em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--purple);
+}
+
+.sellerBarTrack {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.sellerBarFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb, #0f766e);
+}
+
+.sellerMeta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sellerMeta span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.sellerMeta strong {
+  color: var(--ink);
+  display: block;
+  margin-top: 4px;
 }
 
 .empty,
@@ -433,7 +497,7 @@
 @media (max-width: 1180px) {
   .desktopHero,
   .grid,
-  .ringWrap,
+  .compactComposition,
   .desktopChartPanel,
   .projectionGrid {
     grid-template-columns: 1fr;
@@ -444,10 +508,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .ringChart {
-    width: 200px;
-    height: 200px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -468,9 +528,14 @@
     grid-template-columns: 1fr;
   }
 
+  .sellerMeta {
+    grid-template-columns: 1fr;
+  }
+
   .monthRow,
   .listRow,
-  .panelHeader {
+  .panelHeader,
+  .sellerHead {
     flex-direction: column;
     align-items: flex-start;
   }

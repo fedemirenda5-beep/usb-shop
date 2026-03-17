@@ -20,8 +20,15 @@ type Summary = {
 };
 
 type MonthPoint = { month: string; sales: number; count: number };
-type Debtor = { customer_id: number; name: string; balance: number };
 type LowStock = { id: number; name: string; stock: number; reorder_point: number };
+type SellerBalance = {
+  seller_id: number;
+  name: string;
+  sales: number;
+  margin: number;
+  commission: number;
+  invoice_count: number;
+};
 type YearProjection = {
   year: number;
   current_ytd_sales: number;
@@ -59,8 +66,8 @@ const buildLinePath = (points: number[], width: number, height: number) => {
 export default function BalancesPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [monthly, setMonthly] = useState<MonthPoint[]>([]);
-  const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
+  const [sellerBalances, setSellerBalances] = useState<SellerBalance[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
   const [metricMode, setMetricMode] = useState<AnnualMetricMode>('sales');
   const [error, setError] = useState('');
@@ -74,8 +81,8 @@ export default function BalancesPage() {
         const data = await res.json();
         setSummary(data.summary);
         setMonthly(data.monthly_sales || []);
-        setDebtors(data.top_debtors || []);
         setLowStock(data.low_stock || []);
+        setSellerBalances(data.sales_by_seller || []);
         setYearProjection(data.year_projection || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando balances');
@@ -173,6 +180,10 @@ export default function BalancesPage() {
             : money(item.value),
       })),
     [annualBarData, metricMode]
+  );
+  const sellerMaxSales = useMemo(
+    () => Math.max(1, ...sellerBalances.map((item) => item.sales || 0), 0),
+    [sellerBalances]
   );
 
   return (
@@ -311,7 +322,7 @@ export default function BalancesPage() {
               <div className={styles.panelHeader}>
                 <h2>Composicion general</h2>
               </div>
-              <div className={styles.ringWrap}>
+              <div className={styles.compactComposition}>
                 <div className={styles.ringChart}>
                   <div
                     className={styles.ringChartFill}
@@ -352,19 +363,37 @@ export default function BalancesPage() {
 
             <article className={styles.panel}>
               <div className={styles.panelHeader}>
-                <h2>Mayor exposicion</h2>
+                <h2>Vendedores</h2>
               </div>
-              <div className={styles.list}>
-                {debtors.length === 0 ? (
-                  <div className={styles.empty}>No hay saldos pendientes.</div>
+              <div className={styles.sellerList}>
+                {sellerBalances.length === 0 ? (
+                  <div className={styles.empty}>Todavia no hay comprobantes asignados a vendedores.</div>
                 ) : (
-                  debtors.map((item) => (
-                    <div key={item.customer_id} className={styles.listRow}>
-                      <div>
-                        <strong>{item.name}</strong>
-                        <span>Cuenta corriente abierta</span>
+                  sellerBalances.map((item) => (
+                    <div key={item.seller_id} className={styles.sellerCard}>
+                      <div className={styles.sellerHead}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <span>{integer(item.invoice_count)} comprobantes</span>
+                        </div>
+                        <em>{money(item.sales)}</em>
                       </div>
-                      <em>{money(item.balance)}</em>
+                      <div className={styles.sellerBarTrack}>
+                        <div
+                          className={styles.sellerBarFill}
+                          style={{ width: `${(item.sales / sellerMaxSales) * 100}%` }}
+                        />
+                      </div>
+                      <div className={styles.sellerMeta}>
+                        <div>
+                          <span>Ganancia</span>
+                          <strong>{money(item.margin)}</strong>
+                        </div>
+                        <div>
+                          <span>Comision interna</span>
+                          <strong>{money(item.commission)}</strong>
+                        </div>
+                      </div>
                     </div>
                   ))
                 )}
@@ -416,17 +445,6 @@ export default function BalancesPage() {
                     </div>
                   ))
                 )}
-              </div>
-            </article>
-
-            <article className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <h2>Lectura rapida</h2>
-              </div>
-              <div className={styles.notes}>
-                <p>Esta vista replica la lectura central del escritorio: capital total, ventas, ganancia y cierre.</p>
-                <p>El comparativo mensual puede alternar entre ventas, ganancia estimada y cantidad de comprobantes.</p>
-                <p>Si queres, el siguiente paso es agregar la grilla anual editable que tenia la app de escritorio.</p>
               </div>
             </article>
           </section>

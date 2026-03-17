@@ -4014,14 +4014,14 @@ def admin_reports_overview(
         ).fetchall()
         invoices = conn.execute(
             """
-            SELECT id, customer_id, total, created_at, document_type, sale_mode
+            SELECT id, customer_id, total, created_at, document_type, sale_mode, seller_id, commission_amount
             FROM invoices
             ORDER BY created_at ASC, id ASC
             """
         ).fetchall()
         invoice_items = conn.execute(
             """
-            SELECT ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at
+            SELECT ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at, i.seller_id
             FROM invoice_items ii
             LEFT JOIN invoices i ON i.id = ii.invoice_id
             """
@@ -4064,6 +4064,7 @@ def admin_reports_overview(
         top_products_map: dict[int, dict[str, Any]] = {}
         category_sales_map: dict[str, float] = {}
         customer_sales_map: dict[int, dict[str, Any]] = {}
+        seller_margin_map: dict[int, float] = {}
         for row in invoice_items:
             product_id = int(row["product_id"] or 0)
             if product_id <= 0:
@@ -4093,8 +4094,33 @@ def admin_reports_overview(
                 )
                 customer_entry["quantity"] += quantity
                 customer_entry["revenue"] += revenue
+            seller_id = int(row["seller_id"] or 0)
+            if seller_id > 0:
+                seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) + margin_value, 2)
         monthly_sales = [monthly_map[key] for key in sorted(monthly_map.keys())][-12:]
         product_names = {int(row["id"]): row["name"] for row in products}
+        seller_names = {
+            int(row["id"]): row["name"]
+            for row in conn.execute("SELECT id, name FROM sellers WHERE COALESCE(is_active, 1) = 1").fetchall()
+            if row["id"] is not None
+        }
+        seller_sales_map: dict[int, dict[str, Any]] = {}
+        for row in invoices:
+            seller_id = int(row["seller_id"] or 0)
+            if seller_id <= 0:
+                continue
+            seller_entry = seller_sales_map.setdefault(
+                seller_id,
+                {
+                    "seller_id": seller_id,
+                    "sales": 0.0,
+                    "commission": 0.0,
+                    "invoice_count": 0,
+                },
+            )
+            seller_entry["sales"] += float(row["total"] or 0)
+            seller_entry["commission"] += float(row["commission_amount"] or 0)
+            seller_entry["invoice_count"] += 1
         top_products = sorted(
             [
                 {
@@ -4152,6 +4178,19 @@ def admin_reports_overview(
             ],
             key=lambda item: (-item["revenue"], item["category"].lower()),
         )[:8]
+        sales_by_seller = sorted(
+            [
+                {
+                    **payload,
+                    "name": seller_names.get(seller_id, f"Vendedor {seller_id}"),
+                    "sales": round(float(payload["sales"] or 0), 2),
+                    "commission": round(float(payload["commission"] or 0), 2),
+                    "margin": round(float(seller_margin_map.get(seller_id, 0.0) or 0), 2),
+                }
+                for seller_id, payload in seller_sales_map.items()
+            ],
+            key=lambda item: (-item["sales"], item["name"].lower()),
+        )[:12]
 
         total_sales = round(sum(float(row["total"] or 0) for row in invoices), 2)
         total_margin = round(
@@ -4212,6 +4251,7 @@ def admin_reports_overview(
             "top_products": top_products,
             "top_customers": top_customers,
             "sales_by_category": sales_by_category,
+            "sales_by_seller": sales_by_seller,
             "top_debtors": top_debtors,
             "low_stock": low_stock,
             "year_projection": {
