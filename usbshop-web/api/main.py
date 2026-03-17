@@ -2731,7 +2731,7 @@ def admin_backoffice_customers(
             SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
             FROM customers
             {where_clause}
-            ORDER BY name COLLATE NOCASE ASC, id ASC
+            ORDER BY LOWER(TRIM(name)) ASC, id ASC
             LIMIT ? OFFSET ?
             """,
             params + [limit, offset],
@@ -3024,27 +3024,42 @@ def admin_create_backoffice_customer(
         raise HTTPException(status_code=400, detail="Nombre requerido")
     conn = _connect()
     try:
-        conn.execute(
-            """
-            INSERT INTO customers (
-                name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            """,
-            (
-                name,
-                str(payload.get("email") or "").strip() or None,
-                str(payload.get("phone") or "").strip() or None,
-                datetime.utcnow().isoformat(),
-                str(payload.get("sale_mode") or "CONTADO").strip() or "CONTADO",
-                str(payload.get("locality") or "").strip() or None,
-                str(payload.get("address") or "").strip() or None,
-                str(payload.get("tax_condition") or "").strip() or None,
-                str(payload.get("cuit") or "").strip() or None,
-            ),
+        _ensure_syncable_tables(conn)
+        params = (
+            name,
+            str(payload.get("email") or "").strip() or None,
+            str(payload.get("phone") or "").strip() or None,
+            datetime.utcnow().isoformat(),
+            str(payload.get("sale_mode") or "CONTADO").strip() or "CONTADO",
+            str(payload.get("locality") or "").strip() or None,
+            str(payload.get("address") or "").strip() or None,
+            str(payload.get("tax_condition") or "").strip() or None,
+            str(payload.get("cuit") or "").strip() or None,
         )
+        if DB_IS_POSTGRES:
+            row = conn.execute(
+                """
+                INSERT INTO customers (
+                    name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                RETURNING id
+                """,
+                params,
+            ).fetchone()
+            customer_id = int(row["id"] if isinstance(row, dict) else row[0])
+        else:
+            conn.execute(
+                """
+                INSERT INTO customers (
+                    name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """,
+                params,
+            )
+            row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+            customer_id = int(row["id"] if isinstance(row, dict) else row[0])
         conn.commit()
-        row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
-        return {"id": int(row["id"] if isinstance(row, dict) else row[0]), "message": "Cliente creado"}
+        return {"id": customer_id, "message": "Cliente creado"}
     finally:
         conn.close()
 
@@ -3062,7 +3077,7 @@ def admin_update_backoffice_customer(
         raise HTTPException(status_code=400, detail="Nombre requerido")
     conn = _connect()
     try:
-        _ensure_web_order_tables(conn)
+        _ensure_syncable_tables(conn)
         row = conn.execute(
             """
             SELECT id
@@ -3370,7 +3385,7 @@ def admin_cc_overview(
             SELECT id, name, email, phone, sale_mode, locality, address, tax_condition, cuit
             FROM customers
             WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
-            ORDER BY name COLLATE NOCASE ASC
+            ORDER BY LOWER(TRIM(name)) ASC
             """
         ).fetchall()
         movement_rows = conn.execute(
@@ -3527,6 +3542,7 @@ def admin_list_invoices(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _ensure_sellers_table(conn)
         params: list[Any] = []
         where = ""
         if customer_id:
@@ -3535,9 +3551,12 @@ def admin_list_invoices(
         rows = conn.execute(
             f"""
             SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, i.sale_mode,
-                   i.price_list, i.due_date, i.notes, i.payment_method, c.name AS customer_name
+                   i.price_list, i.due_date, i.notes, i.payment_method,
+                   i.seller_id, i.commission_amount,
+                   c.name AS customer_name, s.name AS seller_name
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
+            LEFT JOIN sellers s ON s.id = i.seller_id
             {where}
             ORDER BY i.created_at DESC, i.id DESC
             LIMIT ?
@@ -3557,6 +3576,9 @@ def admin_list_invoices(
                 "due_date": row["due_date"],
                 "notes": row["notes"],
                 "payment_method": row["payment_method"],
+                "seller_id": int(row["seller_id"]) if row["seller_id"] is not None else None,
+                "seller_name": row["seller_name"],
+                "commission_amount": float(row["commission_amount"] or 0),
             }
             for row in rows
         ]
@@ -3584,11 +3606,13 @@ def admin_create_invoice(
     notes = str(payload.get("notes") or "").strip() or None
     order_id = int(payload.get("order_id") or 0) or None
     created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
+    seller_id = int(payload.get("seller_id") or 0) or None
 
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _ensure_sellers_table(conn)
         customer = conn.execute(
             """
             SELECT id, sale_mode
@@ -3599,6 +3623,22 @@ def admin_create_invoice(
         ).fetchone()
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        seller = None
+        commission_amount = 0.0
+        if seller_id is not None:
+            seller = conn.execute(
+                """
+                SELECT id, name, commission_percent, is_active
+                FROM sellers
+                WHERE id = ?
+                """,
+                (seller_id,),
+            ).fetchone()
+            if seller is None:
+                raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+            if not bool(seller["is_active"]):
+                raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
 
         normalized_items: list[dict[str, Any]] = []
         total = 0.0
@@ -3614,7 +3654,7 @@ def admin_create_invoice(
                 raise HTTPException(status_code=400, detail="Items invalidos")
             product = conn.execute(
                 """
-                SELECT id, name, price, stock
+                SELECT id, name, price, price_list_1, price_list_2, stock
                 FROM products
                 WHERE id = ? AND deleted_at IS NULL AND COALESCE(is_active, 1) = 1
                 """,
@@ -3650,6 +3690,9 @@ def admin_create_invoice(
             )
 
         sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
+        if seller is not None:
+            commission_percent = float(seller["commission_percent"] or 0)
+            commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
         external_ref_row = conn.execute(
             """
             SELECT external_ref
@@ -3667,13 +3710,15 @@ def admin_create_invoice(
             INSERT INTO invoices (
                 customer_id, total, created_at, seller_id, document_type, commission_amount,
                 sale_mode, price_list, external_ref, due_date, notes, payment_method
-            ) VALUES (?, ?, ?, NULL, ?, 0, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         insert_invoice_params = (
             customer_id,
             round(total, 2),
             created_at,
+            seller_id,
             document_type,
+            commission_amount,
             sale_mode,
             price_list,
             external_ref,
@@ -3707,9 +3752,16 @@ def admin_create_invoice(
                 """
                 INSERT INTO account_movements (
                     customer_id, invoice_id, amount, movement_type, reference, created_at, payment_method
-                ) VALUES (?, ?, ?, 'DEBIT', ?, ?, NULL)
+                ) VALUES (?, ?, ?, 'DEBIT', ?, ?, ?)
                 """,
-                (customer_id, invoice_id, round(total, 2), f"{document_type} #{invoice_id}", created_at),
+                (
+                    customer_id,
+                    invoice_id,
+                    round(total, 2),
+                    f"{document_type} #{invoice_id}",
+                    created_at,
+                    payment_method,
+                ),
             )
 
         if order_id:
@@ -3732,6 +3784,8 @@ def admin_create_invoice(
             "price_list": price_list,
             "external_ref": external_ref,
             "payment_method": payment_method,
+            "seller_id": seller_id,
+            "commission_amount": commission_amount,
             "message": "Comprobante creado",
         }
     finally:
@@ -3749,14 +3803,17 @@ def admin_invoice_detail(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _ensure_sellers_table(conn)
         invoice = conn.execute(
             """
             SELECT i.id, i.customer_id, i.total, i.created_at, i.seller_id, i.document_type,
                    i.commission_amount, i.sale_mode, i.price_list, i.external_ref, i.due_date,
                    i.notes, i.payment_method, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
-                   c.sale_mode AS customer_sale_mode, c.locality, c.address, c.tax_condition, c.cuit
+                   c.sale_mode AS customer_sale_mode, c.locality, c.address, c.tax_condition, c.cuit,
+                   s.name AS seller_name, s.commission_percent AS seller_commission_percent
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
+            LEFT JOIN sellers s ON s.id = i.seller_id
             WHERE i.id = ?
             """,
             (invoice_id,),
@@ -3837,6 +3894,8 @@ def admin_invoice_detail(
                 "total": float(invoice["total"] or 0),
                 "created_at": invoice["created_at"],
                 "seller_id": int(invoice["seller_id"]) if invoice["seller_id"] is not None else None,
+                "seller_name": invoice["seller_name"],
+                "seller_commission_percent": float(invoice["seller_commission_percent"] or 0),
                 "document_type": invoice["document_type"],
                 "commission_amount": float(invoice["commission_amount"] or 0),
                 "sale_mode": invoice["sale_mode"],

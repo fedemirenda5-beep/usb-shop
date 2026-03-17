@@ -9,6 +9,8 @@ type Invoice = {
   id: number;
   customer_id?: number | null;
   customer_name: string;
+  seller_id?: number | null;
+  seller_name?: string | null;
   total: number;
   created_at: string;
   document_type?: string | null;
@@ -17,6 +19,7 @@ type Invoice = {
   due_date?: string | null;
   notes?: string | null;
   payment_method?: string | null;
+  commission_amount?: number | null;
 };
 
 type InvoiceDetail = {
@@ -30,6 +33,8 @@ type InvoiceDetail = {
     external_ref?: string | null;
     payment_method?: string | null;
     price_list?: number | null;
+    seller_name?: string | null;
+    seller_commission_percent?: number | null;
   };
   items: Array<{
     id: number;
@@ -73,6 +78,13 @@ type ProductOption = {
   price_list_1?: number | null;
   price_list_2?: number | null;
   stock: number;
+};
+
+type SellerOption = {
+  id: number;
+  name: string;
+  commission_percent: number;
+  is_active: boolean;
 };
 
 type OrderDraft = {
@@ -138,6 +150,7 @@ export default function ComprobantesPage() {
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
+  const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
@@ -153,6 +166,7 @@ export default function ComprobantesPage() {
     customer_id: '',
     document_type: 'FACTURA',
     sale_mode: 'CONTADO',
+    seller_id: '',
     price_list: '0',
     payment_method: 'EFECTIVO',
     created_at: nowInputValue(),
@@ -200,14 +214,17 @@ export default function ComprobantesPage() {
 
   async function loadOptions() {
     await loadRuntimeConfig();
-    const [customersRes, productsRes] = await Promise.all([
+    const [customersRes, productsRes, sellersRes] = await Promise.all([
       fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=300`, { credentials: 'include' }),
       fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, { credentials: 'include' }),
+      fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' }),
     ]);
     if (!customersRes.ok) throw new Error('No se pudieron cargar los clientes');
     if (!productsRes.ok) throw new Error('No se pudieron cargar los productos');
+    if (!sellersRes.ok) throw new Error('No se pudieron cargar los vendedores');
     setCustomers(await customersRes.json());
     setProducts(await productsRes.json());
+    setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
   }
 
   async function loadOrderDraft(orderId: number) {
@@ -254,6 +271,7 @@ export default function ComprobantesPage() {
           customer_id: matchedCustomer ? String(matchedCustomer.id) : '',
           document_type: 'FACTURA',
           sale_mode: matchedCustomer?.sale_mode || 'CONTADO',
+          seller_id: '',
           price_list: '0',
           payment_method: 'EFECTIVO',
           created_at: nowInputValue(),
@@ -303,6 +321,11 @@ export default function ComprobantesPage() {
     () => new Map(products.map((product) => [product.id, product])),
     [products]
   );
+  const sellerMap = useMemo(
+    () => new Map(sellers.map((seller) => [seller.id, seller])),
+    [sellers]
+  );
+  const selectedSeller = sellerMap.get(Number(form.seller_id));
 
   const formTotal = useMemo(
     () =>
@@ -313,6 +336,10 @@ export default function ComprobantesPage() {
       }, 0),
     [form.items]
   );
+  const commissionPreview = useMemo(() => {
+    if (!selectedSeller) return 0;
+    return (formTotal * Number(selectedSeller.commission_percent || 0)) / 100;
+  }, [formTotal, selectedSeller]);
 
   const getProductPriceByList = (product: ProductOption, priceList: string) => {
     if (priceList === '1') {
@@ -367,6 +394,7 @@ export default function ComprobantesPage() {
       customer_id: '',
       document_type: 'FACTURA',
       sale_mode: 'CONTADO',
+      seller_id: '',
       price_list: '0',
       payment_method: 'EFECTIVO',
       created_at: nowInputValue(),
@@ -389,6 +417,7 @@ export default function ComprobantesPage() {
         customer_id: Number(form.customer_id),
         document_type: form.document_type,
         sale_mode: form.sale_mode,
+        seller_id: form.seller_id ? Number(form.seller_id) : null,
         price_list: Number(form.price_list || 0),
         payment_method: form.payment_method || null,
         created_at: formatInputDateTime(form.created_at),
@@ -448,8 +477,7 @@ export default function ComprobantesPage() {
               <h2>Emitir comprobante real</h2>
               <p>Genera venta, descuenta stock y, si corresponde, impacta en cuenta corriente.</p>
               <p className={styles.modelNote}>
-                Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento y notas.
-                Vendedor/comision se habilita cuando exista esa entidad en la base.
+                Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comision.
               </p>
               {form.order_id ? (
                 <p className={styles.orderDraftInfo}>
@@ -526,6 +554,26 @@ export default function ComprobantesPage() {
                   <option value="CONTADO">Contado</option>
                   <option value="CUENTA_CORRIENTE">Cuenta corriente</option>
                 </select>
+              </label>
+
+              <label>
+                Vendedor
+                <select
+                  value={form.seller_id}
+                  onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))}
+                >
+                  <option value="">Sin vendedor</option>
+                  {sellers.map((seller) => (
+                    <option key={seller.id} value={seller.id}>
+                      {seller.name} - {seller.commission_percent}%
+                    </option>
+                  ))}
+                </select>
+                <small className={styles.fieldHint}>
+                  {selectedSeller
+                    ? `Comision estimada: ${money(commissionPreview)}`
+                    : 'Selecciona un vendedor para imputar comision'}
+                </small>
               </label>
 
               <label>
@@ -752,10 +800,12 @@ export default function ComprobantesPage() {
 
                   <div className={styles.desktopPanel}>
                     <div className={styles.sectionTitle}>Resumen</div>
-                    <div className={styles.summaryRows}>
+                      <div className={styles.summaryRows}>
                       <div className={styles.metaRow}><span>Numero</span><strong>#{detail.invoice.id}</strong></div>
                       <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
                       <div className={styles.metaRow}><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
+                      <div className={styles.metaRow}><span>Vendedor</span><strong>{detail.invoice.seller_name || '-'}</strong></div>
+                      <div className={styles.metaRow}><span>Comision</span><strong>{money(detail.invoice.commission_amount || 0)}</strong></div>
                       <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
                       <div className={styles.metaRow}><span>Forma de pago</span><strong>{detail.invoice.payment_method || '-'}</strong></div>
                       <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
