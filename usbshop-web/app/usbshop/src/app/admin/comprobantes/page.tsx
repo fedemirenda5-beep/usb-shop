@@ -221,15 +221,14 @@ export default function ComprobantesPage() {
                 <th>Total</th>
                 <th>Emision</th>
                 <th>Origen</th>
-                <th>Notas</th>
                 <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9}>Cargando comprobantes...</td></tr>
+                <tr><td colSpan={8}>Cargando comprobantes...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={9}>No hay comprobantes para mostrar.</td></tr>
+                <tr><td colSpan={8}>No hay comprobantes para mostrar.</td></tr>
               ) : (
                 filtered.map((item) => (
                   <tr
@@ -250,7 +249,6 @@ export default function ComprobantesPage() {
                         <span className={styles.originMuted}>Manual</span>
                       )}
                     </td>
-                    <td>{item.notes || '-'}</td>
                     <td className={styles.rowActions}>
                       <button
                         type="button"
