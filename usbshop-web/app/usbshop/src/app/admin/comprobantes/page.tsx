@@ -805,7 +805,6 @@ export default function ComprobantesPage() {
                       <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
                       <div className={styles.metaRow}><span>Vencimiento</span><strong>{formatDate(detail.invoice.due_date)}</strong></div>
                       <div className={styles.metaRow}><span>Vendedor</span><strong>{detail.invoice.seller_name || '-'}</strong></div>
-                      <div className={styles.metaRow}><span>Comision</span><strong>{money(detail.invoice.commission_amount || 0)}</strong></div>
                       <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
                       <div className={styles.metaRow}><span>Forma de pago</span><strong>{detail.invoice.payment_method || '-'}</strong></div>
                       <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
