@@ -18,6 +18,26 @@
   justify-content: flex-end;
 }
 
+.exportGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+  flex-wrap: wrap;
+}
+
+.exportLabel {
+  font-family: var(--font-head);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
 .header h1 {
   font-family: var(--font-head);
   font-size: clamp(24px, 5vw, 32px);
@@ -368,6 +388,10 @@
   .headerActions {
     width: 100%;
     justify-content: stretch;
+  }
+
+  .exportGroup {
+    width: 100%;
   }
 
   .btnNew {

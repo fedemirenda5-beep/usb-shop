@@ -37,6 +37,7 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
 });
+type ExportValueMode = 'price' | 'cost';
 
 const normalizeSearchValue = (value: string) =>
   value
@@ -199,7 +200,7 @@ export default function ProductosPage() {
     }
   };
 
-  const exportPriceListPdf = (includeImages: boolean) => {
+  const exportPriceListPdf = (includeImages: boolean, valueMode: ExportValueMode) => {
     const exportItems = filteredProducts;
     if (exportItems.length === 0) {
       alert('No hay productos para exportar con el filtro actual.');
@@ -207,10 +208,14 @@ export default function ProductosPage() {
     }
 
     const generatedAt = new Date().toLocaleString('es-AR');
-    const title = includeImages ? 'Lista de precios con imagenes' : 'Lista de precios';
+    const label = valueMode === 'cost' ? 'costos' : 'precios';
+    const title = includeImages
+      ? `Lista de ${label} con imagenes`
+      : `Lista de ${label}`;
     const rows = exportItems
       .map((product) => {
         const imageUrl = resolveImageUrl(product.imageUrl, baseUrl);
+        const amount = valueMode === 'cost' ? product.cost || 0 : product.price || 0;
         const imageCell = includeImages
           ? imageUrl
             ? `<td class="imageCell"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" /></td>`
@@ -224,7 +229,7 @@ export default function ProductosPage() {
               <span>SKU ${escapeHtml(product.sku || '-')}</span>
             </td>
             <td>${product.stock}</td>
-            <td class="priceCell">${escapeHtml(currencyFormatter.format(product.price || 0))}</td>
+            <td class="priceCell">${escapeHtml(currencyFormatter.format(amount))}</td>
           </tr>
         `;
       })
@@ -280,7 +285,7 @@ export default function ProductosPage() {
                 ${includeImages ? '<th>Imagen</th>' : ''}
                 <th>Producto</th>
                 <th>Stock</th>
-                <th>Precio</th>
+                <th>${valueMode === 'cost' ? 'Costo' : 'Precio'}</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -306,20 +311,40 @@ export default function ProductosPage() {
           <p>Gestiona el catalogo de productos</p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.btnSecondary}
-            onClick={() => exportPriceListPdf(false)}
-          >
-            PDF sin imagenes
-          </button>
-          <button
-            type="button"
-            className={styles.btnSecondary}
-            onClick={() => exportPriceListPdf(true)}
-          >
-            PDF con imagenes
-          </button>
+          <div className={styles.exportGroup}>
+            <span className={styles.exportLabel}>Precios</span>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => exportPriceListPdf(false, 'price')}
+            >
+              PDF sin imagenes
+            </button>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => exportPriceListPdf(true, 'price')}
+            >
+              PDF con imagenes
+            </button>
+          </div>
+          <div className={styles.exportGroup}>
+            <span className={styles.exportLabel}>Costos</span>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => exportPriceListPdf(false, 'cost')}
+            >
+              PDF sin imagenes
+            </button>
+            <button
+              type="button"
+              className={styles.btnSecondary}
+              onClick={() => exportPriceListPdf(true, 'cost')}
+            >
+              PDF con imagenes
+            </button>
+          </div>
           <Link href="/admin/productos/nueva" className={styles.btnNew}>
             + Nuevo producto
           </Link>
