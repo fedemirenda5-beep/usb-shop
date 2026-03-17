@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import styles from './cuentas-corrientes.module.css';
 
@@ -80,6 +80,7 @@ const formatDate = (value?: string | null) => {
 };
 
 export default function CuentasCorrientesPage() {
+  const detailRef = useRef<HTMLElement | null>(null);
   const [customers, setCustomers] = useState<CustomerOverview[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
@@ -371,6 +372,13 @@ export default function CuentasCorrientesPage() {
     }
   };
 
+  const openCustomerDetail = (customerId: number) => {
+    setSelectedId(customerId);
+    window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   return (
     <div className={styles.page}>
       <section className={styles.header}>
@@ -429,6 +437,7 @@ export default function CuentasCorrientesPage() {
                     key={customer.id}
                     className={selectedId === customer.id ? styles.customerRowActive : ''}
                     onClick={() => setSelectedId(customer.id)}
+                    onDoubleClick={() => openCustomerDetail(customer.id)}
                   >
                     <td>
                       <div className={styles.customerNameCell}>
@@ -447,7 +456,7 @@ export default function CuentasCorrientesPage() {
         </div>
       </section>
 
-      <section className={styles.content}>
+      <section className={styles.content} ref={detailRef}>
         {detail ? (
           <>
             <div className={styles.accountHeader}>
