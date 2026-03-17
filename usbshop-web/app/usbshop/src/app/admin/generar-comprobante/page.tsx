@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import styles from '../comprobantes/comprobantes.module.css';
@@ -16,10 +16,9 @@ type OrderDraft = {
   notes?: string | null;
   items: Array<{ product_id: number; sku?: string | null; name?: string | null; quantity: number; unit_price: number }>;
 };
-type InvoiceFormItem = { product_id: string; product_query: string; quantity: string; unit_price: string };
+type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
-const emptyItem = (): InvoiceFormItem => ({ product_id: '', product_query: '', quantity: '1', unit_price: '0' });
 const nowInputValue = () => new Date().toISOString().slice(0, 16);
 const formatInputDateTime = (value?: string | null) => {
   if (!value) return null;
@@ -39,6 +38,8 @@ export default function GenerarComprobantePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [productQuantity, setProductQuantity] = useState('1');
   const [form, setForm] = useState({
     order_id: '',
     customer_id: '',
@@ -50,7 +51,7 @@ export default function GenerarComprobantePage() {
     created_at: nowInputValue(),
     due_date: '',
     notes: '',
-    items: [emptyItem()],
+    items: [] as InvoiceFormItem[],
   });
 
   useEffect(() => {
@@ -102,8 +103,8 @@ export default function GenerarComprobantePage() {
           due_date: '',
           notes: draft.notes || '',
           items: draft.items.length
-            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), product_query: item.name || '', unit_price: String(item.unit_price) }))
-            : [emptyItem()],
+            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
+            : [],
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el pedido');
@@ -122,6 +123,13 @@ export default function GenerarComprobantePage() {
       [customer.name, customer.email || '', customer.phone || '', customer.cuit || ''].join(' ').toLowerCase().includes(needle)
     );
   }, [customerSearch, customers]);
+  const filteredProducts = useMemo(() => {
+    const needle = productSearch.trim().toLowerCase();
+    if (!needle) return products.slice(0, 12);
+    return products
+      .filter((product) => [product.name, product.sku, String(product.id)].join(' ').toLowerCase().includes(needle))
+      .slice(0, 60);
+  }, [productSearch, products]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formTotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
@@ -132,22 +140,55 @@ export default function GenerarComprobantePage() {
     return Number(product.price || 0);
   };
 
-  const updateItem = (index: number, field: keyof InvoiceFormItem, value: string) => {
+  const addProductToInvoice = (product: ProductOption, quantityOverride?: number) => {
+    const normalizedQuantity = Math.max(1, Number(quantityOverride || productQuantity || 1));
+    setForm((current) => {
+      const existingIndex = current.items.findIndex((item) => Number(item.product_id) === product.id);
+      if (existingIndex >= 0) {
+        return {
+          ...current,
+          items: current.items.map((item, index) =>
+            index === existingIndex
+              ? { ...item, quantity: String(Number(item.quantity || 0) + normalizedQuantity) }
+              : item
+          ),
+        };
+      }
+      return {
+        ...current,
+        items: [
+          ...current.items,
+          {
+            product_id: String(product.id),
+            quantity: String(normalizedQuantity),
+            unit_price: String(getProductPriceByList(product, current.price_list)),
+            manual_price: false,
+          },
+        ],
+      };
+    });
+    setProductSearch('');
+    setProductQuantity('1');
+  };
+
+  const updateItem = (index: number, field: keyof InvoiceFormItem, value: string | boolean) => {
     setForm((current) => ({
       ...current,
       items: current.items.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const nextItem = { ...item, [field]: value };
-        if (field === 'product_id') {
-          const selected = productMap.get(Number(value));
-          if (selected) {
-            nextItem.product_query = selected.name;
-            nextItem.unit_price = String(getProductPriceByList(selected, current.price_list));
-          }
+        if (field === 'unit_price') {
+          nextItem.manual_price = true;
         }
         return nextItem;
       }),
     }));
+  };
+
+  const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    if (filteredProducts.length > 0) addProductToInvoice(filteredProducts[0]);
   };
 
   const submitInvoice = async (event: React.FormEvent) => {
@@ -263,7 +304,7 @@ export default function GenerarComprobantePage() {
                 Lista de precios
                 <select value={form.price_list} onChange={(e) => setForm((current) => ({ ...current, price_list: e.target.value, items: current.items.map((item) => {
                   const selected = productMap.get(Number(item.product_id));
-                  if (!selected) return item;
+                  if (!selected || item.manual_price) return item;
                   return { ...item, unit_price: String(getProductPriceByList(selected, e.target.value)) };
                 }) }))}>
                   <option value="0">Lista especial</option>
@@ -291,38 +332,149 @@ export default function GenerarComprobantePage() {
                 <textarea rows={2} value={form.notes} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} />
               </label>
             </div>
-            <div className={styles.itemList}>
-              {form.items.map((item, index) => {
-                const selectedProduct = productMap.get(Number(item.product_id));
-                const filteredProductOptions = products.filter((product) =>
-                  !item.product_query.trim() ? true : [product.name, product.sku, String(product.id)].join(' ').toLowerCase().includes(item.product_query.trim().toLowerCase())
-                );
-                return (
-                  <div key={index} className={styles.itemRow}>
-                    <div className={styles.productPicker}>
-                      <input type="text" value={item.product_query} onChange={(e) => updateItem(index, 'product_query', e.target.value)} placeholder="Buscar producto por nombre o SKU" />
-                      <select value={item.product_id} onChange={(e) => updateItem(index, 'product_id', e.target.value)} required>
-                        <option value="">Producto</option>
-                        {filteredProductOptions.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name} - {product.sku} - stock {product.stock}
-                          </option>
-                        ))}
-                      </select>
-                      <small className={styles.fieldHint}>{filteredProductOptions.length} producto{filteredProductOptions.length === 1 ? '' : 's'} encontrado{filteredProductOptions.length === 1 ? '' : 's'}</small>
-                    </div>
-                    <input type="number" min="1" step="1" value={item.quantity} onChange={(e) => updateItem(index, 'quantity', e.target.value)} required />
-                    <input type="number" min="0" step="0.01" value={item.unit_price} onChange={(e) => updateItem(index, 'unit_price', e.target.value)} required />
-                    <div className={styles.itemMeta}>{selectedProduct ? `Stock actual ${selectedProduct.stock}` : 'Sin producto'}</div>
-                    <button type="button" className={styles.removeButton} onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))} disabled={form.items.length === 1}>Quitar</button>
-                  </div>
-                );
-              })}
+            <section className={styles.desktopPickerPanel}>
+              <div className={styles.desktopPickerBar}>
+                <label className={styles.desktopPickerSearch}>
+                  Buscar producto
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    onKeyDown={handleProductSearchKeyDown}
+                    placeholder="Buscar por nombre, SKU o ID y presionar Enter"
+                  />
+                </label>
+                <label className={styles.desktopPickerQty}>
+                  Cantidad
+                  <input type="number" min="1" step="1" value={productQuantity} onChange={(e) => setProductQuantity(e.target.value)} />
+                </label>
+              </div>
+              <div className={styles.desktopPickerResults}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>SKU</th>
+                      <th>Producto</th>
+                      <th>Stock</th>
+                      <th>Especial</th>
+                      <th>Lista 1</th>
+                      <th>Lista 2</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.map((product) => (
+                      <tr key={product.id}>
+                        <td>{product.id}</td>
+                        <td>{product.sku}</td>
+                        <td>
+                          <button type="button" className={styles.linkButton} onClick={() => addProductToInvoice(product)}>
+                            {product.name}
+                          </button>
+                        </td>
+                        <td>{product.stock}</td>
+                        <td>{money(product.price)}</td>
+                        <td>{money(Number(product.price_list_1 || product.price || 0))}</td>
+                        <td>{money(Number(product.price_list_2 || product.price || 0))}</td>
+                        <td className={styles.rowActions}>
+                          <button type="button" className={styles.secondaryButton} onClick={() => addProductToInvoice(product)}>
+                            Agregar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className={styles.emptyCell}>No hay productos que coincidan con la busqueda.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+            <div className={styles.invoiceLinesPanel}>
+              <div className={styles.invoiceLinesHeader}>
+                <div>
+                  <h3>Items del comprobante</h3>
+                  <p>Cantidad y precio editables directo en la grilla, como en escritorio.</p>
+                </div>
+                <strong>{form.items.length} item{form.items.length === 1 ? '' : 's'}</strong>
+              </div>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Producto</th>
+                      <th>Stock</th>
+                      <th>Cantidad</th>
+                      <th>Precio unitario</th>
+                      <th>Subtotal</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.items.map((item, index) => {
+                      const selectedProduct = productMap.get(Number(item.product_id));
+                      const subtotal = Number(item.quantity || 0) * Number(item.unit_price || 0);
+                      return (
+                        <tr key={`${item.product_id}-${index}`}>
+                          <td>
+                            <strong>{selectedProduct?.name || `Producto #${item.product_id}`}</strong>
+                            <div className={styles.itemMeta}>
+                              {selectedProduct ? `${selectedProduct.sku || 'Sin SKU'}${item.manual_price ? ' · precio manual' : ''}` : 'Producto no encontrado'}
+                            </div>
+                          </td>
+                          <td>{selectedProduct?.stock ?? '-'}</td>
+                          <td>
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={item.quantity}
+                              onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                              required
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.unit_price}
+                              onChange={(e) => updateItem(index, 'unit_price', e.target.value)}
+                              required
+                            />
+                          </td>
+                          <td className={styles.total}>{money(subtotal)}</td>
+                          <td className={styles.rowActions}>
+                            <button
+                              type="button"
+                              className={styles.removeButton}
+                              onClick={() => setForm((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }))}
+                            >
+                              Quitar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {form.items.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className={styles.emptyCell}>Agrega productos desde el buscador superior para armar el comprobante.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div className={styles.formActions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => setForm((current) => ({ ...current, items: [...current.items, emptyItem()] }))}>Agregar item</button>
-              <button type="button" className={styles.secondaryButton} onClick={() => setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', items: [emptyItem()] })}>Limpiar</button>
-              <button type="submit" className={styles.createButton} disabled={creating}>{creating ? 'Guardando...' : 'Emitir comprobante'}</button>
+              <button type="button" className={styles.secondaryButton} onClick={() => {
+                setProductSearch('');
+                setProductQuantity('1');
+                setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', items: [] });
+              }}>Limpiar</button>
+              <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>{creating ? 'Guardando...' : 'Emitir comprobante'}</button>
             </div>
           </form>
         </section>
