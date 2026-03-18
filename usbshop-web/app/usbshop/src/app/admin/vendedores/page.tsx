@@ -68,6 +68,11 @@ export default function VendedoresPage() {
 
   const selectedSeller = sellers.find((seller) => seller.id === selectedSellerId) ?? null;
   const isFullAdmin = (user?.role || '').toLowerCase() === 'admin';
+  const monthlySummaryMap = useMemo(
+    () => new Map(monthlySummary.map((item) => [item.seller_id, item])),
+    [monthlySummary]
+  );
+  const selectedSellerSummary = selectedSeller ? monthlySummaryMap.get(selectedSeller.id) ?? null : null;
   const formattedMonthlyPeriod = useMemo(() => {
     if (!monthlyPeriod) return 'este mes';
     const [year, month] = monthlyPeriod.split('-');
@@ -112,33 +117,66 @@ export default function VendedoresPage() {
     return () => window.clearTimeout(timeoutId);
   }, [search]);
 
-  useEffect(() => {
+  const loadMonthlySummary = async (silent = false) => {
     if (!isFullAdmin) {
       setMonthlySummary([]);
       setMonthlyPeriod('');
       return;
     }
-    const loadMonthlySummary = async () => {
-      try {
+    try {
+      if (!silent) {
         setSummaryLoading(true);
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary`, {
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.detail || 'No se pudo cargar el resumen mensual');
-        }
-        const data = await res.json();
-        setMonthlySummary(Array.isArray(data.items) ? data.items : []);
-        setMonthlyPeriod(typeof data.period === 'string' ? data.period : '');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando resumen mensual');
-      } finally {
+      }
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail || 'No se pudo cargar el resumen mensual');
+      }
+      const data = await res.json();
+      setMonthlySummary(Array.isArray(data.items) ? data.items : []);
+      setMonthlyPeriod(typeof data.period === 'string' ? data.period : '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error cargando resumen mensual');
+    } finally {
+      if (!silent) {
         setSummaryLoading(false);
       }
-    };
+    }
+  };
+
+  useEffect(() => {
     void loadMonthlySummary();
+  }, [isFullAdmin]);
+
+  useEffect(() => {
+    if (!isFullAdmin) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void loadMonthlySummary(true);
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void loadMonthlySummary(true);
+      }
+    };
+
+    const handleFocus = () => {
+      void loadMonthlySummary(true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [isFullAdmin]);
 
   const handleSellerFormChange = (
@@ -249,47 +287,54 @@ export default function VendedoresPage() {
                   <th>ID</th>
                   <th>Vendedor</th>
                   {isFullAdmin ? <th>Comision</th> : null}
+                  {isFullAdmin ? <th>Venta mes</th> : null}
+                  {isFullAdmin ? <th>Comprobantes</th> : null}
                   <th>Estado</th>
                   <th>Actualizado</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {sellers.map((seller) => (
-                  <tr
-                    key={seller.id}
-                    className={seller.id === selectedSellerId ? styles.activeRow : ''}
-                    onClick={() => setSelectedSellerId(seller.id)}
-                    onDoubleClick={() => editSeller(seller)}
-                  >
-                    <td>{seller.id}</td>
-                    <td>
-                      <strong>{seller.name}</strong>
-                      <span className={styles.metaLine}>
-                        Creado: {formatDate(seller.created_at)}
-                      </span>
-                    </td>
-                    {isFullAdmin ? <td>{formatPercent(seller.commission_percent)}</td> : null}
-                    <td>
-                      <span className={seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
-                        {seller.is_active ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td>{formatDate(seller.updated_at || seller.created_at)}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          editSeller(seller);
-                        }}
-                      >
-                        Editar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {sellers.map((seller) => {
+                  const sellerSummary = monthlySummaryMap.get(seller.id);
+                  return (
+                    <tr
+                      key={seller.id}
+                      className={seller.id === selectedSellerId ? styles.activeRow : ''}
+                      onClick={() => setSelectedSellerId(seller.id)}
+                      onDoubleClick={() => editSeller(seller)}
+                    >
+                      <td>{seller.id}</td>
+                      <td>
+                        <strong>{seller.name}</strong>
+                        <span className={styles.metaLine}>
+                          Creado: {formatDate(seller.created_at)}
+                        </span>
+                      </td>
+                      {isFullAdmin ? <td>{formatPercent(seller.commission_percent)}</td> : null}
+                      {isFullAdmin ? <td>{money(sellerSummary?.sales || 0)}</td> : null}
+                      {isFullAdmin ? <td>{sellerSummary?.invoice_count || 0}</td> : null}
+                      <td>
+                        <span className={seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
+                          {seller.is_active ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td>{formatDate(seller.updated_at || seller.created_at)}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            editSeller(seller);
+                          }}
+                        >
+                          Editar
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -414,6 +459,30 @@ export default function VendedoresPage() {
                 <div className={styles.detailItem}>
                   <span>Comision actual</span>
                   <strong>{formatPercent(selectedSeller.commission_percent)}</strong>
+                </div>
+              ) : null}
+              {isFullAdmin ? (
+                <div className={styles.detailItem}>
+                  <span>Venta del mes</span>
+                  <strong>{money(selectedSellerSummary?.sales || 0)}</strong>
+                </div>
+              ) : null}
+              {isFullAdmin ? (
+                <div className={styles.detailItem}>
+                  <span>Comprobantes del mes</span>
+                  <strong>{selectedSellerSummary?.invoice_count || 0}</strong>
+                </div>
+              ) : null}
+              {isFullAdmin ? (
+                <div className={styles.detailItem}>
+                  <span>Comision acumulada</span>
+                  <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
+                </div>
+              ) : null}
+              {isFullAdmin ? (
+                <div className={styles.detailItem}>
+                  <span>Ganancia estimada</span>
+                  <strong>{money(selectedSellerSummary?.profit || 0)}</strong>
                 </div>
               ) : null}
               <div className={styles.detailItem}>
