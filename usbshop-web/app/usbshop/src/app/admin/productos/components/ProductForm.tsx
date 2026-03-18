@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import styles from './ProductForm.module.css';
 
+const MAX_PRODUCT_IMAGES = 3;
+
 interface ProductFormData {
   name: string;
   sku: string;
@@ -15,7 +17,7 @@ interface ProductFormData {
   is_featured: boolean;
   is_offer: boolean;
   image_path: string;
-  image_urls_text: string;
+  image_urls?: string[];
 }
 
 interface ProductFormState {
@@ -28,8 +30,6 @@ interface ProductFormState {
   margin: string;
   is_featured: boolean;
   is_offer: boolean;
-  image_path: string;
-  image_urls_text: string;
 }
 
 interface CategoryOption {
@@ -93,6 +93,19 @@ const formatMargin = (value: number) => {
   return String(Number(value.toFixed(2)));
 };
 
+const dedupeImageValues = (values: string[]) => {
+  const normalized = values.map((value) => value.trim()).filter(Boolean);
+  return Array.from(new Set(normalized)).slice(0, MAX_PRODUCT_IMAGES);
+};
+
+const buildInitialImages = (initialData?: ProductFormData & { id?: number }) => {
+  const entries = dedupeImageValues([
+    ...(Array.isArray(initialData?.image_urls) ? initialData.image_urls : []),
+    initialData?.image_path || '',
+  ]);
+  return Array.from({ length: MAX_PRODUCT_IMAGES }, (_, index) => entries[index] || '');
+};
+
 const buildInitialState = (initialData?: ProductFormData & { id?: number }): ProductFormState => {
   const source = initialData || {
     name: '',
@@ -104,7 +117,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     is_featured: false,
     is_offer: false,
     image_path: '',
-    image_urls_text: '',
+    image_urls: [],
   };
   return {
     name: source.name,
@@ -116,27 +129,39 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     margin: formatMargin(calculateMargin(source.cost, source.price)),
     is_featured: source.is_featured,
     is_offer: source.is_offer,
-    image_path: source.image_path,
-    image_urls_text: source.image_urls_text,
   };
 };
 
 export function ProductForm({ initialData, title, onSubmit, categories = [] }: ProductFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
+  const [imageInputs, setImageInputs] = useState<string[]>(() => buildInitialImages(initialData));
+  const [selectedImageFiles, setSelectedImageFiles] = useState<Array<File | null>>(() =>
+    Array.from({ length: MAX_PRODUCT_IMAGES }, () => null)
+  );
+  const [localPreviewUrls, setLocalPreviewUrls] = useState<Array<string | null>>(() =>
+    Array.from({ length: MAX_PRODUCT_IMAGES }, () => null)
+  );
+  const [uploadingSlots, setUploadingSlots] = useState<boolean[]>(() =>
+    Array.from({ length: MAX_PRODUCT_IMAGES }, () => false)
+  );
   const [loading, setLoading] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
-  const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
-    setFormData((prev) => {
-      if (typeof value === 'boolean') {
-        return { ...prev, [name]: value };
+  useEffect(() => {
+    return () => {
+      for (const url of localPreviewUrls) {
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
       }
-      return { ...prev, [name]: value };
-    });
+    };
+  }, [localPreviewUrls]);
+
+  const isUploadingAnyImage = uploadingSlots.some(Boolean);
+
+  const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
+    setFormData((prev) => ({ ...prev, [name]: value } as ProductFormState));
   };
 
   const handleNumericChange = (name: 'price' | 'cost' | 'stock', rawValue: string) => {
@@ -196,32 +221,58 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
     handleFieldChange(name as keyof ProductFormState, value);
   };
 
-  const handleTextAreaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    handleFieldChange(name as keyof ProductFormState, value);
+  const handleImageUrlChange = (index: number, value: string) => {
+    setImageInputs((prev) => prev.map((current, currentIndex) => (currentIndex === index ? value : current)));
   };
 
-  useEffect(() => {
-    if (!selectedImageFile) {
-      setLocalPreviewUrl(null);
-      return;
-    }
-    const objectUrl = URL.createObjectURL(selectedImageFile);
-    setLocalPreviewUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
-  }, [selectedImageFile]);
+  const handleImageUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const uploadSelectedImage = async () => {
-    if (!selectedImageFile) {
-      return formData.image_path.trim();
+    setError('');
+    setSelectedImageFiles((prev) => prev.map((current, currentIndex) => (currentIndex === index ? file : current)));
+    setLocalPreviewUrls((prev) =>
+      prev.map((current, currentIndex) => {
+        if (currentIndex !== index) {
+          return current;
+        }
+        if (current) {
+          URL.revokeObjectURL(current);
+        }
+        return URL.createObjectURL(file);
+      })
+    );
+    e.target.value = '';
+  };
+
+  const clearImageSlot = (index: number) => {
+    setSelectedImageFiles((prev) => prev.map((current, currentIndex) => (currentIndex === index ? null : current)));
+    setLocalPreviewUrls((prev) =>
+      prev.map((current, currentIndex) => {
+        if (currentIndex !== index) {
+          return current;
+        }
+        if (current) {
+          URL.revokeObjectURL(current);
+        }
+        return null;
+      })
+    );
+    setImageInputs((prev) => prev.map((current, currentIndex) => (currentIndex === index ? '' : current)));
+  };
+
+  const uploadSelectedImage = async (index: number) => {
+    const selectedFile = selectedImageFiles[index];
+    if (!selectedFile) {
+      return imageInputs[index].trim();
     }
 
-    setUploadingImage(true);
+    setUploadingSlots((prev) => prev.map((current, currentIndex) => (currentIndex === index ? true : current)));
     try {
       await loadRuntimeConfig();
       const body = new FormData();
-      body.append('file', selectedImageFile);
-      body.append('product_name', formData.name || selectedImageFile.name);
+      body.append('file', selectedFile);
+      body.append('product_name', formData.name || selectedFile.name);
 
       const res = await fetch(`${getApiBaseUrl()}/admin/uploads/product-image`, {
         method: 'POST',
@@ -239,24 +290,23 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
 
       const payload = await res.json();
       const uploadedUrl = String(payload.url || payload.path || '').trim();
-      setFormData((prev) => ({
-        ...prev,
-        image_path: uploadedUrl,
-      }));
-      setSelectedImageFile(null);
+      setImageInputs((prev) => prev.map((current, currentIndex) => (currentIndex === index ? uploadedUrl : current)));
+      setSelectedImageFiles((prev) => prev.map((current, currentIndex) => (currentIndex === index ? null : current)));
+      setLocalPreviewUrls((prev) =>
+        prev.map((current, currentIndex) => {
+          if (currentIndex !== index) {
+            return current;
+          }
+          if (current) {
+            URL.revokeObjectURL(current);
+          }
+          return null;
+        })
+      );
       return uploadedUrl;
     } finally {
-      setUploadingImage(false);
+      setUploadingSlots((prev) => prev.map((current, currentIndex) => (currentIndex === index ? false : current)));
     }
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setError('');
-    setSelectedImageFile(file);
-    e.target.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -285,7 +335,15 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
         throw new Error('Stock no puede ser negativo');
       }
 
-      const finalImagePath = await uploadSelectedImage();
+      const uploadedImages: string[] = [];
+      for (let index = 0; index < MAX_PRODUCT_IMAGES; index += 1) {
+        const finalUrl = await uploadSelectedImage(index);
+        if (finalUrl.trim()) {
+          uploadedImages.push(finalUrl.trim());
+        }
+      }
+
+      const finalImages = dedupeImageValues(uploadedImages);
 
       await onSubmit({
         name: formData.name.trim(),
@@ -296,12 +354,8 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
         category_id: formData.category_id ? Number(formData.category_id) : null,
         is_featured: formData.is_featured,
         is_offer: formData.is_offer,
-        image_path: finalImagePath,
-        image_urls_text: formData.image_urls_text,
-        image_urls: formData.image_urls_text
-          .split(/\r?\n/)
-          .map((value) => value.trim())
-          .filter(Boolean),
+        image_path: finalImages[0] || '',
+        image_urls: finalImages.slice(1),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error guardando producto');
@@ -311,7 +365,6 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
   };
 
   const marginPreview = calculateMargin(parseDecimal(formData.cost), parseDecimal(formData.price));
-  const previewUrl = localPreviewUrl || resolveImageUrl(formData.image_path, getApiBaseUrl());
 
   return (
     <div className={styles.container}>
@@ -438,53 +491,63 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
         </div>
 
         <div className={styles.field}>
-          <label htmlFor="image_path">Imagen principal</label>
-          <div className={styles.imageUpload}>
-            {previewUrl ? (
-              <div className={styles.preview}>
-                <img src={previewUrl} alt={formData.name || 'Vista previa'} />
-              </div>
-            ) : null}
-            <input
-              id="image_file"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              disabled={loading || uploadingImage}
-              className={styles.fileInput}
-            />
-            <p className={styles.help}>
-              Elegi la foto desde tu PC. Se sube a Supabase automaticamente al guardar el producto.
-            </p>
-            {selectedImageFile ? <p className={styles.help}>Imagen lista para guardar: {selectedImageFile.name}</p> : null}
-            {uploadingImage ? <p className={styles.help}>Subiendo imagen...</p> : null}
+          <label>Imagenes del producto</label>
+          <div className={styles.imageSlots}>
+            {imageInputs.map((value, index) => {
+              const previewUrl = localPreviewUrls[index] || resolveImageUrl(value, getApiBaseUrl());
+              const hasContent = Boolean(value.trim() || selectedImageFiles[index]);
+              return (
+                <div key={`image-slot-${index}`} className={styles.imageSlot}>
+                  <div className={styles.imageSlotHeader}>
+                    <strong>{index === 0 ? 'Imagen 1 principal' : `Imagen ${index + 1}`}</strong>
+                    {hasContent ? (
+                      <button
+                        type="button"
+                        className={styles.btnClearImage}
+                        onClick={() => clearImageSlot(index)}
+                        disabled={loading || isUploadingAnyImage}
+                      >
+                        Limpiar
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className={styles.imageUpload}>
+                    {previewUrl ? (
+                      <div className={styles.preview}>
+                        <img src={previewUrl} alt={formData.name || `Imagen ${index + 1}`} />
+                      </div>
+                    ) : (
+                      <div className={styles.previewPlaceholder}>Sin imagen</div>
+                    )}
+                    <input
+                      id={`image_file_${index}`}
+                      type="file"
+                      accept="image/*"
+                      onChange={(event) => handleImageUpload(index, event)}
+                      disabled={loading || isUploadingAnyImage}
+                      className={styles.fileInput}
+                    />
+                    <input
+                      type="text"
+                      value={value}
+                      onChange={(event) => handleImageUrlChange(index, event.target.value)}
+                      placeholder={`https://.../foto-${index + 1}.jpg`}
+                      disabled={loading || isUploadingAnyImage}
+                      className={styles.input}
+                    />
+                    <p className={styles.help}>
+                      Podes subir un archivo o pegar una URL publica.
+                    </p>
+                    {selectedImageFiles[index] ? (
+                      <p className={styles.help}>Lista para guardar: {selectedImageFiles[index]?.name}</p>
+                    ) : null}
+                    {uploadingSlots[index] ? <p className={styles.help}>Subiendo imagen...</p> : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <input
-            id="image_path"
-            type="text"
-            name="image_path"
-            value={formData.image_path}
-            onChange={handleChange}
-            placeholder="https://.../foto-principal.jpg"
-            disabled={loading || uploadingImage}
-            className={styles.input}
-          />
-          <p className={styles.help}>Tambien podes pegar una URL publica si ya la tenes.</p>
-        </div>
-
-        <div className={styles.field}>
-          <label htmlFor="image_urls_text">Imagenes adicionales</label>
-          <textarea
-            id="image_urls_text"
-            name="image_urls_text"
-            value={formData.image_urls_text}
-            onChange={handleTextAreaChange}
-            placeholder={'https://.../foto-2.jpg\nhttps://.../foto-3.jpg'}
-            disabled={loading}
-            className={styles.textarea}
-            rows={4}
-          />
-          <p className={styles.help}>Una URL por linea.</p>
+          <p className={styles.help}>Cada producto admite hasta 3 imagenes.</p>
         </div>
 
         <div className={styles.checkboxGroup}>
@@ -496,7 +559,7 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
               onChange={handleChange}
               disabled={loading}
             />
-            <span>Destacar en página principal</span>
+            <span>Destacar en pagina principal</span>
           </label>
 
           <label className={styles.checkbox}>
@@ -512,13 +575,13 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
         </div>
 
         <div className={styles.actions}>
-          <button type="submit" disabled={loading || uploadingImage} className={styles.btnSubmit}>
-            {uploadingImage ? 'Subiendo imagen...' : loading ? 'Guardando...' : 'Guardar Producto'}
+          <button type="submit" disabled={loading || isUploadingAnyImage} className={styles.btnSubmit}>
+            {isUploadingAnyImage ? 'Subiendo imagen...' : loading ? 'Guardando...' : 'Guardar Producto'}
           </button>
           <button
             type="button"
             onClick={() => router.push('/admin/productos')}
-            disabled={loading || uploadingImage}
+            disabled={loading || isUploadingAnyImage}
             className={styles.btnCancel}
           >
             Cancelar

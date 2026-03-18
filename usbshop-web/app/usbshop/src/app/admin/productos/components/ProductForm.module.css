@@ -260,3 +260,51 @@
 .fileInput {
   font-size: 0.875rem;
 }
+
+.imageSlots {
+  display: grid;
+  gap: 1rem;
+}
+
+.imageSlot {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.imageSlotHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.previewPlaceholder {
+  width: 150px;
+  height: 150px;
+  border-radius: 0.5rem;
+  border: 1px dashed #d1d5db;
+  background: #f3f4f6;
+  color: #6b7280;
+  display: grid;
+  place-items: center;
+  font-size: 0.875rem;
+}
+
+.btnClearImage {
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.btnClearImage:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

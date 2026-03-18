@@ -618,9 +618,7 @@ export default function ProductosPage() {
                 ...editProduct,
                 category_id: editProduct.category_id,
                 image_path: editProduct.image_path || '',
-                image_urls_text: Array.isArray(editProduct.image_urls)
-                  ? editProduct.image_urls.join('\n')
-                  : '',
+                image_urls: Array.isArray(editProduct.image_urls) ? editProduct.image_urls : [],
               }}
               title="Editar producto"
               categories={categories}

@@ -1276,6 +1276,9 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
     }
 
 
+MAX_PRODUCT_IMAGES = 3
+
+
 def _normalize_image_entries(payload: dict) -> list[str]:
     entries: list[str] = []
     primary = str(payload.get("image_path") or payload.get("image_url") or "").strip()
@@ -1293,7 +1296,37 @@ def _normalize_image_entries(payload: dict) -> list[str]:
         if value not in seen:
             seen.add(value)
             normalized.append(value)
-    return normalized
+    return normalized[:MAX_PRODUCT_IMAGES]
+
+
+def _build_product_image_fields(
+    primary_image: Optional[str],
+    extra_images: Optional[list[str]],
+    product_id: Optional[int] = None,
+) -> dict[str, Any]:
+    merged: list[str] = []
+    seen: set[str] = set()
+
+    def add_candidate(raw_value: Optional[str]) -> None:
+        raw = str(raw_value or "").strip()
+        if not raw:
+            return
+        normalized = _public_image_url(raw, product_id) if _as_existing_local_image_path(raw) is not None else raw
+        if not normalized or normalized in seen:
+            return
+        seen.add(normalized)
+        merged.append(normalized)
+
+    add_candidate(primary_image)
+    for image_value in extra_images or []:
+        add_candidate(image_value)
+        if len(merged) >= MAX_PRODUCT_IMAGES:
+            break
+
+    return {
+        "imageUrl": merged[0] if merged else None,
+        "imageUrls": merged,
+    }
 
 
 def _supabase_storage_settings() -> tuple[str, str, str]:
@@ -1391,7 +1424,7 @@ def _replace_product_images(conn: DBConn, product_id: int, image_values: list[st
     if not column:
         return
     conn.execute("DELETE FROM product_images WHERE product_id = ?", (product_id,))
-    secondary_images = image_values[1:]
+    secondary_images = image_values[1:MAX_PRODUCT_IMAGES]
     if not secondary_images:
         return
     for index, image_value in enumerate(secondary_images):
@@ -1879,12 +1912,11 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
             "description": row["description"],
-            "imageUrl": (
-                images_map.get(int(row["id"])) or []
-            )[0]
-            if images_map.get(int(row["id"]))
-            else _public_image_url(row["image_path"], int(row["id"])),
-            "imageUrls": images_map.get(int(row["id"])) or [],
+            **_build_product_image_fields(
+                row["image_path"],
+                images_map.get(int(row["id"])) or [],
+                int(row["id"]),
+            ),
             "is_featured": bool(row["is_featured"]) if featured_enabled else False,
             "is_offer": bool(row["is_offer"]) if offer_enabled else False,
             "is_recommended": bool(row["is_recommended"]) if recommended_enabled else False,
@@ -2308,12 +2340,11 @@ def featured_products(limit: int = 6) -> list[dict]:
             "updated_at": row["updated_at"],
             "badge": "Destacado" if featured_enabled else "Stock",
             "description": row["description"],
-            "imageUrl": (
-                images_map.get(int(row["id"])) or []
-            )[0]
-            if images_map.get(int(row["id"]))
-            else _public_image_url(row["image_path"], int(row["id"])),
-            "imageUrls": images_map.get(int(row["id"])) or [],
+            **_build_product_image_fields(
+                row["image_path"],
+                images_map.get(int(row["id"])) or [],
+                int(row["id"]),
+            ),
             "is_featured": True if featured_enabled else False,
             "is_offer": bool(row["is_offer"]) if offer_enabled else False,
             "is_recommended": bool(row["is_recommended"]) if recommended_enabled else False,
@@ -2538,12 +2569,16 @@ def admin_list_products(
                 "is_featured": bool(row["is_featured"]),
                 "is_offer": bool(row["is_offer"]),
                 "image_path": row["image_path"],
-                "imageUrl": (
-                    images_map.get(int(row["id"])) or []
-                )[0]
-                if images_map.get(int(row["id"]))
-                else _public_image_url(row["image_path"], int(row["id"])),
-                "image_urls": images_map.get(int(row["id"])) or [],
+                **_build_product_image_fields(
+                    row["image_path"],
+                    images_map.get(int(row["id"])) or [],
+                    int(row["id"]),
+                ),
+                "image_urls": _build_product_image_fields(
+                    row["image_path"],
+                    images_map.get(int(row["id"])) or [],
+                    int(row["id"]),
+                )["imageUrls"],
             }
             for row in rows
         ]
@@ -2629,7 +2664,7 @@ def admin_create_product(
             "image_path": primary_image,
             "is_featured": bool(is_featured),
             "is_offer": bool(is_offer),
-            "image_urls": image_values[1:],
+            "image_urls": image_values,
         }
     finally:
         conn.close()

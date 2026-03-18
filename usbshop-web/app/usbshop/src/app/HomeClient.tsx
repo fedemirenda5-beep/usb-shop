@@ -248,6 +248,7 @@ export default function HomeClient({
   const [orderEmail, setOrderEmail] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [quickView, setQuickView] = useState<Product | null>(null);
+  const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
   const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
   const isPublic =
     typeof window !== "undefined" &&
@@ -318,7 +319,20 @@ export default function HomeClient({
 
   useEffect(() => {
     setQuickViewImageFailed(false);
-  }, [quickView?.id, quickView?.imageUrl]);
+    setQuickViewImageIndex(0);
+  }, [quickView?.id, quickView?.imageUrl, quickView?.imageUrls]);
+
+  const quickViewImages = useMemo(() => {
+    if (!quickView) {
+      return [];
+    }
+    const values = Array.isArray(quickView.imageUrls)
+      ? quickView.imageUrls
+      : quickView.imageUrl
+      ? [quickView.imageUrl]
+      : [];
+    return Array.from(new Set(values.filter(Boolean)));
+  }, [quickView]);
 
   const handleViewFullCatalog = () => {
     setCatalogLimit(Number.MAX_SAFE_INTEGER);
@@ -1651,13 +1665,34 @@ export default function HomeClient({
               ✕
             </button>
             <div className="modal-media">
-              {quickView.imageUrl && !quickViewImageFailed ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={quickView.imageUrl}
-                  alt={quickView.name}
-                  onError={() => setQuickViewImageFailed(true)}
-                />
+              {quickViewImages[quickViewImageIndex] && !quickViewImageFailed ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={quickViewImages[quickViewImageIndex]}
+                    alt={quickView.name}
+                    onError={() => setQuickViewImageFailed(true)}
+                  />
+                  {quickViewImages.length > 1 ? (
+                    <div className="modal-thumbs">
+                      {quickViewImages.map((imageUrl, index) => (
+                        <button
+                          key={`${quickView.id}-quick-image-${index}`}
+                          type="button"
+                          className={`modal-thumb${index === quickViewImageIndex ? ' is-active' : ''}`}
+                          onClick={() => {
+                            setQuickViewImageIndex(index);
+                            setQuickViewImageFailed(false);
+                          }}
+                          aria-label={`Ver imagen ${index + 1}`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={imageUrl} alt={`${quickView.name} ${index + 1}`} />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <div className="modal-placeholder">
                   <div className="modal-placeholder-icon">
