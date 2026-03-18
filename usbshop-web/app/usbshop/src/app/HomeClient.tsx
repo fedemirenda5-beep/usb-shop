@@ -317,6 +317,20 @@ export default function HomeClient({
     setQuickView(null);
   };
 
+  const showPreviousQuickViewImage = () => {
+    setQuickViewImageIndex((current) =>
+      quickViewImages.length > 0 ? (current - 1 + quickViewImages.length) % quickViewImages.length : 0
+    );
+    setQuickViewImageFailed(false);
+  };
+
+  const showNextQuickViewImage = () => {
+    setQuickViewImageIndex((current) =>
+      quickViewImages.length > 0 ? (current + 1) % quickViewImages.length : 0
+    );
+    setQuickViewImageFailed(false);
+  };
+
   useEffect(() => {
     setQuickViewImageFailed(false);
     setQuickViewImageIndex(0);
@@ -1674,23 +1688,41 @@ export default function HomeClient({
                     onError={() => setQuickViewImageFailed(true)}
                   />
                   {quickViewImages.length > 1 ? (
-                    <div className="modal-thumbs">
-                      {quickViewImages.map((imageUrl, index) => (
-                        <button
-                          key={`${quickView.id}-quick-image-${index}`}
-                          type="button"
-                          className={`modal-thumb${index === quickViewImageIndex ? ' is-active' : ''}`}
-                          onClick={() => {
-                            setQuickViewImageIndex(index);
-                            setQuickViewImageFailed(false);
-                          }}
-                          aria-label={`Ver imagen ${index + 1}`}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={imageUrl} alt={`${quickView.name} ${index + 1}`} />
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <button
+                        type="button"
+                        className="modal-arrow modal-arrow--prev"
+                        onClick={showPreviousQuickViewImage}
+                        aria-label="Imagen anterior"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        className="modal-arrow modal-arrow--next"
+                        onClick={showNextQuickViewImage}
+                        aria-label="Imagen siguiente"
+                      >
+                        ›
+                      </button>
+                      <div className="modal-thumbs">
+                        {quickViewImages.map((imageUrl, index) => (
+                          <button
+                            key={`${quickView.id}-quick-image-${index}`}
+                            type="button"
+                            className={`modal-thumb${index === quickViewImageIndex ? ' is-active' : ''}`}
+                            onClick={() => {
+                              setQuickViewImageIndex(index);
+                              setQuickViewImageFailed(false);
+                            }}
+                            aria-label={`Ver imagen ${index + 1}`}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={imageUrl} alt={`${quickView.name} ${index + 1}`} />
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   ) : null}
                 </>
               ) : (

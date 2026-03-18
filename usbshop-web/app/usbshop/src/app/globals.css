@@ -1437,12 +1437,43 @@ input.button {
 
 .modal-thumbs {
   position: absolute;
-  left: 14px;
-  right: 14px;
+  left: 70px;
+  right: 70px;
   bottom: 14px;
   display: flex;
   gap: 10px;
   justify-content: center;
+}
+
+.modal-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.62);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 14px 26px rgba(15, 23, 42, 0.28);
+  z-index: 2;
+}
+
+.modal-arrow:hover {
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.modal-arrow--prev {
+  left: 14px;
+}
+
+.modal-arrow--next {
+  right: 14px;
 }
 
 .modal-thumb {
@@ -1731,6 +1762,23 @@ input.button {
 
   .modal-media {
     min-height: 220px;
+  }
+
+  .modal-thumbs {
+    left: 58px;
+    right: 58px;
+    gap: 8px;
+  }
+
+  .modal-arrow {
+    width: 40px;
+    height: 40px;
+    font-size: 1.7rem;
+  }
+
+  .modal-thumb {
+    width: 46px;
+    height: 46px;
   }
 }
 
