@@ -180,6 +180,22 @@ export default function ClientesPage() {
     setShowCustomerForm(true);
   };
 
+  const openSelectedCustomerForEdit = () => {
+    if (!selectedCustomer) return;
+    setCustomerForm({
+      name: selectedCustomer.name || '',
+      email: selectedCustomer.email || '',
+      phone: selectedCustomer.phone || '',
+      sale_mode: selectedCustomer.sale_mode || 'CONTADO',
+      locality: selectedCustomer.locality || '',
+      address: selectedCustomer.address || '',
+      tax_condition: selectedCustomer.tax_condition || 'CONSUMIDOR_FINAL',
+      cuit: selectedCustomer.cuit || '',
+    });
+    setError('');
+    setShowCustomerForm(true);
+  };
+
   const saveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -252,6 +268,14 @@ export default function ClientesPage() {
           >
             {syncingCustomers ? 'Actualizando...' : 'Importar desde pedidos web'}
           </button>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={openSelectedCustomerForEdit}
+            disabled={!selectedCustomer}
+          >
+            Editar cliente
+          </button>
           <button type="button" className={styles.primaryButton} onClick={resetForNewCustomer}>
             + Nuevo cliente
           </button>
@@ -321,8 +345,8 @@ export default function ClientesPage() {
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <div>
-                <h2>Nuevo cliente</h2>
-                <p>Alta y edicion sobre la tabla real de clientes.</p>
+                <h2>{selectedCustomerId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+                <p>{selectedCustomerId ? 'Actualiza nombre, direccion, telefono y datos fiscales del cliente.' : 'Alta y edicion sobre la tabla real de clientes.'}</p>
               </div>
             </div>
 
@@ -369,7 +393,7 @@ export default function ClientesPage() {
               </label>
               <div className={styles.formActions}>
                 <button type="submit" className={styles.primaryButton} disabled={saving}>
-                  {saving ? 'Guardando...' : 'Crear cliente'}
+                  {saving ? 'Guardando...' : selectedCustomerId ? 'Guardar cambios' : 'Crear cliente'}
                 </button>
                 <button
                   type="button"
