@@ -19,6 +19,12 @@ type OrderDraft = {
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+const normalizeSearchValue = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
 const nowInputValue = () => new Date().toISOString().slice(0, 16);
 const formatInputDateTime = (value?: string | null) => {
   if (!value) return null;
@@ -60,7 +66,7 @@ export default function GenerarComprobantePage() {
         setLoading(true);
         await loadRuntimeConfig();
         const [customersRes, productsRes, sellersRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=300`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=1000`, { credentials: 'include' }),
           fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, { credentials: 'include' }),
           fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' }),
         ]);
@@ -85,11 +91,14 @@ export default function GenerarComprobantePage() {
         const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderIdParam}`, { credentials: 'include' });
         if (!res.ok) throw new Error('No se pudo cargar el pedido');
         const draft = (await res.json()) as OrderDraft;
+        const normalizedDraftName = normalizeSearchValue(draft.customer_name || '');
+        const normalizedDraftEmail = normalizeSearchValue(draft.customer_email || '');
+        const normalizedDraftPhone = String(draft.customer_phone || '').trim();
         const matchedCustomer =
           customers.find((customer) =>
-            (draft.customer_email && customer.email && draft.customer_email.toLowerCase() === String(customer.email).toLowerCase()) ||
-            (draft.customer_phone && customer.phone && draft.customer_phone === customer.phone) ||
-            draft.customer_name === customer.name
+            (normalizedDraftEmail && normalizeSearchValue(String(customer.email || '')) === normalizedDraftEmail) ||
+            (normalizedDraftPhone && String(customer.phone || '').trim() === normalizedDraftPhone) ||
+            (normalizedDraftName && normalizeSearchValue(customer.name) === normalizedDraftName)
           ) || null;
         setForm({
           order_id: String(draft.id),
@@ -118,12 +127,12 @@ export default function GenerarComprobantePage() {
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const sellerMap = useMemo(() => new Map(sellers.map((seller) => [seller.id, seller])), [sellers]);
   const selectedCustomer = useMemo(() => customerMap.get(Number(form.customer_id)), [customerMap, form.customer_id]);
-  const normalizedCustomerSearch = customerSearch.trim().toLowerCase();
+  const normalizedCustomerSearch = normalizeSearchValue(customerSearch);
   const filteredCustomerOptions = useMemo(() => {
     const needle = normalizedCustomerSearch;
     if (!needle) return customers;
     return customers.filter((customer) =>
-      [customer.name, customer.email || '', customer.phone || '', customer.cuit || ''].join(' ').toLowerCase().includes(needle)
+      normalizeSearchValue([customer.name, customer.email || '', customer.phone || '', customer.cuit || ''].join(' ')).includes(needle)
     ).slice(0, 10);
   }, [normalizedCustomerSearch, customers]);
   const showCustomerResults = normalizedCustomerSearch.length > 0;

@@ -121,6 +121,14 @@ def _scalar_number(row: Any, key: str = "total") -> float:
     return float(row[0] or 0)
 
 
+def _normalize_search_text(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFD", text)
+    return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
+
+
 def _effective_db_path() -> Path:
     if DB_IS_POSTGRES:
         return DB_PATH
@@ -365,6 +373,8 @@ def _allowed_origins() -> list[str]:
         return [
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
             "https://usbshop.com.ar",
             "https://www.usbshop.com.ar",
         ]
@@ -2875,26 +2885,34 @@ def admin_backoffice_customers(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
-        params: list[Any] = []
-        where_clause = """
-        WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
-        """
-        if q:
-            like = f"%{q.strip()}%"
-            where_clause += """
-            AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR cuit LIKE ? OR address LIKE ? OR locality LIKE ?)
-            """
-            params.extend([like, like, like, like, like, like])
         rows = conn.execute(
-            f"""
+            """
             SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
             FROM customers
-            {where_clause}
+            WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
-            LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
         ).fetchall()
+        query_text = _normalize_search_text(q)
+        if query_text:
+            filtered_rows = []
+            for row in rows:
+                haystack = _normalize_search_text(
+                    " ".join(
+                        [
+                            row["name"] or "",
+                            row["email"] or "",
+                            row["phone"] or "",
+                            row["cuit"] or "",
+                            row["address"] or "",
+                            row["locality"] or "",
+                        ]
+                    )
+                )
+                if query_text in haystack:
+                    filtered_rows.append(row)
+            rows = filtered_rows
+        rows = rows[offset : offset + limit]
         movements = conn.execute(
             """
             SELECT customer_id, amount, movement_type
