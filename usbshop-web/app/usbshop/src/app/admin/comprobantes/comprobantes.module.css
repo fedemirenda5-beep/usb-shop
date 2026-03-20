@@ -115,7 +115,7 @@
 .productPicker { display: grid; gap: 6px; min-width: 0; }
 .itemMeta { color: var(--muted); font-size: 12px; }
 .desktopPickerPanel, .invoiceLinesPanel { display: grid; gap: 12px; }
-.desktopPickerPanel { padding: 14px; border-radius: 14px; border: 1px solid var(--bg-soft); background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%); position: sticky; top: 90px; z-index: 1; }
+.desktopPickerPanel { padding: 14px; border-radius: 14px; border: 1px solid var(--bg-soft); background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%); }
 .desktopPickerBar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: flex-end; }
 .desktopPickerSearch, .desktopPickerQty { display: grid; gap: 6px; color: var(--ink); font-size: 13px; }
 .desktopPickerSearch input, .desktopPickerQty input, .invoiceLinesPanel input, .inlineQty input { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; }
@@ -147,7 +147,6 @@
   .headerActions, .createHeader { flex-direction: column; align-items: stretch; }
   .detailInlineActions { justify-content: stretch; }
   .desktopPickerBar, .invoiceLinesHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
-  .desktopPickerPanel { position: static; top: auto; }
   .productSearchItem { grid-template-columns: 1fr; }
   .productSearchPrices { justify-items: start; }
   .productSearchActions { flex-direction: column; align-items: stretch; }

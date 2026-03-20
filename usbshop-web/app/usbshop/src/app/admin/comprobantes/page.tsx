@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import styles from './comprobantes.module.css';
 
@@ -89,28 +89,38 @@ export default function ComprobantesPage() {
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
+  const detailRequestRef = useRef(0);
 
   async function loadDetail(invoiceId: number) {
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
     try {
       setDetailLoading(true);
       setDetailError('');
+      setDetail(null);
       await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoiceId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('No se pudo cargar el detalle del comprobante');
       const payload = await res.json();
+      if (detailRequestRef.current !== requestId) return null;
       setDetail(payload);
       return payload as InvoiceDetail;
     } catch (err) {
+      if (detailRequestRef.current !== requestId) return null;
       setDetailError(err instanceof Error ? err.message : 'Error cargando detalle');
       setDetail(null);
       return null;
     } finally {
-      setDetailLoading(false);
+      if (detailRequestRef.current === requestId) {
+        setDetailLoading(false);
+      }
     }
   }
 
   async function openInvoice(invoiceId: number, autoPrint = false) {
     setSelectedId(invoiceId);
+    setDetail(null);
+    setDetailError('');
     setDetailOnly(true);
     const loaded = await loadDetail(invoiceId);
     if (loaded && autoPrint) {
