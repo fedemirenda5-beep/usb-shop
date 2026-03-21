@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { formatArgentinaDate } from '@/lib/datetime';
 import { ADMIN_MODULES } from './adminModules';
 import { canAccessAdminModule, canViewFinancialModules } from './adminPermissions';
 import styles from './dashboard.module.css';
@@ -35,9 +36,7 @@ const money = (value: number) =>
 const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
 
 const formatDate = (value?: string | null) => {
-  if (!value) return 'Sin registros';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-AR');
+  return value ? formatArgentinaDate(value) : 'Sin registros';
 };
 
 export default function AdminDashboard() {

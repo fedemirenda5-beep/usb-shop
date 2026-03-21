@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './gastos.module.css';
 
 type Expense = {
@@ -38,13 +39,6 @@ const emptyExpenseForm = (): ExpenseFormState => ({
 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
-
-const formatDate = (value?: string | null) => {
-  if (!value) return '-';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString('es-AR');
-};
 
 export default function GastosPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -310,7 +304,7 @@ export default function GastosPage() {
               <tbody>
                 {expenses.map((expense) => (
                   <tr key={expense.id}>
-                    <td>{formatDate(expense.created_at)}</td>
+                    <td>{formatArgentinaDateTime(expense.created_at)}</td>
                     <td>
                       <span className={styles.categoryBadge}>{expense.category}</span>
                     </td>

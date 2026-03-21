@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { formatArgentinaDate, formatArgentinaMonth, formatArgentinaShortMonthYear } from '@/lib/datetime';
 import styles from './balances.module.css';
 
 type Summary = {
@@ -78,17 +79,10 @@ const compactMoney = (value: number) =>
 const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
 
 const formatDate = (value?: string | null) => {
-  if (!value) return 'Sin registros';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString('es-AR');
+  return value ? formatArgentinaDate(value) : 'Sin registros';
 };
 
-const formatMonthLabel = (value: string) => {
-  const [year, month] = value.split('-');
-  const parsed = new Date(Number(year), Number(month) - 1, 1);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('es-AR', { month: 'long' });
-};
+const formatMonthLabel = (value: string) => formatArgentinaMonth(value);
 
 const formatPercent = (value?: number | null) => {
   if (value === null || value === undefined) return 'Sin base';
@@ -172,11 +166,7 @@ export default function BalancesPage() {
         y,
         shortLabel: formatMonthLabel(item.month),
         fullLabel: (() => {
-          const [year, month] = item.month.split('-');
-          const parsed = new Date(Number(year), Number(month) - 1, 1);
-          return Number.isNaN(parsed.getTime())
-            ? item.month
-            : parsed.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+          return formatArgentinaShortMonthYear(item.month);
         })(),
       };
     });

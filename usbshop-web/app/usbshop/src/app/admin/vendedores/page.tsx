@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { ARGENTINA_TZ, formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './vendedores.module.css';
 
@@ -45,12 +46,7 @@ const formatPercent = (value: number) =>
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
-const formatDate = (value?: string | null) => {
-  if (!value) return '-';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString('es-AR');
-};
+const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 
 export default function VendedoresPage() {
   const { user } = useAdminSession();
@@ -79,7 +75,7 @@ export default function VendedoresPage() {
     const parsed = new Date(Number(year), Number(month) - 1, 1);
     return Number.isNaN(parsed.getTime())
       ? monthlyPeriod
-      : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+      : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
   }, [monthlyPeriod]);
 
   const loadSellers = async (query = '') => {

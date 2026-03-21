@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { ARGENTINA_TZ } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './pedidos.module.css';
 
@@ -86,6 +87,7 @@ export default function PedidosPage() {
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString('es-AR', {
+      timeZone: ARGENTINA_TZ,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

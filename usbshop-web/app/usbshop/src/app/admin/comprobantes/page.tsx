@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './comprobantes.module.css';
 
 type Invoice = {
@@ -66,9 +67,7 @@ const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
 const formatDate = (value?: string | null) => {
-  if (!value) return '-';
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('es-AR');
+  return formatArgentinaDateTime(value);
 };
 
 const getPriceListLabel = (value?: number | null) => {

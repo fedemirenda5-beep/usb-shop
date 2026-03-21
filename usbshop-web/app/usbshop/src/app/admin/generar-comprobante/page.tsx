@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
 
 type CustomerOption = { id: number; name: string; email?: string | null; phone?: string | null; sale_mode?: string | null; cuit?: string | null };
@@ -25,13 +26,8 @@ const normalizeSearchValue = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
-const nowInputValue = () => new Date().toISOString().slice(0, 16);
-const formatInputDateTime = (value?: string | null) => {
-  if (!value) return null;
-  const normalized = value.length === 16 ? `${value}:00` : value;
-  const parsed = new Date(normalized);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-};
+const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
+const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
 
 export default function GenerarComprobantePage() {
   const router = useRouter();

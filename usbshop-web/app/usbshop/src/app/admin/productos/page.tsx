@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { formatArgentinaDateTime } from '@/lib/datetime';
 import { ProductForm } from './components/ProductForm';
 import styles from './productos.module.css';
 
@@ -298,7 +299,7 @@ export default function ProductosPage() {
       return;
     }
 
-    const generatedAt = new Date().toLocaleString('es-AR');
+    const generatedAt = formatArgentinaDateTime(new Date().toISOString());
     const label = valueMode === 'cost' ? 'costos' : 'precios';
     const title = includeImages
       ? `Lista de ${label} con imagenes`
