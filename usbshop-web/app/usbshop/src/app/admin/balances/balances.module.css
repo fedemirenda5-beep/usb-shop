@@ -154,6 +154,109 @@
   font-size: 18px;
 }
 
+.chartCard {
+  border: 1px solid var(--bg-soft);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.chartHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.chartHeader h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.chartHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chartSummary {
+  min-width: 120px;
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  background: rgba(6, 182, 212, 0.08);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.chartSummary span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #0f766e;
+}
+
+.chartSummary strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.chartWrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.chart {
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+  display: block;
+}
+
+.chartGrid {
+  stroke: rgba(148, 163, 184, 0.4);
+  stroke-width: 1;
+  stroke-dasharray: 4 6;
+}
+
+.chartAxisLabel,
+.chartMonthLabel,
+.chartValueLabel {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chartMonthLabel {
+  text-transform: capitalize;
+}
+
+.chartValueLabel {
+  fill: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.chartArea {
+  fill: url(#salesAreaGradient);
+}
+
+.chartLine {
+  fill: none;
+  stroke: #06b6d4;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chartPoint {
+  fill: white;
+  stroke: #0891b2;
+  stroke-width: 3;
+}
+
 .breakdownList {
   display: flex;
   flex-direction: column;
@@ -227,7 +330,8 @@
 
 @media (max-width: 860px) {
   .sectionHeader,
-  .panelHeader {
+  .panelHeader,
+  .chartHeader {
     flex-direction: column;
     align-items: stretch;
   }

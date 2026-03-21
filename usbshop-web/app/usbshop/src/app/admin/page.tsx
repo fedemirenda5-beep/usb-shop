@@ -16,6 +16,7 @@ type Summary = {
   sales_count: number;
   sales_total: number;
   estimated_margin: number;
+  expenses_total: number;
   cc_open_balance: number;
   account_movements: number;
   debtors: number;
@@ -89,6 +90,15 @@ export default function AdminDashboard() {
             ...module,
             value: summary ? integer(summary.active_customers) : '...',
             label: 'Clientes reales sincronizados desde la app',
+          };
+        }
+        if (module.id === 'gastos') {
+          return {
+            ...module,
+            value: summary ? money(summary.expenses_total) : '...',
+            label: summary
+              ? 'Gastos operativos acumulados registrados'
+              : module.dashboardLabel,
           };
         }
         if (module.id === 'comprobantes') {

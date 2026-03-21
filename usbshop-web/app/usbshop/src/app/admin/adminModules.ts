@@ -4,6 +4,7 @@ export type AdminModuleId =
   | 'pedidos'
   | 'clientes'
   | 'vendedores'
+  | 'gastos'
   | 'generar-comprobante'
   | 'comprobantes'
   | 'cuentas-corrientes'
@@ -53,6 +54,13 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/admin/vendedores',
     navLabel: 'Vendedores',
     dashboardLabel: 'Padron comercial y comisiones',
+  },
+  {
+    id: 'gastos',
+    title: 'Gastos',
+    href: '/admin/gastos',
+    navLabel: 'Gastos',
+    dashboardLabel: 'Registro de alquileres, sueldos y gastos operativos',
   },
   {
     id: 'generar-comprobante',

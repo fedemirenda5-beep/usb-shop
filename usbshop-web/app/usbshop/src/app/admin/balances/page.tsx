@@ -28,6 +28,13 @@ type CurrentYearMonth = {
   margin_growth_pct?: number | null;
 };
 
+type MonthlySalesPoint = {
+  month: string;
+  sales: number;
+  margin: number;
+  count: number;
+};
+
 type CurrentYearDetail = {
   year: number;
   capital_total: number;
@@ -60,6 +67,14 @@ type AnnualHistoryEntry = {
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
+const compactMoney = (value: number) =>
+  new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value || 0);
+
 const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
 
 const formatDate = (value?: string | null) => {
@@ -84,6 +99,7 @@ export default function BalancesPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [currentYear, setCurrentYear] = useState<CurrentYearDetail | null>(null);
   const [annualHistory, setAnnualHistory] = useState<AnnualHistoryEntry[]>([]);
+  const [monthlySalesAll, setMonthlySalesAll] = useState<MonthlySalesPoint[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
     const load = async () => {
@@ -94,6 +110,7 @@ export default function BalancesPage() {
         const data = await res.json();
         setSummary(data.summary || null);
         setCurrentYear(data.current_year_detail || null);
+        setMonthlySalesAll(Array.isArray(data.monthly_sales_all) ? data.monthly_sales_all : []);
         setAnnualHistory((data.annual_history || []).filter((item: AnnualHistoryEntry) => item.year < (data.current_year_detail?.year || 9999)));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando balances');
@@ -116,6 +133,86 @@ export default function BalancesPage() {
     if (!summary) return 0;
     return summary.stock_value_sale + summary.cc_open_balance;
   }, [summary]);
+
+  const rollingSales = useMemo(
+    () =>
+      monthlySalesAll
+        .map((item) => ({
+          month: String(item.month || ''),
+          sales: Number(item.sales || 0),
+          margin: Number(item.margin || 0),
+          count: Number(item.count || 0),
+        }))
+        .filter((item) => item.month)
+        .slice(-12),
+    [monthlySalesAll]
+  );
+
+  const chartData = useMemo(() => {
+    if (rollingSales.length === 0) return [];
+    const width = 760;
+    const height = 290;
+    const paddingTop = 18;
+    const paddingRight = 20;
+    const paddingBottom = 52;
+    const paddingLeft = 74;
+    const maxSales = Math.max(...rollingSales.map((item) => item.sales), 1);
+    const innerWidth = width - paddingLeft - paddingRight;
+    const innerHeight = height - paddingTop - paddingBottom;
+
+    return rollingSales.map((item, index) => {
+      const x =
+        rollingSales.length === 1
+          ? paddingLeft + innerWidth / 2
+          : paddingLeft + (index / (rollingSales.length - 1)) * innerWidth;
+      const y = paddingTop + innerHeight - (item.sales / maxSales) * innerHeight;
+      return {
+        ...item,
+        x,
+        y,
+        shortLabel: formatMonthLabel(item.month),
+        fullLabel: (() => {
+          const [year, month] = item.month.split('-');
+          const parsed = new Date(Number(year), Number(month) - 1, 1);
+          return Number.isNaN(parsed.getTime())
+            ? item.month
+            : parsed.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' });
+        })(),
+      };
+    });
+  }, [rollingSales]);
+
+  const chartMaxSales = useMemo(
+    () => Math.max(...chartData.map((item) => item.sales), 1),
+    [chartData]
+  );
+
+  const chartTicks = useMemo(() => {
+    if (chartData.length === 0) return [];
+    return Array.from({ length: 4 }, (_, index) => {
+      const value = (chartMaxSales / 3) * (3 - index);
+      const y = 18 + ((290 - 18 - 52) / 3) * index;
+      return {
+        value,
+        y,
+      };
+    });
+  }, [chartData, chartMaxSales]);
+
+  const chartLinePath = useMemo(() => {
+    if (chartData.length === 0) return '';
+    return chartData
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+      .join(' ');
+  }, [chartData]);
+
+  const chartAreaPath = useMemo(() => {
+    if (chartData.length === 0) return '';
+    const first = chartData[0];
+    const last = chartData[chartData.length - 1];
+    const baseline = 290 - 52;
+    return `${chartLinePath} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`;
+  }, [chartData, chartLinePath]);
 
   return (
     <div className={styles.page}>
@@ -186,6 +283,62 @@ export default function BalancesPage() {
                       <strong className={(latestMonth.sales_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                         {formatPercent(latestMonth.sales_growth_pct)}
                       </strong>
+                    </div>
+                  </div>
+                ) : null}
+
+                {chartData.length > 0 ? (
+                  <div className={styles.chartCard}>
+                    <div className={styles.chartHeader}>
+                      <div>
+                        <h4>Ventas de los ultimos 12 meses</h4>
+                        <p>Linea continua para detectar picos, caidas y ritmo comercial reciente.</p>
+                      </div>
+                      <div className={styles.chartSummary}>
+                        <span>Pico</span>
+                        <strong>{compactMoney(chartMaxSales)}</strong>
+                      </div>
+                    </div>
+
+                    <div className={styles.chartWrap}>
+                      <svg viewBox="0 0 760 290" className={styles.chart} role="img" aria-label="Grafico de ventas de los ultimos 12 meses">
+                        <defs>
+                          <linearGradient id="salesAreaGradient" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.32" />
+                            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.04" />
+                          </linearGradient>
+                        </defs>
+
+                        {chartTicks.map((tick) => (
+                          <g key={tick.y}>
+                            <line
+                              x1="74"
+                              x2="740"
+                              y1={tick.y}
+                              y2={tick.y}
+                              className={styles.chartGrid}
+                            />
+                            <text x="64" y={tick.y + 4} textAnchor="end" className={styles.chartAxisLabel}>
+                              {compactMoney(tick.value)}
+                            </text>
+                          </g>
+                        ))}
+
+                        <path d={chartAreaPath} className={styles.chartArea} />
+                        <path d={chartLinePath} className={styles.chartLine} />
+
+                        {chartData.map((point) => (
+                          <g key={point.month}>
+                            <circle cx={point.x} cy={point.y} r="5.5" className={styles.chartPoint} />
+                            <text x={point.x} y={point.y - 12} textAnchor="middle" className={styles.chartValueLabel}>
+                              {compactMoney(point.sales)}
+                            </text>
+                            <text x={point.x} y="256" textAnchor="middle" className={styles.chartMonthLabel}>
+                              {point.fullLabel}
+                            </text>
+                          </g>
+                        ))}
+                      </svg>
                     </div>
                   </div>
                 ) : null}
