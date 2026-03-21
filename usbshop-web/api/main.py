@@ -6090,9 +6090,9 @@ def admin_list_expenses(
         return [
             {
                 "id": int(row["id"]),
-                "category": row.get("category", row["category"] if isinstance(row, dict) else None),
+                "category": row["category"],
                 "amount": float(row["amount"] or 0),
-                "description": row.get("description", row["description"] if isinstance(row, dict) else None),
+                "description": row["description"],
                 "created_at": row["created_at"],
             }
             for row in rows
@@ -6123,27 +6123,46 @@ def admin_create_expense(
     try:
         # Crear tabla si no existe
         if not _has_table(conn, "expenses"):
-            conn.execute(
-                """
-                CREATE TABLE expenses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    category TEXT NOT NULL,
-                    amount REAL NOT NULL,
-                    description TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            if DB_IS_POSTGRES:
+                conn.execute(
+                    """
+                    CREATE TABLE expenses (
+                        id SERIAL PRIMARY KEY,
+                        category TEXT NOT NULL,
+                        amount DOUBLE PRECISION NOT NULL,
+                        description TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
                 )
-                """
-            )
+            else:
+                conn.execute(
+                    """
+                    CREATE TABLE expenses (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        category TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        description TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
             conn.commit()
-        
-        conn.execute(
-            "INSERT INTO expenses (category, amount, description) VALUES (?, ?, ?)",
-            (category, amount, description),
-        )
+
+        if DB_IS_POSTGRES:
+            row = conn.execute(
+                "INSERT INTO expenses (category, amount, description) VALUES (?, ?, ?) RETURNING id",
+                (category, amount, description),
+            ).fetchone()
+            expense_id = int(row["id"] if isinstance(row, dict) else row[0])
+        else:
+            conn.execute(
+                "INSERT INTO expenses (category, amount, description) VALUES (?, ?, ?)",
+                (category, amount, description),
+            )
+            row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
+            expense_id = int(row["id"] if isinstance(row, dict) else row[0])
         conn.commit()
-        
-        row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
-        expense_id = int(row["id"] if isinstance(row, dict) else row[0])
         
         return {
             "id": expense_id,
