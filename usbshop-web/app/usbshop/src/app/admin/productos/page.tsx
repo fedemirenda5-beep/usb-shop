@@ -99,6 +99,18 @@ const fetchImageAsDataUrl = async (imageUrl: string) => {
   }
 };
 
+const downloadTextFile = (content: string, fileName: string, mimeType: string) => {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
 export default function ProductosPage() {
   const { user } = useAdminSession();
   const router = useRouter();
@@ -331,31 +343,6 @@ export default function ProductosPage() {
       : `Lista de ${label}`;
     const fileName = `usbshop-${slugifyFilePart(label)}${includeImages ? '-con-imagenes' : ''}.html`;
 
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
-    if (!printWindow) {
-      alert('No se pudo abrir la ventana de exportacion.');
-      return;
-    }
-
-    printWindow.document.open();
-    printWindow.document.write(`
-      <!doctype html>
-      <html lang="es">
-        <head>
-          <meta charset="utf-8" />
-          <title>${escapeHtml(title)}</title>
-          <style>
-            body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
-            .loading { min-height: 60vh; display: grid; place-items: center; color: #4b5563; font-size: 14px; }
-          </style>
-        </head>
-        <body>
-          <div class="loading">Preparando exportacion...</div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-
     const rowParts = await Promise.all(
       exportItems.map(async (product) => {
         const resolvedImageUrl =
@@ -385,8 +372,7 @@ export default function ProductosPage() {
       })
     );
     const rows = rowParts.join('');
-
-    printWindow.document.write(`
+    const html = `
       <!doctype html>
       <html lang="es">
         <head>
@@ -424,7 +410,7 @@ export default function ProductosPage() {
               <button
                 type="button"
                 class="toolbarButton secondaryButton"
-                onclick="(function(){ var blob = new Blob(['<!doctype html>' + document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' }); var link = document.createElement('a'); var url = URL.createObjectURL(blob); link.href = url; link.download = '${escapeHtml(fileName)}'; link.click(); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000); })()"
+                onclick="(function(){ var blob = new Blob(['<!doctype html>' + document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' }); var link = document.createElement('a'); var url = URL.createObjectURL(blob); link.href = url; link.download = '${escapeHtml(fileName)}'; document.body.appendChild(link); link.click(); link.remove(); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000); })()"
               >
                 Descargar archivo
               </button>
@@ -484,8 +470,14 @@ export default function ProductosPage() {
           </script>
         </body>
       </html>
-    `);
-    printWindow.document.close();
+    `;
+
+    downloadTextFile(html, fileName, 'text/html;charset=utf-8');
+
+    const previewBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const previewUrl = URL.createObjectURL(previewBlob);
+    window.location.href = previewUrl;
+    window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
   };
 
   return (
