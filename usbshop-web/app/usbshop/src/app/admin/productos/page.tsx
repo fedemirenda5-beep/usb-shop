@@ -74,6 +74,31 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 
+const slugifyFilePart = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .trim() || 'lista';
+
+const fetchImageAsDataUrl = async (imageUrl: string) => {
+  try {
+    const response = await fetch(imageUrl, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+};
+
 export default function ProductosPage() {
   const { user } = useAdminSession();
   const router = useRouter();
@@ -292,7 +317,7 @@ export default function ProductosPage() {
     }
   };
 
-  const exportPriceListPdf = (includeImages: boolean, valueMode: ExportValueMode) => {
+  const exportPriceListPdf = async (includeImages: boolean, valueMode: ExportValueMode) => {
     const exportItems = filteredProducts;
     if (exportItems.length === 0) {
       alert('No hay productos para exportar con el filtro actual.');
@@ -304,16 +329,46 @@ export default function ProductosPage() {
     const title = includeImages
       ? `Lista de ${label} con imagenes`
       : `Lista de ${label}`;
-    const rows = exportItems
-      .map((product) => {
-        const imageUrl =
+    const fileName = `usbshop-${slugifyFilePart(label)}${includeImages ? '-con-imagenes' : ''}.html`;
+
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
+    if (!printWindow) {
+      alert('No se pudo abrir la ventana de exportacion.');
+      return;
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`
+      <!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(title)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
+            .loading { min-height: 60vh; display: grid; place-items: center; color: #4b5563; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <div class="loading">Preparando exportacion...</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+
+    const rowParts = await Promise.all(
+      exportItems.map(async (product) => {
+        const resolvedImageUrl =
           resolveImageUrl(product.imageUrl, baseUrl) ||
           resolveImageUrl(product.image_path, baseUrl) ||
           resolveImageUrl(Array.isArray(product.image_urls) ? product.image_urls[0] : null, baseUrl);
+        const embeddedImageUrl =
+          includeImages && resolvedImageUrl ? await fetchImageAsDataUrl(resolvedImageUrl) : null;
+        const finalImageUrl = embeddedImageUrl || resolvedImageUrl;
         const amount = valueMode === 'cost' ? product.cost || 0 : product.price || 0;
         const imageCell = includeImages
-          ? imageUrl
-            ? `<td class="imageCell"><img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name)}" /></td>`
+          ? finalImageUrl
+            ? `<td class="imageCell"><img src="${escapeHtml(finalImageUrl)}" alt="${escapeHtml(product.name)}" /></td>`
             : '<td class="imageCell emptyImage">Sin imagen</td>'
           : '';
         return `
@@ -328,13 +383,8 @@ export default function ProductosPage() {
           </tr>
         `;
       })
-      .join('');
-
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
-    if (!printWindow) {
-      alert('No se pudo abrir la ventana de exportacion.');
-      return;
-    }
+    );
+    const rows = rowParts.join('');
 
     printWindow.document.write(`
       <!doctype html>
@@ -371,6 +421,13 @@ export default function ProductosPage() {
             <div class="toolbarInfo">Vista previa lista de ${escapeHtml(label)}${includeImages ? ' con imagenes' : ''}</div>
             <div class="toolbarActions">
               <button type="button" class="toolbarButton primaryButton" onclick="window.print()">Imprimir / Guardar PDF</button>
+              <button
+                type="button"
+                class="toolbarButton secondaryButton"
+                onclick="(function(){ var blob = new Blob(['<!doctype html>' + document.documentElement.outerHTML], { type: 'text/html;charset=utf-8' }); var link = document.createElement('a'); var url = URL.createObjectURL(blob); link.href = url; link.download = '${escapeHtml(fileName)}'; link.click(); setTimeout(function(){ URL.revokeObjectURL(url); }, 1000); })()"
+              >
+                Descargar archivo
+              </button>
               <button type="button" class="toolbarButton secondaryButton" onclick="window.close()">Cerrar</button>
             </div>
           </div>
