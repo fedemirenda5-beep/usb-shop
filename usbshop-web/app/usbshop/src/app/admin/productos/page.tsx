@@ -306,7 +306,10 @@ export default function ProductosPage() {
       : `Lista de ${label}`;
     const rows = exportItems
       .map((product) => {
-        const imageUrl = resolveImageUrl(product.imageUrl, baseUrl);
+        const imageUrl =
+          resolveImageUrl(product.imageUrl, baseUrl) ||
+          resolveImageUrl(product.image_path, baseUrl) ||
+          resolveImageUrl(Array.isArray(product.image_urls) ? product.image_urls[0] : null, baseUrl);
         const amount = valueMode === 'cost' ? product.cost || 0 : product.price || 0;
         const imageCell = includeImages
           ? imageUrl
@@ -383,11 +386,58 @@ export default function ProductosPage() {
             <tbody>${rows}</tbody>
           </table>
           <script>
-            window.onload = function () {
-              setTimeout(function () {
-                window.print();
-              }, 250);
-            };
+            (function () {
+              var triggerPrint = function () {
+                setTimeout(function () {
+                  window.print();
+                }, 150);
+              };
+
+              if (!${includeImages ? 'true' : 'false'}) {
+                window.onload = triggerPrint;
+                return;
+              }
+
+              var images = Array.prototype.slice.call(document.images || []);
+              if (images.length === 0) {
+                window.onload = triggerPrint;
+                return;
+              }
+
+              var pending = 0;
+              var printed = false;
+              var onReady = function () {
+                if (printed) return;
+                printed = true;
+                triggerPrint();
+              };
+
+              var checkDone = function () {
+                if (pending <= 0) {
+                  onReady();
+                }
+              };
+
+              images.forEach(function (img) {
+                if (img.complete) {
+                  return;
+                }
+                pending += 1;
+                var settle = function () {
+                  pending -= 1;
+                  checkDone();
+                };
+                img.addEventListener('load', settle, { once: true });
+                img.addEventListener('error', settle, { once: true });
+              });
+
+              if (pending === 0) {
+                window.onload = onReady;
+              } else {
+                window.onload = checkDone;
+                setTimeout(onReady, 4000);
+              }
+            })();
           </script>
         </body>
       </html>

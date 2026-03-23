@@ -119,15 +119,12 @@ export default function ComprobantesPage() {
     }
   }
 
-  async function openInvoice(invoiceId: number, autoPrint = false) {
+  async function openInvoice(invoiceId: number) {
     setSelectedId(invoiceId);
     setDetail(null);
     setDetailError('');
     setDetailOnly(true);
-    const loaded = await loadDetail(invoiceId);
-    if (loaded && autoPrint) {
-      window.setTimeout(() => window.print(), 150);
-    }
+    await loadDetail(invoiceId);
   }
 
   async function loadInvoices() {
@@ -295,7 +292,7 @@ export default function ComprobantesPage() {
                         className={styles.secondaryButton}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void openInvoice(item.id, false);
+                          void openInvoice(item.id);
                         }}
                       >
                         Ver comprobante
@@ -318,20 +315,20 @@ export default function ComprobantesPage() {
                         className={styles.pdfButton}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void openInvoice(item.id, true);
+                          void openInvoice(item.id);
                         }}
                       >
-                        Exportar PDF
+                        Vista previa PDF
                       </button>
                       <button
                         type="button"
                         className={styles.printButton}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void openInvoice(item.id, true);
+                          void openInvoice(item.id);
                         }}
                       >
-                        Imprimir
+                        Vista previa impresion
                       </button>
                       <button
                         type="button"
