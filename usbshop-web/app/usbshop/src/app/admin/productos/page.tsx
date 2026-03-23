@@ -344,6 +344,12 @@ export default function ProductosPage() {
           <title>${escapeHtml(title)}</title>
           <style>
             body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
+            .toolbar { position: sticky; top: 0; z-index: 10; display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: -24px -24px 24px; padding: 16px 24px; background: rgba(255,255,255,.96); backdrop-filter: blur(8px); border-bottom: 1px solid #e5e7eb; }
+            .toolbarInfo { color: #4b5563; font-size: 12px; }
+            .toolbarActions { display: flex; gap: 10px; flex-wrap: wrap; }
+            .toolbarButton { border: 0; border-radius: 10px; padding: 10px 14px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+            .primaryButton { background: #111827; color: white; }
+            .secondaryButton { background: #e5e7eb; color: #111827; }
             .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
             .header h1 { margin: 0 0 6px; font-size: 24px; }
             .header p { margin: 0; color: #4b5563; font-size: 12px; }
@@ -361,6 +367,13 @@ export default function ProductosPage() {
           </style>
         </head>
         <body>
+          <div class="toolbar">
+            <div class="toolbarInfo">Vista previa lista de ${escapeHtml(label)}${includeImages ? ' con imagenes' : ''}</div>
+            <div class="toolbarActions">
+              <button type="button" class="toolbarButton primaryButton" onclick="window.print()">Imprimir / Guardar PDF</button>
+              <button type="button" class="toolbarButton secondaryButton" onclick="window.close()">Cerrar</button>
+            </div>
+          </div>
           <div class="header">
             <div>
               <h1>USB Shop</h1>
@@ -387,56 +400,29 @@ export default function ProductosPage() {
           </table>
           <script>
             (function () {
-              var triggerPrint = function () {
-                setTimeout(function () {
-                  window.print();
-                }, 150);
-              };
-
-              if (!${includeImages ? 'true' : 'false'}) {
-                window.onload = triggerPrint;
-                return;
-              }
-
+              var includeImages = ${includeImages ? 'true' : 'false'};
+              if (!includeImages) return;
+              var root = document.querySelector('.toolbarInfo');
+              if (!root) return;
               var images = Array.prototype.slice.call(document.images || []);
-              if (images.length === 0) {
-                window.onload = triggerPrint;
+              var pending = images.filter(function (img) { return !img.complete; }).length;
+              if (pending === 0) {
+                root.textContent = 'Vista previa lista de ${escapeHtml(label)} con imagenes';
                 return;
               }
-
-              var pending = 0;
-              var printed = false;
-              var onReady = function () {
-                if (printed) return;
-                printed = true;
-                triggerPrint();
-              };
-
-              var checkDone = function () {
-                if (pending <= 0) {
-                  onReady();
+              root.textContent = 'Cargando imagenes para la vista previa...';
+              var remaining = pending;
+              var settle = function () {
+                remaining -= 1;
+                if (remaining <= 0) {
+                  root.textContent = 'Vista previa lista de ${escapeHtml(label)} con imagenes';
                 }
               };
-
               images.forEach(function (img) {
-                if (img.complete) {
-                  return;
-                }
-                pending += 1;
-                var settle = function () {
-                  pending -= 1;
-                  checkDone();
-                };
+                if (img.complete) return;
                 img.addEventListener('load', settle, { once: true });
                 img.addEventListener('error', settle, { once: true });
               });
-
-              if (pending === 0) {
-                window.onload = onReady;
-              } else {
-                window.onload = checkDone;
-                setTimeout(onReady, 4000);
-              }
             })();
           </script>
         </body>
