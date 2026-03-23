@@ -4636,16 +4636,16 @@ def admin_reports_overview(
             FROM categories
             """
         ).fetchall()
-        invoices = conn.execute(
+        invoice_rows = conn.execute(
             """
             SELECT id, customer_id, total, created_at, document_type, sale_mode, seller_id, commission_amount
             FROM invoices
             ORDER BY created_at ASC, id ASC
             """
         ).fetchall()
-        invoice_items = conn.execute(
+        invoice_items_rows = conn.execute(
             """
-            SELECT ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at, i.seller_id
+            SELECT ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at, i.seller_id, i.document_type
             FROM invoice_items ii
             LEFT JOIN invoices i ON i.id = ii.invoice_id
             """
@@ -4680,6 +4680,23 @@ def admin_reports_overview(
             else []
         )
 
+        invoices = []
+        invoice_sign_map: dict[int, float] = {}
+        for row in invoice_rows:
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+            invoice_sign_map[int(row["id"] or 0)] = sign
+            invoices.append(row)
+
+        invoice_items = []
+        for row in invoice_items_rows:
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
+            invoice_items.append(row)
+
         total_stock_units = sum(int(row["stock"] or 0) for row in products)
         cost_by_product = {int(row["id"]): float(row["cost"] or 0) for row in products}
         category_by_product = {int(row["id"]): int(row["category_id"] or 0) for row in products}
@@ -4704,7 +4721,8 @@ def admin_reports_overview(
                 continue
             bucket = created.strftime("%Y-%m")
             entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
-            entry["sales"] += float(row["total"] or 0)
+            sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            entry["sales"] += float(row["total"] or 0) * sign
             entry["count"] += 1
 
         top_products_map: dict[int, dict[str, Any]] = {}
@@ -4721,8 +4739,9 @@ def admin_reports_overview(
             )
             quantity = int(row["quantity"] or 0)
             unit_price = float(row["unit_price"] or 0)
-            revenue = quantity * unit_price
-            margin_value = quantity * max(0.0, unit_price - cost_by_product.get(product_id, 0.0))
+            sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            revenue = quantity * unit_price * sign
+            margin_value = quantity * max(0.0, unit_price - cost_by_product.get(product_id, 0.0)) * sign
             entry["quantity"] += quantity
             entry["revenue"] += revenue
             created = _safe_parse_datetime(row["created_at"])
@@ -4772,8 +4791,9 @@ def admin_reports_overview(
                     "invoice_count": 0,
                 },
             )
-            seller_entry["sales"] += float(row["total"] or 0)
-            seller_entry["commission"] += float(row["commission_amount"] or 0)
+            sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            seller_entry["sales"] += float(row["total"] or 0) * sign
+            seller_entry["commission"] += float(row["commission_amount"] or 0) * sign
             seller_entry["invoice_count"] += 1
         top_products = sorted(
             [
@@ -4803,7 +4823,8 @@ def admin_reports_overview(
                 continue
             sale_mode = str(row["sale_mode"] or "").strip().upper()
             if sale_mode != "CUENTA_CORRIENTE":
-                cash_events.append((created, round(float(row["total"] or 0), 2)))
+                sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+                cash_events.append((created, round(float(row["total"] or 0) * sign, 2)))
         for row in cc_rows:
             created = _safe_parse_datetime(row["created_at"])
             if created is None:
@@ -4877,18 +4898,31 @@ def admin_reports_overview(
             key=lambda item: (-item["sales"], item["name"].lower()),
         )[:12]
 
-        total_sales = round(sum(float(row["total"] or 0) for row in invoices), 2)
+        total_sales = round(
+            sum(
+                float(row["total"] or 0) * (-1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0)
+                for row in invoices
+            ),
+            2,
+        )
         total_margin = round(
             sum(
                 int(row["quantity"] or 0)
                 * max(0.0, float(row["unit_price"] or 0) - cost_by_product.get(int(row["product_id"] or 0), 0.0))
+                * (-1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0)
                 for row in invoice_items
             ),
             2,
         )
         total_purchases = round(sum(float(row["total"] or 0) for row in purchase_rows), 2)
         total_expenses = round(sum(float(row["amount"] or 0) for row in expense_rows), 2)
-        total_commissions = round(sum(float(row["commission_amount"] or 0) for row in invoices), 2)
+        total_commissions = round(
+            sum(
+                float(row["commission_amount"] or 0) * (-1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0)
+                for row in invoices
+            ),
+            2,
+        )
         operating_result = round(total_margin - total_expenses - total_commissions, 2)
         yearly_map: dict[int, dict[str, Any]] = {}
         for item in monthly_sales_all:
@@ -5188,8 +5222,12 @@ def admin_reports_daily(
             created = _safe_parse_datetime(row["created_at"])
             if created is None or created.date() != target_date:
                 continue
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
             invoice_id = int(row["id"] or 0)
-            total = round(float(row["total"] or 0), 2)
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+            total = round(float(row["total"] or 0) * sign, 2)
             customer_id = int(row["customer_id"] or 0)
             selected_invoices.append(
                 {
@@ -5236,9 +5274,12 @@ def admin_reports_daily(
             product_id = int(row.get("product_id") or 0)
             quantity = int(row.get("quantity") or 0)
             unit_price = float(row.get("unit_price") or 0)
-            revenue = round(quantity * unit_price, 2)
+            invoice_id = int(row.get("invoice_id") or 0)
+            related_invoice = next((item for item in selected_invoices if int(item["id"]) == invoice_id), None)
+            sign = -1.0 if related_invoice and str(related_invoice.get("document_type") or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            revenue = round(quantity * unit_price * sign, 2)
             cost = float(row.get("cost") or 0)
-            total_margin += quantity * max(0.0, unit_price - cost)
+            total_margin += quantity * max(0.0, unit_price - cost) * sign
             product_entry = product_summary.setdefault(
                 product_id,
                 {
