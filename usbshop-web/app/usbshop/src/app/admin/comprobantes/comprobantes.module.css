@@ -31,7 +31,7 @@
 .originBadge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(15, 118, 110, 0.12); color: #0f766e; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .originMuted { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .printArea { display: grid; gap: 16px; }
-.detailInlineActions { display: flex; justify-content: flex-end; }
+.detailInlineActions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .documentShell { display: grid; gap: 12px; padding: 18px; border-radius: 18px; background: #f7f8fb; border: 1px solid #0b0b0b; }
 .desktopAccentBar { height: 4px; background: #2d0a5b; border-radius: 10px; margin: 0 10px 2px; }
 .printBanner { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 16px; align-items: center; padding: 8px 10px; background: white; border: 1px solid #0b0b0b; border-radius: 12px; }
@@ -82,11 +82,13 @@
 .totalBox .metaRow strong { color: #f8fafc; }
 .signatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
 .signatureBox { min-height: 88px; border-top: 1px solid #94a3b8; display: flex; align-items: flex-end; padding-top: 10px; color: var(--muted); font-size: 12px; }
-.createButton, .secondaryButton, .removeButton, .deleteButton { border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
+.createButton, .secondaryButton, .removeButton, .deleteButton, .confirmButton { border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
 .createButton { background: linear-gradient(135deg, #0f766e, #1d4ed8); color: white; }
 .secondaryButton { background: #e2e8f0; color: var(--ink); }
 .removeButton { background: #fff1f2; color: #be123c; }
 .deleteButton { background: #7f1d1d; color: #fff; }
+.confirmButton { background: linear-gradient(135deg, #0f766e, #15803d); color: #fff; }
+.confirmButton:disabled { opacity: 0.7; cursor: wait; }
 .deleteButton:disabled { opacity: 0.7; cursor: wait; }
 .createPanel { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; padding: 18px; box-shadow: 0 4px 16px var(--shadow); display: grid; gap: 16px; }
 .createHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }

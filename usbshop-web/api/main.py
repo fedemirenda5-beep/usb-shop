@@ -4002,6 +4002,8 @@ def admin_create_invoice(
     order_id = int(payload.get("order_id") or 0) or None
     created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
     seller_id = int(payload.get("seller_id") or 0) or None
+    if seller_id is None:
+        raise HTTPException(status_code=400, detail="Vendedor requerido")
 
     conn = _connect()
     try:
@@ -4021,19 +4023,18 @@ def admin_create_invoice(
 
         seller = None
         commission_amount = 0.0
-        if seller_id is not None:
-            seller = conn.execute(
-                """
-                SELECT id, name, commission_percent, is_active
-                FROM sellers
-                WHERE id = ?
-                """,
-                (seller_id,),
-            ).fetchone()
-            if seller is None:
-                raise HTTPException(status_code=404, detail="Vendedor no encontrado")
-            if not bool(seller["is_active"]):
-                raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
+        seller = conn.execute(
+            """
+            SELECT id, name, commission_percent, is_active
+            FROM sellers
+            WHERE id = ?
+            """,
+            (seller_id,),
+        ).fetchone()
+        if seller is None:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+        if not bool(seller["is_active"]):
+            raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
 
         affects_stock = document_type in {"FACTURA", "NOTA_CREDITO"}
         creates_cc_movement = document_type in {"FACTURA", "NOTA_CREDITO"}
@@ -4091,9 +4092,8 @@ def admin_create_invoice(
             )
 
         sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
-        if seller is not None:
-            commission_percent = float(seller["commission_percent"] or 0)
-            commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
+        commission_percent = float(seller["commission_percent"] or 0)
+        commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
         external_ref_row = conn.execute(
             """
             SELECT external_ref
@@ -4322,6 +4322,122 @@ def admin_invoice_detail(
         conn.close()
 
 
+@app.post("/admin/invoices/{invoice_id}/confirm")
+def admin_confirm_invoice(
+    invoice_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_payment_method_column(conn)
+        invoice = conn.execute(
+            """
+            SELECT id, customer_id, total, created_at, document_type, sale_mode, payment_method, seller_id
+            FROM invoices
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        ).fetchone()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+
+        document_type = str(invoice["document_type"] or "").strip().upper()
+        if document_type != "PRESUPUESTO":
+            raise HTTPException(status_code=400, detail="Solo se pueden confirmar presupuestos")
+
+        items = conn.execute(
+            """
+            SELECT ii.product_id, ii.quantity, p.name AS product_name, p.stock
+            FROM invoice_items ii
+            LEFT JOIN products p ON p.id = ii.product_id
+            WHERE ii.invoice_id = ?
+            ORDER BY ii.id ASC
+            """,
+            (invoice_id,),
+        ).fetchall()
+        if not items:
+            raise HTTPException(status_code=400, detail="El presupuesto no tiene items")
+
+        for item in items:
+            product_id = int(item["product_id"] or 0)
+            quantity = int(item["quantity"] or 0)
+            current_stock = int(item["stock"] or 0)
+            product_name = item["product_name"] or f"Producto {product_id}"
+            if product_id <= 0 or quantity <= 0:
+                raise HTTPException(status_code=400, detail="El presupuesto tiene items invalidos")
+            if current_stock < quantity:
+                raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product_name}")
+
+        confirmation_created_at = datetime.utcnow().isoformat()
+        sale_mode = str(invoice["sale_mode"] or "").strip().upper() or "CONTADO"
+        payment_method = str(invoice["payment_method"] or "").strip() or None
+        customer_id = int(invoice["customer_id"] or 0)
+        seller_id = int(invoice["seller_id"] or 0)
+        total = round(float(invoice["total"] or 0), 2)
+        if seller_id <= 0:
+            raise HTTPException(status_code=400, detail="El presupuesto no tiene vendedor asignado")
+
+        for item in items:
+            conn.execute(
+                "UPDATE products SET stock = stock - ? WHERE id = ?",
+                (int(item["quantity"] or 0), int(item["product_id"] or 0)),
+            )
+
+        if sale_mode == "CUENTA_CORRIENTE":
+            existing_debit = conn.execute(
+                """
+                SELECT id
+                FROM account_movements
+                WHERE invoice_id = ? AND movement_type = 'DEBIT'
+                LIMIT 1
+                """,
+                (invoice_id,),
+            ).fetchone()
+            if existing_debit is None:
+                conn.execute(
+                    """
+                    INSERT INTO account_movements (
+                        customer_id, invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        customer_id,
+                        invoice_id,
+                        total,
+                        "DEBIT",
+                        "SALE",
+                        f"FACTURA #{invoice_id}",
+                        confirmation_created_at,
+                        payment_method,
+                    ),
+                )
+
+        conn.execute(
+            """
+            UPDATE invoices
+               SET document_type = 'FACTURA', created_at = ?
+             WHERE id = ?
+            """,
+            (confirmation_created_at, invoice_id),
+        )
+        conn.commit()
+        return {
+            "id": int(invoice["id"]),
+            "customer_id": customer_id if customer_id > 0 else None,
+            "document_type": "FACTURA",
+            "previous_document_type": "PRESUPUESTO",
+            "sale_mode": sale_mode,
+            "total": total,
+            "created_at": confirmation_created_at,
+            "message": "Presupuesto confirmado",
+        }
+    finally:
+        conn.close()
+
+
 @app.delete("/admin/invoices/{invoice_id}")
 def admin_delete_invoice(
     invoice_id: int,
@@ -4371,15 +4487,20 @@ def admin_delete_invoice(
             (invoice_id,),
         ).fetchall()
 
-        for item in items:
-            product_id = int(item["product_id"] or 0)
-            quantity = int(item["quantity"] or 0)
-            if product_id <= 0 or quantity <= 0:
-                continue
-            conn.execute(
-                "UPDATE products SET stock = stock + ? WHERE id = ?",
-                (quantity, product_id),
-            )
+        restocked_items = 0
+        deleted_document_type = str(invoice["document_type"] or "").strip().upper()
+        stock_restore_delta = 1 if deleted_document_type == "FACTURA" else -1 if deleted_document_type == "NOTA_CREDITO" else 0
+        if stock_restore_delta != 0:
+            for item in items:
+                product_id = int(item["product_id"] or 0)
+                quantity = int(item["quantity"] or 0)
+                if product_id <= 0 or quantity <= 0:
+                    continue
+                conn.execute(
+                    "UPDATE products SET stock = stock + ? WHERE id = ?",
+                    (stock_restore_delta * quantity, product_id),
+                )
+                restocked_items += 1
 
         conn.execute("DELETE FROM account_movements WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
@@ -4402,7 +4523,7 @@ def admin_delete_invoice(
             "document_type": invoice["document_type"],
             "sale_mode": invoice["sale_mode"],
             "total": round(float(invoice["total"] or 0), 2),
-            "restocked_items": len(items),
+            "restocked_items": restocked_items,
             "deleted_account_movements": len(cc_movements),
             "message": "Comprobante cancelado",
         }

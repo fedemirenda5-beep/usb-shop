@@ -37,6 +37,7 @@ type InvoiceDetail = {
     price_list?: number | null;
     seller_name?: string | null;
     seller_commission_percent?: number | null;
+    web_order_id?: number | null;
   };
   items: Array<{
     id: number;
@@ -87,7 +88,9 @@ export default function ComprobantesPage() {
   const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
+  const [pendingConfirmInvoice, setPendingConfirmInvoice] = useState<Invoice | null>(null);
   const detailRequestRef = useRef(0);
 
   async function loadDetail(invoiceId: number) {
@@ -160,6 +163,34 @@ export default function ComprobantesPage() {
 
   const requestDeleteInvoice = (invoice: Invoice) => {
     setPendingDeleteInvoice(invoice);
+  };
+
+  const requestConfirmInvoice = (invoice: Invoice) => {
+    setPendingConfirmInvoice(invoice);
+  };
+
+  const confirmInvoice = async (invoice: Invoice) => {
+    try {
+      setConfirmingId(invoice.id);
+      setError('');
+      setDetailError('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoice.id}/confirm`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo confirmar el presupuesto');
+      setPendingConfirmInvoice(null);
+      await loadInvoices();
+      if (selectedId === invoice.id || detailOnly) {
+        await loadDetail(invoice.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error confirmando presupuesto');
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   const deleteInvoice = async (invoice: Invoice) => {
@@ -269,6 +300,19 @@ export default function ComprobantesPage() {
                       >
                         Ver comprobante
                       </button>
+                      {item.document_type === 'PRESUPUESTO' ? (
+                        <button
+                          type="button"
+                          className={styles.confirmButton}
+                          disabled={confirmingId === item.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            requestConfirmInvoice(item);
+                          }}
+                        >
+                          {confirmingId === item.id ? 'Confirmando...' : 'Confirmar presupuesto'}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={styles.pdfButton}
@@ -329,6 +373,34 @@ export default function ComprobantesPage() {
             {detail ? (
               <div className={styles.printArea}>
                 <div className={styles.detailInlineActions}>
+                  {detail.invoice.document_type === 'PRESUPUESTO' ? (
+                    <button
+                      type="button"
+                      className={styles.confirmButton}
+                      disabled={confirmingId === detail.invoice.id}
+                      onClick={() =>
+                        requestConfirmInvoice({
+                          id: detail.invoice.id,
+                          customer_id: detail.invoice.customer_id,
+                          customer_name: detail.invoice.customer_name,
+                          seller_id: detail.invoice.seller_id,
+                          seller_name: detail.invoice.seller_name,
+                          total: detail.invoice.total,
+                          created_at: detail.invoice.created_at,
+                          document_type: detail.invoice.document_type,
+                          sale_mode: detail.invoice.sale_mode,
+                          price_list: detail.invoice.price_list,
+                          due_date: detail.invoice.due_date,
+                          notes: detail.invoice.notes,
+                          payment_method: detail.invoice.payment_method,
+                          commission_amount: detail.invoice.commission_amount,
+                          web_order_id: detail.invoice.web_order_id,
+                        })
+                      }
+                    >
+                      {confirmingId === detail.invoice.id ? 'Confirmando...' : 'Confirmar presupuesto'}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className={styles.deleteButton}
@@ -529,6 +601,62 @@ export default function ComprobantesPage() {
                 disabled={deletingId === pendingDeleteInvoice.id}
               >
                 {deletingId === pendingDeleteInvoice.id ? 'Eliminando...' : 'Confirmar eliminación'}
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {pendingConfirmInvoice ? (
+        <div className={styles.confirmOverlay} onClick={() => (confirmingId ? null : setPendingConfirmInvoice(null))}>
+          <aside
+            className={styles.confirmModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-invoice-title"
+          >
+            <div className={styles.confirmHeader}>
+              <div>
+                <h2 id="confirm-invoice-title">Confirmar presupuesto</h2>
+                <p>Esta acción convierte el presupuesto en factura y genera los movimientos operativos correspondientes.</p>
+              </div>
+            </div>
+
+            <div className={styles.confirmBody}>
+              <div className={styles.confirmCard}>
+                <span>Comprobante</span>
+                <strong>#{pendingConfirmInvoice.id} {pendingConfirmInvoice.document_type || 'Comprobante'}</strong>
+              </div>
+              <div className={styles.confirmCard}>
+                <span>Cliente</span>
+                <strong>{pendingConfirmInvoice.customer_name}</strong>
+              </div>
+              <div className={styles.confirmCard}>
+                <span>Total</span>
+                <strong>{money(pendingConfirmInvoice.total)}</strong>
+              </div>
+              <div className={styles.confirmWarning}>
+                Al confirmar se descuenta stock y, si la venta es por cuenta corriente, se genera el débito del cliente.
+              </div>
+            </div>
+
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setPendingConfirmInvoice(null)}
+                disabled={confirmingId === pendingConfirmInvoice.id}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className={styles.confirmButton}
+                onClick={() => void confirmInvoice(pendingConfirmInvoice)}
+                disabled={confirmingId === pendingConfirmInvoice.id}
+              >
+                {confirmingId === pendingConfirmInvoice.id ? 'Confirmando...' : 'Confirmar presupuesto'}
               </button>
             </div>
           </aside>

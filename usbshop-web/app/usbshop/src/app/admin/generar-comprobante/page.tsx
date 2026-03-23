@@ -147,7 +147,7 @@ export default function GenerarComprobantePage() {
       return 'La nota de crédito repone stock y, si la operación es por cuenta corriente, genera crédito a favor del cliente.';
     }
     if (form.document_type === 'PRESUPUESTO') {
-      return 'El presupuesto solo guarda el documento. No mueve stock ni cuenta corriente.';
+      return 'El presupuesto solo guarda el documento. No mueve stock ni cuenta corriente hasta que se confirme desde Comprobantes.';
     }
     return 'La factura descuenta stock y, si la operación es por cuenta corriente, genera deuda del cliente.';
   }, [form.document_type]);
@@ -233,7 +233,7 @@ export default function GenerarComprobantePage() {
         customer_id: Number(form.customer_id),
         document_type: form.document_type,
         sale_mode: form.sale_mode,
-        seller_id: form.seller_id ? Number(form.seller_id) : null,
+        seller_id: Number(form.seller_id),
         price_list: Number(form.price_list || 0),
         payment_method: form.payment_method || null,
         created_at: formatInputDateTime(form.created_at),
@@ -344,15 +344,15 @@ export default function GenerarComprobantePage() {
               </label>
               <label>
                 Vendedor
-                <select value={form.seller_id} onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))}>
-                  <option value="">Sin vendedor</option>
+                <select value={form.seller_id} onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))} required>
+                  <option value="" disabled>Selecciona un vendedor</option>
                   {sellers.map((seller) => (
                     <option key={seller.id} value={seller.id}>
                       {seller.name} - {seller.commission_percent}%
                     </option>
                   ))}
                 </select>
-                <small className={styles.fieldHint}>{selectedSeller ? `Comision estimada: ${money(commissionPreview)}` : 'Selecciona un vendedor para imputar comision'}</small>
+                <small className={styles.fieldHint}>{selectedSeller ? `Comision estimada: ${money(commissionPreview)}` : 'El vendedor es obligatorio para emitir el comprobante'}</small>
               </label>
               <label>
                 Lista de precios
