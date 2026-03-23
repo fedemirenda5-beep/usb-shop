@@ -342,6 +342,7 @@ export default function ProductosPage() {
       ? `Lista de ${label} con imagenes`
       : `Lista de ${label}`;
     const fileName = `usbshop-${slugifyFilePart(label)}${includeImages ? '-con-imagenes' : ''}.html`;
+    const embeddedLogoUrl = await fetchImageAsDataUrl(`${window.location.origin}/logo-small.jpeg`);
 
     const rowParts = await Promise.all(
       exportItems.map(async (product) => {
@@ -387,6 +388,8 @@ export default function ProductosPage() {
             .primaryButton { background: #111827; color: white; }
             .secondaryButton { background: #e5e7eb; color: #111827; }
             .header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+            .brandBlock { display: flex; gap: 14px; align-items: center; }
+            .brandLogo { width: 64px; height: 64px; object-fit: contain; border-radius: 12px; border: 1px solid #e5e7eb; background: white; padding: 4px; box-sizing: border-box; }
             .header h1 { margin: 0 0 6px; font-size: 24px; }
             .header p { margin: 0; color: #4b5563; font-size: 12px; }
             .summary { margin-bottom: 14px; color: #374151; font-size: 13px; }
@@ -418,9 +421,12 @@ export default function ProductosPage() {
             </div>
           </div>
           <div class="header">
-            <div>
-              <h1>USB Shop</h1>
-              <p>${escapeHtml(title)}</p>
+            <div class="brandBlock">
+              ${embeddedLogoUrl ? `<img src="${escapeHtml(embeddedLogoUrl)}" alt="USB Shop" class="brandLogo" />` : ''}
+              <div>
+                <h1>USB Shop</h1>
+                <p>${escapeHtml(title)}</p>
+              </div>
             </div>
             <div>
               <p>Generado: ${escapeHtml(generatedAt)}</p>
