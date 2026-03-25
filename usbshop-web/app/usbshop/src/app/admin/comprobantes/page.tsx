@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
@@ -78,6 +79,7 @@ const getPriceListLabel = (value?: number | null) => {
 };
 
 export default function ComprobantesPage() {
+  const router = useRouter();
   const [items, setItems] = useState<Invoice[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
@@ -88,7 +90,6 @@ export default function ComprobantesPage() {
   const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
   const [pendingConfirmInvoice, setPendingConfirmInvoice] = useState<Invoice | null>(null);
   const detailRequestRef = useRef(0);
@@ -166,28 +167,9 @@ export default function ComprobantesPage() {
     setPendingConfirmInvoice(invoice);
   };
 
-  const confirmInvoice = async (invoice: Invoice) => {
-    try {
-      setConfirmingId(invoice.id);
-      setError('');
-      setDetailError('');
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoice.id}/confirm`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'No se pudo confirmar el presupuesto');
-      setPendingConfirmInvoice(null);
-      await loadInvoices();
-      if (selectedId === invoice.id || detailOnly) {
-        await loadDetail(invoice.id);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error confirmando presupuesto');
-    } finally {
-      setConfirmingId(null);
-    }
+  const openBudgetForInvoice = (invoice: Invoice) => {
+    setPendingConfirmInvoice(null);
+    router.push(`/admin/generar-comprobante?budget_invoice_id=${invoice.id}`);
   };
 
   const deleteInvoice = async (invoice: Invoice) => {
@@ -301,13 +283,12 @@ export default function ComprobantesPage() {
                         <button
                           type="button"
                           className={styles.confirmButton}
-                          disabled={confirmingId === item.id}
                           onClick={(event) => {
                             event.stopPropagation();
                             requestConfirmInvoice(item);
                           }}
                         >
-                          {confirmingId === item.id ? 'Confirmando...' : 'Confirmar presupuesto'}
+                          Revisar y facturar
                         </button>
                       ) : null}
                       <button
@@ -374,7 +355,6 @@ export default function ComprobantesPage() {
                     <button
                       type="button"
                       className={styles.confirmButton}
-                      disabled={confirmingId === detail.invoice.id}
                       onClick={() =>
                         requestConfirmInvoice({
                           id: detail.invoice.id,
@@ -395,7 +375,7 @@ export default function ComprobantesPage() {
                         })
                       }
                     >
-                      {confirmingId === detail.invoice.id ? 'Confirmando...' : 'Confirmar presupuesto'}
+                      Revisar y facturar
                     </button>
                   ) : null}
                   <button
@@ -605,7 +585,7 @@ export default function ComprobantesPage() {
       ) : null}
 
       {pendingConfirmInvoice ? (
-        <div className={styles.confirmOverlay} onClick={() => (confirmingId ? null : setPendingConfirmInvoice(null))}>
+        <div className={styles.confirmOverlay} onClick={() => setPendingConfirmInvoice(null)}>
           <aside
             className={styles.confirmModal}
             onClick={(event) => event.stopPropagation()}
@@ -615,7 +595,7 @@ export default function ComprobantesPage() {
           >
             <div className={styles.confirmHeader}>
               <div>
-                <h2 id="confirm-invoice-title">Confirmar presupuesto</h2>
+                <h2 id="confirm-invoice-title">Revisar presupuesto</h2>
                 <p>Esta acción convierte el presupuesto en factura y genera los movimientos operativos correspondientes.</p>
               </div>
             </div>
@@ -643,17 +623,15 @@ export default function ComprobantesPage() {
                 type="button"
                 className={styles.secondaryButton}
                 onClick={() => setPendingConfirmInvoice(null)}
-                disabled={confirmingId === pendingConfirmInvoice.id}
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 className={styles.confirmButton}
-                onClick={() => void confirmInvoice(pendingConfirmInvoice)}
-                disabled={confirmingId === pendingConfirmInvoice.id}
+                onClick={() => openBudgetForInvoice(pendingConfirmInvoice)}
               >
-                {confirmingId === pendingConfirmInvoice.id ? 'Confirmando...' : 'Confirmar presupuesto'}
+                Abrir para revisar
               </button>
             </div>
           </aside>
