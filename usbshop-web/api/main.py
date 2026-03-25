@@ -397,6 +397,7 @@ _load_env_file()
 DB_URL = (os.getenv("CONTROLSTOCK_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
 DB_IS_POSTGRES = DB_URL.lower().startswith("postgres")
 LOGGER = _setup_logging()
+_SCHEMA_READY_FLAGS: set[str] = set()
 
 app = FastAPI(title="USB Shop API", version="1.0.0")
 
@@ -740,10 +741,18 @@ def _ensure_products_cost_column(conn: DBConn) -> None:
 
 
 def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
-    if _has_column(conn, "invoices", "payment_method"):
+    cache_key = "invoices.payment_method"
+    if cache_key in _SCHEMA_READY_FLAGS:
         return
-    conn.execute("ALTER TABLE invoices ADD COLUMN payment_method TEXT")
+    if _has_column(conn, "invoices", "payment_method"):
+        _SCHEMA_READY_FLAGS.add(cache_key)
+        return
+    if DB_IS_POSTGRES:
+        conn.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_method TEXT")
+    else:
+        conn.execute("ALTER TABLE invoices ADD COLUMN payment_method TEXT")
     conn.commit()
+    _SCHEMA_READY_FLAGS.add(cache_key)
 
 
 def _require_sync_token(request: Request) -> None:
@@ -1512,6 +1521,9 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
 
 
 def _ensure_syncable_tables(conn: DBConn) -> None:
+    cache_key = "syncable_tables"
+    if cache_key in _SCHEMA_READY_FLAGS:
+        return
     for table_name, columns in SYNC_TABLE_SCHEMAS.items():
         if not _has_table(conn, table_name):
             definitions = ", ".join(
@@ -1527,9 +1539,13 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
                 f"ALTER TABLE {table_name} ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
             )
     conn.commit()
+    _SCHEMA_READY_FLAGS.add(cache_key)
 
 
 def _ensure_sellers_table(conn: DBConn) -> None:
+    cache_key = "sellers_table"
+    if cache_key in _SCHEMA_READY_FLAGS:
+        return
     if not _has_table(conn, "sellers"):
         if DB_IS_POSTGRES:
             conn.execute(
@@ -1567,8 +1583,12 @@ def _ensure_sellers_table(conn: DBConn) -> None:
     for name, sqlite_type, pg_type in required_columns:
         if _has_column(conn, "sellers", name):
             continue
-        conn.execute(f"ALTER TABLE sellers ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}")
+        if DB_IS_POSTGRES:
+            conn.execute(f"ALTER TABLE sellers ADD COLUMN IF NOT EXISTS {name} {pg_type}")
+        else:
+            conn.execute(f"ALTER TABLE sellers ADD COLUMN {name} {sqlite_type}")
     conn.commit()
+    _SCHEMA_READY_FLAGS.add(cache_key)
 
 
 def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
