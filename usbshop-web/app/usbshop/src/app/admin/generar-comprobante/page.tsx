@@ -247,6 +247,16 @@ export default function GenerarComprobantePage() {
 
   useEffect(() => {
     const needle = customerSearch.trim();
+    const currentSelectedCustomer = customers.find((customer) => customer.id === Number(form.customer_id)) || null;
+    if (
+      form.customer_id &&
+      currentSelectedCustomer &&
+      normalizeSearchValue(customerSearch) === normalizeSearchValue(currentSelectedCustomer.name)
+    ) {
+      setCustomerOptions([]);
+      setCustomerOptionsLoading(false);
+      return;
+    }
     if (!needle) {
       setCustomerOptions([]);
       return;
@@ -270,7 +280,7 @@ export default function GenerarComprobantePage() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [customerSearch]);
+  }, [customerSearch, form.customer_id, customers]);
 
   useEffect(() => {
     const needle = productSearch.trim();
@@ -383,6 +393,8 @@ export default function GenerarComprobantePage() {
 
   const selectCustomer = (customer: CustomerOption) => {
     setCustomerSearch(customer.name);
+    setCustomerOptions([]);
+    setCustomerOptionsLoading(false);
     setForm((current) => ({
       ...current,
       customer_id: String(customer.id),
@@ -457,6 +469,13 @@ export default function GenerarComprobantePage() {
                     const value = e.target.value;
                     setCustomerSearch(value);
                     if (!value.trim()) {
+                      setCustomerOptions([]);
+                      setForm((current) => ({ ...current, customer_id: '' }));
+                    } else if (
+                      form.customer_id &&
+                      selectedCustomer &&
+                      normalizeSearchValue(value) !== normalizeSearchValue(selectedCustomer.name)
+                    ) {
                       setForm((current) => ({ ...current, customer_id: '' }));
                     }
                   }}
