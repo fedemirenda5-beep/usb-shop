@@ -2514,6 +2514,7 @@ def admin_list_products(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
     category: Optional[str] = None,
+    ids: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -2539,6 +2540,22 @@ def admin_list_products(
             conditions.append("(name LIKE ? OR sku LIKE ?)")
             like = f"%{q}%"
             params.extend([like, like])
+
+        product_ids: list[int] = []
+        if ids:
+            product_ids = [
+                int(part.strip())
+                for part in str(ids).split(",")
+                if part.strip().isdigit()
+            ]
+            if product_ids:
+                placeholders = ", ".join(["?"] * len(product_ids))
+                conditions.append(f"id IN ({placeholders})")
+                params.extend(product_ids)
+
+        if q and str(q).strip().isdigit():
+            conditions.append("id = ?")
+            params.append(int(str(q).strip()))
         
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
@@ -2546,6 +2563,8 @@ def admin_list_products(
         
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         
+        pagination_clause = "" if product_ids else "LIMIT ? OFFSET ?"
+        query_params = params if product_ids else params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT id, name, sku, price, price_list_1, price_list_2, cost, stock, 
@@ -2553,9 +2572,9 @@ def admin_list_products(
             FROM products
             {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
-            LIMIT ? OFFSET ?
+            {pagination_clause}
             """,
-            params + [limit, offset],
+            query_params,
         ).fetchall()
         
         total = conn.execute(
