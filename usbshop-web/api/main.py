@@ -2514,6 +2514,7 @@ def admin_list_products(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
     category: Optional[str] = None,
+    ids: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
@@ -2536,9 +2537,25 @@ def admin_list_products(
             conditions.append("is_active = 1")
         
         if q:
-            conditions.append("(name LIKE ? OR sku LIKE ?)")
-            like = f"%{q}%"
+            conditions.append("(LOWER(COALESCE(name, '')) LIKE LOWER(?) OR LOWER(COALESCE(sku, '')) LIKE LOWER(?))")
+            like = f"%{q.strip()}%"
             params.extend([like, like])
+
+        product_ids: list[int] = []
+        if ids:
+            product_ids = [
+                int(part.strip())
+                for part in str(ids).split(",")
+                if part.strip().isdigit()
+            ]
+            if product_ids:
+                placeholders = ", ".join(["?"] * len(product_ids))
+                conditions.append(f"id IN ({placeholders})")
+                params.extend(product_ids)
+
+        if q and str(q).strip().isdigit():
+            conditions.append("id = ?")
+            params.append(int(str(q).strip()))
         
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
@@ -2546,6 +2563,8 @@ def admin_list_products(
         
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         
+        pagination_clause = "" if product_ids else "LIMIT ? OFFSET ?"
+        query_params = params if product_ids else params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT id, name, sku, price, price_list_1, price_list_2, cost, stock, 
@@ -2553,9 +2572,9 @@ def admin_list_products(
             FROM products
             {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
-            LIMIT ? OFFSET ?
+            {pagination_clause}
             """,
-            params + [limit, offset],
+            query_params,
         ).fetchall()
         
         total = conn.execute(
@@ -2885,60 +2904,67 @@ def admin_backoffice_customers(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        conditions = ["COALESCE(is_active, 1) = 1", "deleted_at IS NULL"]
+        params: list[Any] = []
+        query_text = (q or "").strip()
+        if query_text:
+            like = f"%{query_text}%"
+            conditions.append(
+                "("
+                "LOWER(COALESCE(name, '')) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(email, '')) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(phone, '')) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(cuit, '')) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(address, '')) LIKE LOWER(?) OR "
+                "LOWER(COALESCE(locality, '')) LIKE LOWER(?)"
+                ")"
+            )
+            params.extend([like, like, like, like, like, like])
+        where_clause = f" WHERE {' AND '.join(conditions)}"
         rows = conn.execute(
-            """
+            f"""
             SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
             FROM customers
-            WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
+            LIMIT ? OFFSET ?
             """,
+            params + [limit, offset],
         ).fetchall()
-        query_text = _normalize_search_text(q)
-        if query_text:
-            filtered_rows = []
-            for row in rows:
-                haystack = _normalize_search_text(
-                    " ".join(
-                        [
-                            row["name"] or "",
-                            row["email"] or "",
-                            row["phone"] or "",
-                            row["cuit"] or "",
-                            row["address"] or "",
-                            row["locality"] or "",
-                        ]
-                    )
-                )
-                if query_text in haystack:
-                    filtered_rows.append(row)
-            rows = filtered_rows
-        rows = rows[offset : offset + limit]
-        movements = conn.execute(
-            """
-            SELECT customer_id, amount, movement_type
-            FROM account_movements
-            ORDER BY created_at ASC, id ASC
-            """
-        ).fetchall()
+        customer_ids = [int(row["id"]) for row in rows]
         balances: dict[int, float] = {}
-        for row in movements:
-            customer_id = int(row["customer_id"] or 0)
-            if customer_id <= 0:
-                continue
-            amount = float(row["amount"] or 0)
-            signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
-            balances[customer_id] = round(balances.get(customer_id, 0.0) + signed, 2)
-        invoice_counts = {
-            int(row["customer_id"]): int(row["qty"])
-            for row in conn.execute(
+        invoice_counts: dict[int, int] = {}
+        if customer_ids:
+            placeholders = ", ".join(["?"] * len(customer_ids))
+            movements = conn.execute(
                 """
-                SELECT customer_id, COUNT(*) AS qty
-                FROM invoices
-                GROUP BY customer_id
-                """
+                SELECT customer_id, amount, movement_type
+                FROM account_movements
+                WHERE customer_id IN ({placeholders})
+                ORDER BY created_at ASC, id ASC
+                """.format(placeholders=placeholders),
+                customer_ids,
             ).fetchall()
-            if row["customer_id"] is not None
-        }
+            for row in movements:
+                customer_id = int(row["customer_id"] or 0)
+                if customer_id <= 0:
+                    continue
+                amount = float(row["amount"] or 0)
+                signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
+                balances[customer_id] = round(balances.get(customer_id, 0.0) + signed, 2)
+            invoice_counts = {
+                int(row["customer_id"]): int(row["qty"])
+                for row in conn.execute(
+                    f"""
+                    SELECT customer_id, COUNT(*) AS qty
+                    FROM invoices
+                    WHERE customer_id IN ({placeholders})
+                    GROUP BY customer_id
+                    """,
+                    customer_ids,
+                ).fetchall()
+                if row["customer_id"] is not None
+            }
         return [
             {
                 "id": int(row["id"]),

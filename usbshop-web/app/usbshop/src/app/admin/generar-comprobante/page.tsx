@@ -35,11 +35,12 @@ type BudgetDraft = {
   items: Array<{
     id: number;
     product_id?: number | null;
+    product_name?: string;
     quantity: number;
     unit_price: number;
   }>;
 };
-type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
+type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean; product_name?: string };
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const normalizeSearchValue = (value: string) =>
@@ -50,6 +51,11 @@ const normalizeSearchValue = (value: string) =>
     .toLowerCase();
 const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
 const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError';
 
 export default function GenerarComprobantePage() {
   const router = useRouter();
@@ -63,7 +69,11 @@ export default function GenerarComprobantePage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([]);
+  const [customerOptionsLoading, setCustomerOptionsLoading] = useState(false);
   const [productSearch, setProductSearch] = useState('');
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  const [productOptionsLoading, setProductOptionsLoading] = useState(false);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [form, setForm] = useState({
     order_id: '',
@@ -79,20 +89,41 @@ export default function GenerarComprobantePage() {
     items: [] as InvoiceFormItem[],
   });
 
+  const fetchAdminJson = async <T,>(path: string, init?: RequestInit, attempts = 3): Promise<T> => {
+    await loadRuntimeConfig();
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}${path}`, {
+          ...init,
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(init?.headers || {}),
+          },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error((data as { detail?: string }).detail || 'No se pudo completar la solicitud');
+        }
+        return data as T;
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        lastError = error;
+        if (attempt < attempts - 1) {
+          await wait(250 * (attempt + 1));
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('No se pudo conectar con la API');
+  };
+
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        await loadRuntimeConfig();
-        const [customersRes, productsRes, sellersRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=1000`, { credentials: 'include' }),
-          fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, { credentials: 'include' }),
-          fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' }),
-        ]);
-        if (!customersRes.ok || !productsRes.ok || !sellersRes.ok) throw new Error('No se pudieron cargar las opciones');
-        setCustomers(await customersRes.json());
-        setProducts(await productsRes.json());
-        setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
+        const sellersData = await fetchAdminJson<SellerOption[]>('/admin/sellers?limit=200');
+        setSellers(sellersData.filter((seller) => seller.is_active));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando formulario');
       } finally {
@@ -102,21 +133,53 @@ export default function GenerarComprobantePage() {
     void load();
   }, []);
 
+  const mergeCustomers = (nextCustomers: CustomerOption[]) => {
+    setCustomers((current) => {
+      const map = new Map(current.map((customer) => [customer.id, customer]));
+      nextCustomers.forEach((customer) => map.set(customer.id, customer));
+      return Array.from(map.values());
+    });
+  };
+
+  const mergeProducts = (nextProducts: ProductOption[]) => {
+    setProducts((current) => {
+      const map = new Map(current.map((product) => [product.id, product]));
+      nextProducts.forEach((product) => map.set(product.id, product));
+      return Array.from(map.values());
+    });
+  };
+
+  const fetchCustomerOptions = async (query: string, limit = 20) => {
+    const data = await fetchAdminJson<CustomerOption[]>(`/admin/backoffice-customers?q=${encodeURIComponent(query)}&limit=${limit}`);
+    mergeCustomers(data);
+    return data;
+  };
+
+  const fetchProductOptions = async (query: string, limit = 20) => {
+    const data = await fetchAdminJson<ProductOption[]>(`/admin/products?q=${encodeURIComponent(query)}&limit=${limit}`);
+    mergeProducts(data);
+    return data;
+  };
+
+  const fetchProductsByIds = async (ids: number[]) => {
+    const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)));
+    if (uniqueIds.length === 0) return [];
+    const data = await fetchAdminJson<ProductOption[]>(`/admin/products?ids=${uniqueIds.join(',')}`);
+    mergeProducts(data);
+    return data;
+  };
+
   useEffect(() => {
-    if (!budgetInvoiceIdParam || customers.length === 0 || products.length === 0 || sellers.length === 0) return;
+    if (!budgetInvoiceIdParam || sellers.length === 0) return;
     const prefillFromBudget = async () => {
       try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${budgetInvoiceIdParam}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('No se pudo cargar el presupuesto');
-        const draft = (await res.json()) as BudgetDraft;
+        const draft = await fetchAdminJson<BudgetDraft>(`/admin/invoices/${budgetInvoiceIdParam}`);
         const customerId = draft.invoice.customer_id ? String(draft.invoice.customer_id) : '';
-        const matchedCustomer = customerId ? customers.find((customer) => customer.id === Number(customerId)) || null : null;
         setForm({
           order_id: '',
           customer_id: customerId,
           document_type: 'FACTURA',
-          sale_mode: draft.invoice.sale_mode || matchedCustomer?.sale_mode || 'CONTADO',
+          sale_mode: draft.invoice.sale_mode || 'CONTADO',
           seller_id: draft.invoice.seller_id ? String(draft.invoice.seller_id) : '',
           price_list: String(draft.invoice.price_list || 0),
           payment_method: draft.invoice.payment_method || 'EFECTIVO',
@@ -131,30 +194,46 @@ export default function GenerarComprobantePage() {
                 quantity: String(item.quantity),
                 unit_price: String(item.unit_price),
                 manual_price: true,
+                product_name: item.product_name,
               }))
             : [],
         });
-        setCustomerSearch(matchedCustomer?.name || draft.invoice.customer_name || '');
+        await fetchProductsByIds(draft.items.map((item) => Number(item.product_id || 0))).catch(() => []);
+        setCustomerSearch(draft.invoice.customer_name || '');
+        if (draft.invoice.customer_name) {
+          const matches = await fetchCustomerOptions(draft.invoice.customer_name, 10).catch(() => []);
+          const matchedCustomer =
+            (customerId ? matches.find((customer) => customer.id === Number(customerId)) : null) ||
+            matches.find((customer) => normalizeSearchValue(customer.name) === normalizeSearchValue(draft.invoice.customer_name)) ||
+            null;
+          if (matchedCustomer) {
+            setForm((current) => ({
+              ...current,
+              customer_id: String(matchedCustomer.id),
+              sale_mode: matchedCustomer.sale_mode || current.sale_mode,
+            }));
+            setCustomerSearch(matchedCustomer.name);
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el presupuesto');
       }
     };
     void prefillFromBudget();
-  }, [budgetInvoiceIdParam, customers, products, sellers]);
+  }, [budgetInvoiceIdParam, sellers]);
 
   useEffect(() => {
-    if (budgetInvoiceIdParam || !orderIdParam || customers.length === 0 || products.length === 0) return;
+    if (budgetInvoiceIdParam || !orderIdParam) return;
     const prefill = async () => {
       try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderIdParam}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('No se pudo cargar el pedido');
-        const draft = (await res.json()) as OrderDraft;
+        const draft = await fetchAdminJson<OrderDraft>(`/admin/orders/${orderIdParam}`);
         const normalizedDraftName = normalizeSearchValue(draft.customer_name || '');
         const normalizedDraftEmail = normalizeSearchValue(draft.customer_email || '');
         const normalizedDraftPhone = String(draft.customer_phone || '').trim();
+        const customerLookupQuery = draft.customer_email || draft.customer_phone || draft.customer_name || '';
+        const customerMatches = customerLookupQuery ? await fetchCustomerOptions(customerLookupQuery, 20).catch(() => []) : [];
         const matchedCustomer =
-          customers.find((customer) =>
+          customerMatches.find((customer) =>
             (normalizedDraftEmail && normalizeSearchValue(String(customer.email || '')) === normalizedDraftEmail) ||
             (normalizedDraftPhone && String(customer.phone || '').trim() === normalizedDraftPhone) ||
             (normalizedDraftName && normalizeSearchValue(customer.name) === normalizedDraftName)
@@ -171,37 +250,100 @@ export default function GenerarComprobantePage() {
           due_date: '',
           notes: draft.notes || '',
           items: draft.items.length
-            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
+            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true, product_name: item.name || undefined }))
             : [],
         });
+        await fetchProductsByIds(draft.items.map((item) => Number(item.product_id || 0))).catch(() => []);
         setCustomerSearch(matchedCustomer?.name || draft.customer_name || '');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el pedido');
       }
     };
     void prefill();
-  }, [budgetInvoiceIdParam, orderIdParam, customers, products]);
+  }, [budgetInvoiceIdParam, orderIdParam]);
+
+  useEffect(() => {
+    const needle = customerSearch.trim();
+    const currentSelectedCustomer = customers.find((customer) => customer.id === Number(form.customer_id)) || null;
+    if (
+      form.customer_id &&
+      currentSelectedCustomer &&
+      normalizeSearchValue(customerSearch) === normalizeSearchValue(currentSelectedCustomer.name)
+    ) {
+      setCustomerOptions([]);
+      setCustomerOptionsLoading(false);
+      return;
+    }
+    if (!needle) {
+      setCustomerOptions([]);
+      return;
+    }
+    let active = true;
+    const abortController = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setCustomerOptionsLoading(true);
+        const matches = await fetchAdminJson<CustomerOption[]>(
+          `/admin/backoffice-customers?q=${encodeURIComponent(needle)}&limit=20`,
+          { signal: abortController.signal },
+        );
+        mergeCustomers(matches);
+        if (active) setCustomerOptions(matches);
+      } catch (err) {
+        if (active && !isAbortError(err)) {
+          setCustomerOptions([]);
+        }
+      } finally {
+        if (active) setCustomerOptionsLoading(false);
+      }
+    }, 120);
+    return () => {
+      active = false;
+      abortController.abort();
+      window.clearTimeout(timer);
+    };
+  }, [customerSearch, form.customer_id, customers]);
+
+  useEffect(() => {
+    const needle = productSearch.trim();
+    if (!needle) {
+      setProductOptions([]);
+      return;
+    }
+    let active = true;
+    const abortController = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setProductOptionsLoading(true);
+        const matches = await fetchAdminJson<ProductOption[]>(
+          `/admin/products?q=${encodeURIComponent(needle)}&limit=20`,
+          { signal: abortController.signal },
+        );
+        mergeProducts(matches);
+        if (active) setProductOptions(matches);
+      } catch (err) {
+        if (active && !isAbortError(err)) {
+          setProductOptions([]);
+        }
+      } finally {
+        if (active) setProductOptionsLoading(false);
+      }
+    }, 250);
+    return () => {
+      active = false;
+      abortController.abort();
+      window.clearTimeout(timer);
+    };
+  }, [productSearch]);
 
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const sellerMap = useMemo(() => new Map(sellers.map((seller) => [seller.id, seller])), [sellers]);
   const selectedCustomer = useMemo(() => customerMap.get(Number(form.customer_id)), [customerMap, form.customer_id]);
   const normalizedCustomerSearch = normalizeSearchValue(customerSearch);
-  const filteredCustomerOptions = useMemo(() => {
-    const needle = normalizedCustomerSearch;
-    if (!needle) return customers;
-    return customers.filter((customer) =>
-      normalizeSearchValue([customer.name, customer.email || '', customer.phone || '', customer.cuit || ''].join(' ')).includes(needle)
-    ).slice(0, 10);
-  }, [normalizedCustomerSearch, customers]);
+  const filteredCustomerOptions = useMemo(() => customerOptions, [customerOptions]);
   const showCustomerResults = normalizedCustomerSearch.length > 0;
-  const filteredProducts = useMemo(() => {
-    const needle = productSearch.trim().toLowerCase();
-    if (!needle) return [];
-    return products
-      .filter((product) => [product.name, product.sku, String(product.id)].join(' ').toLowerCase().includes(needle))
-      .slice(0, 12);
-  }, [productSearch, products]);
+  const filteredProducts = useMemo(() => productOptions, [productOptions]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formTotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
@@ -278,6 +420,8 @@ export default function GenerarComprobantePage() {
 
   const selectCustomer = (customer: CustomerOption) => {
     setCustomerSearch(customer.name);
+    setCustomerOptions([]);
+    setCustomerOptionsLoading(false);
     setForm((current) => ({
       ...current,
       customer_id: String(customer.id),
@@ -290,7 +434,6 @@ export default function GenerarComprobantePage() {
     try {
       setCreating(true);
       setError('');
-      await loadRuntimeConfig();
       const payload = {
         order_id: form.order_id ? Number(form.order_id) : null,
         customer_id: Number(form.customer_id),
@@ -304,14 +447,10 @@ export default function GenerarComprobantePage() {
         notes: form.notes || null,
         items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
       };
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
+      const data = await fetchAdminJson<{ id: number }>('/admin/invoices', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
       router.push(`/admin/comprobantes?created=${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error creando comprobante');
@@ -352,6 +491,13 @@ export default function GenerarComprobantePage() {
                     const value = e.target.value;
                     setCustomerSearch(value);
                     if (!value.trim()) {
+                      setCustomerOptions([]);
+                      setForm((current) => ({ ...current, customer_id: '' }));
+                    } else if (
+                      form.customer_id &&
+                      selectedCustomer &&
+                      normalizeSearchValue(value) !== normalizeSearchValue(selectedCustomer.name)
+                    ) {
                       setForm((current) => ({ ...current, customer_id: '' }));
                     }
                   }}
@@ -360,7 +506,9 @@ export default function GenerarComprobantePage() {
                 />
                 {showCustomerResults ? (
                   <div className={styles.customerSearchResults}>
-                    {filteredCustomerOptions.length === 0 ? (
+                    {customerOptionsLoading ? (
+                      <div className={styles.customerSearchEmpty}>Buscando clientes...</div>
+                    ) : filteredCustomerOptions.length === 0 ? (
                       <div className={styles.customerSearchEmpty}>No hay clientes que coincidan.</div>
                     ) : (
                       filteredCustomerOptions.map((customer) => (
@@ -378,6 +526,8 @@ export default function GenerarComprobantePage() {
                       ))
                     )}
                   </div>
+                ) : form.customer_id && customerSearch ? (
+                  <small className={styles.customerSelected}>Cliente seleccionado: {customerSearch}</small>
                 ) : null}
                 <input type="hidden" value={form.customer_id} required readOnly />
                 {selectedCustomer ? (
@@ -385,7 +535,11 @@ export default function GenerarComprobantePage() {
                     Cliente seleccionado: {selectedCustomer.name} {selectedCustomer.cuit ? `· ${selectedCustomer.cuit}` : ''}
                   </small>
                 ) : null}
-                <small className={styles.fieldHint}>{filteredCustomerOptions.length} cliente{filteredCustomerOptions.length === 1 ? '' : 's'} encontrado{filteredCustomerOptions.length === 1 ? '' : 's'}</small>
+                <small className={styles.fieldHint}>
+                  {customerOptionsLoading
+                    ? 'Buscando clientes...'
+                    : `${filteredCustomerOptions.length} cliente${filteredCustomerOptions.length === 1 ? '' : 's'} encontrado${filteredCustomerOptions.length === 1 ? '' : 's'}`}
+                </small>
               </label>
               <label>
                 Tipo de comprobante
@@ -466,6 +620,8 @@ export default function GenerarComprobantePage() {
               <div className={styles.desktopPickerResults}>
                 {!productSearch.trim() ? (
                   <div className={styles.emptyCell}>Escribí para buscar productos y ver coincidencias.</div>
+                ) : productOptionsLoading ? (
+                  <div className={styles.emptyCell}>Buscando productos...</div>
                 ) : filteredProducts.length === 0 ? (
                   <div className={styles.emptyCell}>No hay productos que coincidan con la búsqueda.</div>
                 ) : (
@@ -536,7 +692,7 @@ export default function GenerarComprobantePage() {
                       return (
                         <tr key={`${item.product_id}-${index}`}>
                           <td>
-                            <strong>{selectedProduct?.name || `Producto #${item.product_id}`}</strong>
+                            <strong>{selectedProduct?.name || item.product_name || `Producto #${item.product_id}`}</strong>
                             <div className={styles.itemMeta}>
                               {selectedProduct ? `${selectedProduct.sku || 'Sin SKU'}${item.manual_price ? ' · precio manual' : ''}` : 'Producto no encontrado'}
                             </div>
