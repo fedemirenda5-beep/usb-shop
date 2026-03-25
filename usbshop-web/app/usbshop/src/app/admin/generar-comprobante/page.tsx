@@ -18,27 +18,6 @@ type OrderDraft = {
   items: Array<{ product_id: number; sku?: string | null; name?: string | null; quantity: number; unit_price: number }>;
 };
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
-type InvoiceListItem = {
-  id: number;
-  customer_id?: number | null;
-  seller_id?: number | null;
-  total: number;
-  created_at: string;
-  document_type?: string | null;
-  sale_mode?: string | null;
-  price_list?: number | null;
-  due_date?: string | null;
-  notes?: string | null;
-  payment_method?: string | null;
-};
-type InvoiceDetail = {
-  invoice: InvoiceListItem;
-  items: Array<{
-    product_id?: number | null;
-    quantity: number;
-    unit_price: number;
-  }>;
-};
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const normalizeSearchValue = (value: string) =>
@@ -49,26 +28,6 @@ const normalizeSearchValue = (value: string) =>
     .toLowerCase();
 const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
 const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const buildItemsFingerprint = (
-  items: Array<{ product_id?: number | null; quantity: number; unit_price: number }>
-) =>
-  items
-    .map((item) => ({
-      product_id: Number(item.product_id || 0),
-      quantity: Number(item.quantity || 0),
-      unit_price: roundMoney(Number(item.unit_price || 0)),
-    }))
-    .sort((left, right) =>
-      left.product_id - right.product_id ||
-      left.quantity - right.quantity ||
-      left.unit_price - right.unit_price
-    )
-    .map((item) => `${item.product_id}:${item.quantity}:${item.unit_price.toFixed(2)}`)
-    .join('|');
 
 export default function GenerarComprobantePage() {
   const router = useRouter();
@@ -282,64 +241,12 @@ export default function GenerarComprobantePage() {
         notes: form.notes || null,
         items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
       };
-      let res: Response;
-      try {
-        res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch (fetchError) {
-        const expectedTotal = roundMoney(
-          payload.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0)
-        );
-        const expectedItems = buildItemsFingerprint(payload.items);
-        const createdAtReference = Date.parse(payload.created_at || '') || Date.now();
-        for (let attempt = 0; attempt < 6; attempt += 1) {
-          if (attempt > 0) {
-            await sleep(1500);
-          }
-          const recoveryListRes = await fetch(
-            `${getApiBaseUrl()}/admin/invoices?limit=30&customer_id=${payload.customer_id}`,
-            { credentials: 'include' }
-          );
-          if (!recoveryListRes.ok) {
-            continue;
-          }
-          const recoveryInvoices = (await recoveryListRes.json()) as InvoiceListItem[];
-          const candidates = recoveryInvoices.filter((invoice) => {
-            const createdAtMs = Date.parse(invoice.created_at || '');
-            const createdAtDelta = Number.isNaN(createdAtMs) ? Infinity : Math.abs(createdAtMs - createdAtReference);
-            return (
-              Number(invoice.customer_id || 0) === payload.customer_id &&
-              Number(invoice.seller_id || 0) === payload.seller_id &&
-              String(invoice.document_type || '').toUpperCase() === payload.document_type &&
-              String(invoice.sale_mode || '').toUpperCase() === payload.sale_mode &&
-              Number(invoice.price_list || 0) === payload.price_list &&
-              String(invoice.payment_method || '') === String(payload.payment_method || '') &&
-              String(invoice.notes || '') === String(payload.notes || '') &&
-              roundMoney(Number(invoice.total || 0)) === expectedTotal &&
-              createdAtDelta <= 10 * 60 * 1000
-            );
-          });
-          for (const candidate of candidates.slice(0, 5)) {
-            const detailRes = await fetch(`${getApiBaseUrl()}/admin/invoices/${candidate.id}`, {
-              credentials: 'include',
-            });
-            if (!detailRes.ok) {
-              continue;
-            }
-            const detail = (await detailRes.json()) as InvoiceDetail;
-            const detailFingerprint = buildItemsFingerprint(detail.items);
-            if (detailFingerprint === expectedItems) {
-              router.push(`/admin/comprobantes?created=${candidate.id}`);
-              return;
-            }
-          }
-        }
-        throw fetchError;
-      }
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
       router.push(`/admin/comprobantes?created=${data.id}`);
