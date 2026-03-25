@@ -2537,8 +2537,8 @@ def admin_list_products(
             conditions.append("is_active = 1")
         
         if q:
-            conditions.append("(name LIKE ? OR sku LIKE ?)")
-            like = f"%{q}%"
+            conditions.append("(LOWER(COALESCE(name, '')) LIKE LOWER(?) OR LOWER(COALESCE(sku, '')) LIKE LOWER(?))")
+            like = f"%{q.strip()}%"
             params.extend([like, like])
 
         product_ids: list[int] = []
