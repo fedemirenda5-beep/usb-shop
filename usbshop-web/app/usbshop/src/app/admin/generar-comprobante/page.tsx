@@ -35,12 +35,11 @@ type BudgetDraft = {
   items: Array<{
     id: number;
     product_id?: number | null;
-    product_name?: string;
     quantity: number;
     unit_price: number;
   }>;
 };
-type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean; product_name?: string };
+type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const normalizeSearchValue = (value: string) =>
@@ -67,8 +66,6 @@ export default function GenerarComprobantePage() {
   const [customerOptions, setCustomerOptions] = useState<CustomerOption[]>([]);
   const [customerOptionsLoading, setCustomerOptionsLoading] = useState(false);
   const [productSearch, setProductSearch] = useState('');
-  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
-  const [productOptionsLoading, setProductOptionsLoading] = useState(false);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [form, setForm] = useState({
     order_id: '',
@@ -89,8 +86,12 @@ export default function GenerarComprobantePage() {
       try {
         setLoading(true);
         await loadRuntimeConfig();
-        const sellersRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' });
-        if (!sellersRes.ok) throw new Error('No se pudieron cargar las opciones');
+        const [productsRes, sellersRes] = await Promise.all([
+          fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' }),
+        ]);
+        if (!productsRes.ok || !sellersRes.ok) throw new Error('No se pudieron cargar las opciones');
+        setProducts(await productsRes.json());
         setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando formulario');
@@ -109,14 +110,6 @@ export default function GenerarComprobantePage() {
     });
   };
 
-  const mergeProducts = (nextProducts: ProductOption[]) => {
-    setProducts((current) => {
-      const map = new Map(current.map((product) => [product.id, product]));
-      nextProducts.forEach((product) => map.set(product.id, product));
-      return Array.from(map.values());
-    });
-  };
-
   const fetchCustomerOptions = async (query: string, limit = 20) => {
     await loadRuntimeConfig();
     const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?q=${encodeURIComponent(query)}&limit=${limit}`, { credentials: 'include' });
@@ -126,28 +119,8 @@ export default function GenerarComprobantePage() {
     return data;
   };
 
-  const fetchProductOptions = async (query: string, limit = 20) => {
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/products?q=${encodeURIComponent(query)}&limit=${limit}`, { credentials: 'include' });
-    if (!res.ok) throw new Error('No se pudieron cargar los productos');
-    const data = (await res.json()) as ProductOption[];
-    mergeProducts(data);
-    return data;
-  };
-
-  const fetchProductsByIds = async (ids: number[]) => {
-    const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)));
-    if (uniqueIds.length === 0) return [];
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/products?ids=${uniqueIds.join(',')}`, { credentials: 'include' });
-    if (!res.ok) throw new Error('No se pudieron cargar los productos del comprobante');
-    const data = (await res.json()) as ProductOption[];
-    mergeProducts(data);
-    return data;
-  };
-
   useEffect(() => {
-    if (!budgetInvoiceIdParam || sellers.length === 0) return;
+    if (!budgetInvoiceIdParam || products.length === 0 || sellers.length === 0) return;
     const prefillFromBudget = async () => {
       try {
         await loadRuntimeConfig();
@@ -174,11 +147,9 @@ export default function GenerarComprobantePage() {
                 quantity: String(item.quantity),
                 unit_price: String(item.unit_price),
                 manual_price: true,
-                product_name: item.product_name,
               }))
             : [],
         });
-        await fetchProductsByIds(draft.items.map((item) => Number(item.product_id || 0))).catch(() => []);
         setCustomerSearch(draft.invoice.customer_name || '');
         if (draft.invoice.customer_name) {
           const matches = await fetchCustomerOptions(draft.invoice.customer_name, 10).catch(() => []);
@@ -200,10 +171,10 @@ export default function GenerarComprobantePage() {
       }
     };
     void prefillFromBudget();
-  }, [budgetInvoiceIdParam, sellers]);
+  }, [budgetInvoiceIdParam, products, sellers]);
 
   useEffect(() => {
-    if (budgetInvoiceIdParam || !orderIdParam) return;
+    if (budgetInvoiceIdParam || !orderIdParam || products.length === 0) return;
     const prefill = async () => {
       try {
         await loadRuntimeConfig();
@@ -233,17 +204,16 @@ export default function GenerarComprobantePage() {
           due_date: '',
           notes: draft.notes || '',
           items: draft.items.length
-            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true, product_name: item.name || undefined }))
+            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
             : [],
         });
-        await fetchProductsByIds(draft.items.map((item) => Number(item.product_id || 0))).catch(() => []);
         setCustomerSearch(matchedCustomer?.name || draft.customer_name || '');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el pedido');
       }
     };
     void prefill();
-  }, [budgetInvoiceIdParam, orderIdParam]);
+  }, [budgetInvoiceIdParam, orderIdParam, products]);
 
   useEffect(() => {
     const needle = normalizeSearchValue(customerSearch);
@@ -272,33 +242,6 @@ export default function GenerarComprobantePage() {
     };
   }, [customerSearch]);
 
-  useEffect(() => {
-    const needle = productSearch.trim();
-    if (!needle) {
-      setProductOptions([]);
-      return;
-    }
-    let active = true;
-    const timer = window.setTimeout(async () => {
-      try {
-        setProductOptionsLoading(true);
-        const matches = await fetchProductOptions(needle, 20);
-        if (active) setProductOptions(matches);
-      } catch (err) {
-        if (active) {
-          setProductOptions([]);
-          setError(err instanceof Error ? err.message : 'Error cargando productos');
-        }
-      } finally {
-        if (active) setProductOptionsLoading(false);
-      }
-    }, 250);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [productSearch]);
-
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const sellerMap = useMemo(() => new Map(sellers.map((seller) => [seller.id, seller])), [sellers]);
@@ -306,7 +249,13 @@ export default function GenerarComprobantePage() {
   const normalizedCustomerSearch = normalizeSearchValue(customerSearch);
   const filteredCustomerOptions = useMemo(() => customerOptions, [customerOptions]);
   const showCustomerResults = normalizedCustomerSearch.length > 0;
-  const filteredProducts = useMemo(() => productOptions, [productOptions]);
+  const filteredProducts = useMemo(() => {
+    const needle = productSearch.trim().toLowerCase();
+    if (!needle) return [];
+    return products
+      .filter((product) => [product.name, product.sku, String(product.id)].join(' ').toLowerCase().includes(needle))
+      .slice(0, 12);
+  }, [productSearch, products]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formTotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
@@ -579,8 +528,6 @@ export default function GenerarComprobantePage() {
               <div className={styles.desktopPickerResults}>
                 {!productSearch.trim() ? (
                   <div className={styles.emptyCell}>Escribí para buscar productos y ver coincidencias.</div>
-                ) : productOptionsLoading ? (
-                  <div className={styles.emptyCell}>Buscando productos...</div>
                 ) : filteredProducts.length === 0 ? (
                   <div className={styles.emptyCell}>No hay productos que coincidan con la búsqueda.</div>
                 ) : (
@@ -651,7 +598,7 @@ export default function GenerarComprobantePage() {
                       return (
                         <tr key={`${item.product_id}-${index}`}>
                           <td>
-                            <strong>{selectedProduct?.name || item.product_name || `Producto #${item.product_id}`}</strong>
+                            <strong>{selectedProduct?.name || `Producto #${item.product_id}`}</strong>
                             <div className={styles.itemMeta}>
                               {selectedProduct ? `${selectedProduct.sku || 'Sin SKU'}${item.manual_price ? ' · precio manual' : ''}` : 'Producto no encontrado'}
                             </div>
