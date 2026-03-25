@@ -51,11 +51,6 @@ const normalizeSearchValue = (value: string) =>
     .toLowerCase();
 const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
 const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
-const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-const isAbortError = (error: unknown) =>
-  error instanceof DOMException
-    ? error.name === 'AbortError'
-    : error instanceof Error && error.name === 'AbortError';
 
 export default function GenerarComprobantePage() {
   const router = useRouter();
@@ -89,41 +84,14 @@ export default function GenerarComprobantePage() {
     items: [] as InvoiceFormItem[],
   });
 
-  const fetchAdminJson = async <T,>(path: string, init?: RequestInit, attempts = 3): Promise<T> => {
-    await loadRuntimeConfig();
-    let lastError: unknown;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        const response = await fetch(`${getApiBaseUrl()}${path}`, {
-          ...init,
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(init?.headers || {}),
-          },
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error((data as { detail?: string }).detail || 'No se pudo completar la solicitud');
-        }
-        return data as T;
-      } catch (error) {
-        if (isAbortError(error)) throw error;
-        lastError = error;
-        if (attempt < attempts - 1) {
-          await wait(250 * (attempt + 1));
-        }
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error('No se pudo conectar con la API');
-  };
-
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const sellersData = await fetchAdminJson<SellerOption[]>('/admin/sellers?limit=200');
-        setSellers(sellersData.filter((seller) => seller.is_active));
+        await loadRuntimeConfig();
+        const sellersRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' });
+        if (!sellersRes.ok) throw new Error('No se pudieron cargar las opciones');
+        setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando formulario');
       } finally {
@@ -150,13 +118,19 @@ export default function GenerarComprobantePage() {
   };
 
   const fetchCustomerOptions = async (query: string, limit = 20) => {
-    const data = await fetchAdminJson<CustomerOption[]>(`/admin/backoffice-customers?q=${encodeURIComponent(query)}&limit=${limit}`);
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?q=${encodeURIComponent(query)}&limit=${limit}`, { credentials: 'include' });
+    if (!res.ok) throw new Error('No se pudieron cargar los clientes');
+    const data = (await res.json()) as CustomerOption[];
     mergeCustomers(data);
     return data;
   };
 
   const fetchProductOptions = async (query: string, limit = 20) => {
-    const data = await fetchAdminJson<ProductOption[]>(`/admin/products?q=${encodeURIComponent(query)}&limit=${limit}`);
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/products?q=${encodeURIComponent(query)}&limit=${limit}`, { credentials: 'include' });
+    if (!res.ok) throw new Error('No se pudieron cargar los productos');
+    const data = (await res.json()) as ProductOption[];
     mergeProducts(data);
     return data;
   };
@@ -164,7 +138,10 @@ export default function GenerarComprobantePage() {
   const fetchProductsByIds = async (ids: number[]) => {
     const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isFinite(id) && id > 0)));
     if (uniqueIds.length === 0) return [];
-    const data = await fetchAdminJson<ProductOption[]>(`/admin/products?ids=${uniqueIds.join(',')}`);
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/products?ids=${uniqueIds.join(',')}`, { credentials: 'include' });
+    if (!res.ok) throw new Error('No se pudieron cargar los productos del comprobante');
+    const data = (await res.json()) as ProductOption[];
     mergeProducts(data);
     return data;
   };
@@ -173,7 +150,10 @@ export default function GenerarComprobantePage() {
     if (!budgetInvoiceIdParam || sellers.length === 0) return;
     const prefillFromBudget = async () => {
       try {
-        const draft = await fetchAdminJson<BudgetDraft>(`/admin/invoices/${budgetInvoiceIdParam}`);
+        await loadRuntimeConfig();
+        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${budgetInvoiceIdParam}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('No se pudo cargar el presupuesto');
+        const draft = (await res.json()) as BudgetDraft;
         const customerId = draft.invoice.customer_id ? String(draft.invoice.customer_id) : '';
         setForm({
           order_id: '',
@@ -226,7 +206,10 @@ export default function GenerarComprobantePage() {
     if (budgetInvoiceIdParam || !orderIdParam) return;
     const prefill = async () => {
       try {
-        const draft = await fetchAdminJson<OrderDraft>(`/admin/orders/${orderIdParam}`);
+        await loadRuntimeConfig();
+        const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderIdParam}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('No se pudo cargar el pedido');
+        const draft = (await res.json()) as OrderDraft;
         const normalizedDraftName = normalizeSearchValue(draft.customer_name || '');
         const normalizedDraftEmail = normalizeSearchValue(draft.customer_email || '');
         const normalizedDraftPhone = String(draft.customer_phone || '').trim();
@@ -279,19 +262,15 @@ export default function GenerarComprobantePage() {
       return;
     }
     let active = true;
-    const abortController = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         setCustomerOptionsLoading(true);
-        const matches = await fetchAdminJson<CustomerOption[]>(
-          `/admin/backoffice-customers?q=${encodeURIComponent(needle)}&limit=20`,
-          { signal: abortController.signal },
-        );
-        mergeCustomers(matches);
+        const matches = await fetchCustomerOptions(needle, 20);
         if (active) setCustomerOptions(matches);
       } catch (err) {
-        if (active && !isAbortError(err)) {
+        if (active) {
           setCustomerOptions([]);
+          setError(err instanceof Error ? err.message : 'Error cargando clientes');
         }
       } finally {
         if (active) setCustomerOptionsLoading(false);
@@ -299,7 +278,6 @@ export default function GenerarComprobantePage() {
     }, 120);
     return () => {
       active = false;
-      abortController.abort();
       window.clearTimeout(timer);
     };
   }, [customerSearch, form.customer_id, customers]);
@@ -311,19 +289,15 @@ export default function GenerarComprobantePage() {
       return;
     }
     let active = true;
-    const abortController = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         setProductOptionsLoading(true);
-        const matches = await fetchAdminJson<ProductOption[]>(
-          `/admin/products?q=${encodeURIComponent(needle)}&limit=20`,
-          { signal: abortController.signal },
-        );
-        mergeProducts(matches);
+        const matches = await fetchProductOptions(needle, 20);
         if (active) setProductOptions(matches);
       } catch (err) {
-        if (active && !isAbortError(err)) {
+        if (active) {
           setProductOptions([]);
+          setError(err instanceof Error ? err.message : 'Error cargando productos');
         }
       } finally {
         if (active) setProductOptionsLoading(false);
@@ -331,7 +305,6 @@ export default function GenerarComprobantePage() {
     }, 250);
     return () => {
       active = false;
-      abortController.abort();
       window.clearTimeout(timer);
     };
   }, [productSearch]);
@@ -434,6 +407,7 @@ export default function GenerarComprobantePage() {
     try {
       setCreating(true);
       setError('');
+      await loadRuntimeConfig();
       const payload = {
         order_id: form.order_id ? Number(form.order_id) : null,
         customer_id: Number(form.customer_id),
@@ -447,10 +421,14 @@ export default function GenerarComprobantePage() {
         notes: form.notes || null,
         items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
       };
-      const data = await fetchAdminJson<{ id: number }>('/admin/invoices', {
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
         method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
       router.push(`/admin/comprobantes?created=${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error creando comprobante');
