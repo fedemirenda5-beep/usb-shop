@@ -5,7 +5,7 @@ const DEFAULT_API_BASE_URL = (() => {
       return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
     }
     if (host && host !== "localhost" && host !== "127.0.0.1") {
-      return process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.usbshop.com.ar";
+      return "https://usbshop-api.onrender.com";
     }
   }
   return process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
@@ -45,11 +45,7 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     if (!response.ok) {
       return null;
     }
-    const data = (await response.json()) as {
-      apiBaseUrl?: string;
-      orderSecret?: string;
-      allowAbsoluteApiBaseUrlOnLocalhost?: boolean;
-    };
+    const data = (await response.json()) as { apiBaseUrl?: string; orderSecret?: string };
     if (!data || typeof data.apiBaseUrl !== "string") {
       return null;
     }
@@ -57,13 +53,7 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     if (!apiBaseUrl) {
       return null;
     }
-    const isLocalHost = host === "localhost" || host === "127.0.0.1";
-    const isAbsoluteApiBaseUrl = /^https?:\/\//i.test(apiBaseUrl);
-    if (
-      isLocalHost &&
-      isAbsoluteApiBaseUrl &&
-      !data.allowAbsoluteApiBaseUrlOnLocalhost
-    ) {
+    if ((host === "localhost" || host === "127.0.0.1") && /^https?:\/\//i.test(apiBaseUrl)) {
       runtimeConfigLoaded = true;
       return runtimeApiBaseUrl;
     }
