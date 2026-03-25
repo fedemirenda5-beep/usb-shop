@@ -94,6 +94,32 @@ export default function ComprobantesPage() {
   const [pendingConfirmInvoice, setPendingConfirmInvoice] = useState<Invoice | null>(null);
   const detailRequestRef = useRef(0);
 
+  const syncInvoiceRow = (invoice: InvoiceDetail['invoice']) => {
+    setItems((current) =>
+      current.map((item) =>
+        item.id === invoice.id
+          ? {
+              ...item,
+              customer_id: invoice.customer_id,
+              customer_name: invoice.customer_name,
+              seller_id: invoice.seller_id,
+              seller_name: invoice.seller_name,
+              total: invoice.total,
+              created_at: invoice.created_at,
+              document_type: invoice.document_type,
+              sale_mode: invoice.sale_mode,
+              price_list: invoice.price_list,
+              due_date: invoice.due_date,
+              notes: invoice.notes,
+              payment_method: invoice.payment_method,
+              commission_amount: invoice.commission_amount,
+              web_order_id: invoice.web_order_id,
+            }
+          : item
+      )
+    );
+  };
+
   async function loadDetail(invoiceId: number) {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
@@ -107,6 +133,7 @@ export default function ComprobantesPage() {
       const payload = await res.json();
       if (detailRequestRef.current !== requestId) return null;
       setDetail(payload);
+      syncInvoiceRow((payload as InvoiceDetail).invoice);
       return payload as InvoiceDetail;
     } catch (err) {
       if (detailRequestRef.current !== requestId) return null;
