@@ -66,7 +66,6 @@ const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v8";
 const FEATURED_CACHE_KEY = "usbshop_featured_cache_v8";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
-const UI_HISTORY_KEY = "usbshop_ui";
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
 const normalizeLabel = (value: string | null | undefined) =>
@@ -209,22 +208,6 @@ const getProductPlaceholderLabel = (value?: string | null) => {
     .join("");
 };
 
-const readUiHistoryState = (state: unknown) => {
-  if (!state || typeof state !== "object") {
-    return { cartOpen: false, quickViewId: null as number | null };
-  }
-  const raw = (state as Record<string, unknown>)[UI_HISTORY_KEY];
-  if (!raw || typeof raw !== "object") {
-    return { cartOpen: false, quickViewId: null as number | null };
-  }
-  const cartOpen = Boolean((raw as Record<string, unknown>).cartOpen);
-  const quickViewIdValue = Number((raw as Record<string, unknown>).quickViewId);
-  return {
-    cartOpen,
-    quickViewId: Number.isFinite(quickViewIdValue) && quickViewIdValue > 0 ? quickViewIdValue : null,
-  };
-};
-
 export default function HomeClient({
   initialProducts,
   initialFeatured,
@@ -331,19 +314,7 @@ export default function HomeClient({
   };
 
   const handleCloseQuickView = () => {
-    if (typeof window !== "undefined" && readUiHistoryState(window.history.state).quickViewId) {
-      window.history.back();
-      return;
-    }
     setQuickView(null);
-  };
-
-  const handleCloseCart = () => {
-    if (typeof window !== "undefined" && readUiHistoryState(window.history.state).cartOpen) {
-      window.history.back();
-      return;
-    }
-    setIsCartOpen(false);
   };
 
   const showPreviousQuickViewImage = () => {
@@ -655,7 +626,7 @@ export default function HomeClient({
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        handleCloseQuickView();
+        setQuickView(null);
       }
     };
     const previousOverflow = document.body.style.overflow;
@@ -666,34 +637,6 @@ export default function HomeClient({
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [quickView]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const nextUiState = {
-      cartOpen: isCartOpen,
-      quickViewId: quickView?.id ?? null,
-    };
-    if (!nextUiState.cartOpen && !nextUiState.quickViewId) {
-      return;
-    }
-    const currentUiState = readUiHistoryState(window.history.state);
-    if (
-      currentUiState.cartOpen === nextUiState.cartOpen &&
-      currentUiState.quickViewId === nextUiState.quickViewId
-    ) {
-      return;
-    }
-    window.history.pushState(
-      {
-        ...(window.history.state && typeof window.history.state === "object" ? window.history.state : {}),
-        [UI_HISTORY_KEY]: nextUiState,
-      },
-      "",
-      window.location.href
-    );
-  }, [isCartOpen, quickView?.id]);
 
   const cartItems = useMemo(() => Object.values(cart), [cart]);
   const totalItems = cartItems.reduce((sum, item) => sum + item.qty, 0);
@@ -764,24 +707,6 @@ export default function HomeClient({
     }
     return products.slice(0, 12);
   }, [featured, products]);
-  const productsById = useMemo(() => {
-    const all = [...products, ...featuredSource];
-    return new Map(all.map((product) => [product.id, product]));
-  }, [products, featuredSource]);
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const handlePopState = (event: PopStateEvent) => {
-      const nextUiState = readUiHistoryState(event.state);
-      setIsCartOpen(nextUiState.cartOpen);
-      setQuickView(nextUiState.quickViewId ? productsById.get(nextUiState.quickViewId) ?? null : null);
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => {
-      window.removeEventListener("popstate", handlePopState);
-    };
-  }, [productsById]);
 
   const searchTokens = useMemo(() => {
     return searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -1479,13 +1404,7 @@ export default function HomeClient({
                 <button
                   type="button"
                   className="button button--ghost cart-toggle"
-                  onClick={() => {
-                    if (isCartOpen) {
-                      handleCloseCart();
-                      return;
-                    }
-                    handleOpenCart();
-                  }}
+                  onClick={() => setIsCartOpen((prev) => !prev)}
                 >
                   {isCartOpen ? "Ocultar carrito" : "Ver carrito"}
                 </button>

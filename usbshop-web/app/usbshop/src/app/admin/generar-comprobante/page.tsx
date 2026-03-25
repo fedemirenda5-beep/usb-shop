@@ -17,28 +17,6 @@ type OrderDraft = {
   notes?: string | null;
   items: Array<{ product_id: number; sku?: string | null; name?: string | null; quantity: number; unit_price: number }>;
 };
-type BudgetDraft = {
-  invoice: {
-    id: number;
-    customer_id?: number | null;
-    customer_name: string;
-    seller_id?: number | null;
-    total: number;
-    created_at: string;
-    document_type?: string | null;
-    sale_mode?: string | null;
-    price_list?: number | null;
-    due_date?: string | null;
-    notes?: string | null;
-    payment_method?: string | null;
-  };
-  items: Array<{
-    id: number;
-    product_id?: number | null;
-    quantity: number;
-    unit_price: number;
-  }>;
-};
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
@@ -55,7 +33,6 @@ export default function GenerarComprobantePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderIdParam = Number(searchParams?.get('order_id') || 0);
-  const budgetInvoiceIdParam = Number(searchParams?.get('budget_invoice_id') || 0);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
@@ -103,47 +80,7 @@ export default function GenerarComprobantePage() {
   }, []);
 
   useEffect(() => {
-    if (!budgetInvoiceIdParam || customers.length === 0 || products.length === 0 || sellers.length === 0) return;
-    const prefillFromBudget = async () => {
-      try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${budgetInvoiceIdParam}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('No se pudo cargar el presupuesto');
-        const draft = (await res.json()) as BudgetDraft;
-        const customerId = draft.invoice.customer_id ? String(draft.invoice.customer_id) : '';
-        const matchedCustomer = customerId ? customers.find((customer) => customer.id === Number(customerId)) || null : null;
-        setForm({
-          order_id: '',
-          customer_id: customerId,
-          document_type: 'FACTURA',
-          sale_mode: draft.invoice.sale_mode || matchedCustomer?.sale_mode || 'CONTADO',
-          seller_id: draft.invoice.seller_id ? String(draft.invoice.seller_id) : '',
-          price_list: String(draft.invoice.price_list || 0),
-          payment_method: draft.invoice.payment_method || 'EFECTIVO',
-          created_at: nowInputValue(),
-          due_date: draft.invoice.due_date || '',
-          notes: draft.invoice.notes || '',
-          items: draft.items.length
-            ? draft.items
-              .filter((item) => item.product_id)
-              .map((item) => ({
-                product_id: String(item.product_id),
-                quantity: String(item.quantity),
-                unit_price: String(item.unit_price),
-                manual_price: true,
-              }))
-            : [],
-        });
-        setCustomerSearch(matchedCustomer?.name || draft.invoice.customer_name || '');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando el presupuesto');
-      }
-    };
-    void prefillFromBudget();
-  }, [budgetInvoiceIdParam, customers, products, sellers]);
-
-  useEffect(() => {
-    if (budgetInvoiceIdParam || !orderIdParam || customers.length === 0 || products.length === 0) return;
+    if (!orderIdParam || customers.length === 0 || products.length === 0) return;
     const prefill = async () => {
       try {
         await loadRuntimeConfig();
@@ -180,7 +117,7 @@ export default function GenerarComprobantePage() {
       }
     };
     void prefill();
-  }, [budgetInvoiceIdParam, orderIdParam, customers, products]);
+  }, [orderIdParam, customers, products]);
 
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -337,8 +274,7 @@ export default function GenerarComprobantePage() {
               <h2>Emitir comprobante real</h2>
               <p>{documentBehavior}</p>
               <p className={styles.modelNote}>Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comisión.</p>
-              {budgetInvoiceIdParam ? <p className={styles.orderDraftInfo}>Presupuesto #{budgetInvoiceIdParam} cargado como borrador editable para facturar.</p> : null}
-              {!budgetInvoiceIdParam && form.order_id ? <p className={styles.orderDraftInfo}>Pedido web #{form.order_id} cargado como borrador editable.</p> : null}
+              {form.order_id ? <p className={styles.orderDraftInfo}>Pedido web #{form.order_id} cargado como borrador editable.</p> : null}
             </div>
           </div>
           <form onSubmit={submitInvoice} className={styles.createForm}>
@@ -491,7 +427,7 @@ export default function GenerarComprobantePage() {
                               type="number"
                               min="1"
                               step="1"
-                              value={searchQuantities[product.id] ?? '1'}
+                              value={searchQuantities[product.id] || '1'}
                               onChange={(event) => updateSearchQuantity(product.id, event.target.value)}
                             />
                           </label>
