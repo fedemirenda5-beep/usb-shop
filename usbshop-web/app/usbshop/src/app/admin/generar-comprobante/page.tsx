@@ -70,6 +70,20 @@ const buildItemsFingerprint = (
     .map((item) => `${item.product_id}:${item.quantity}:${item.unit_price.toFixed(2)}`)
     .join('|');
 
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number) => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
 export default function GenerarComprobantePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -282,15 +296,7 @@ export default function GenerarComprobantePage() {
         notes: form.notes || null,
         items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
       };
-      let res: Response;
-      try {
-        res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } catch (fetchError) {
+      const recoverCreatedInvoice = async () => {
         const expectedTotal = roundMoney(
           payload.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0)
         );
@@ -300,48 +306,75 @@ export default function GenerarComprobantePage() {
           if (attempt > 0) {
             await sleep(1500);
           }
-          const recoveryListRes = await fetch(
-            `${getApiBaseUrl()}/admin/invoices?limit=30&customer_id=${payload.customer_id}`,
-            { credentials: 'include' }
-          );
-          if (!recoveryListRes.ok) {
-            continue;
-          }
-          const recoveryInvoices = (await recoveryListRes.json()) as InvoiceListItem[];
-          const candidates = recoveryInvoices.filter((invoice) => {
-            const createdAtMs = Date.parse(invoice.created_at || '');
-            const createdAtDelta = Number.isNaN(createdAtMs) ? Infinity : Math.abs(createdAtMs - createdAtReference);
-            return (
-              Number(invoice.customer_id || 0) === payload.customer_id &&
-              Number(invoice.seller_id || 0) === payload.seller_id &&
-              String(invoice.document_type || '').toUpperCase() === payload.document_type &&
-              String(invoice.sale_mode || '').toUpperCase() === payload.sale_mode &&
-              Number(invoice.price_list || 0) === payload.price_list &&
-              String(invoice.payment_method || '') === String(payload.payment_method || '') &&
-              String(invoice.notes || '') === String(payload.notes || '') &&
-              roundMoney(Number(invoice.total || 0)) === expectedTotal &&
-              createdAtDelta <= 10 * 60 * 1000
-            );
-          });
-          for (const candidate of candidates.slice(0, 5)) {
-            const detailRes = await fetch(`${getApiBaseUrl()}/admin/invoices/${candidate.id}`, {
-              credentials: 'include',
-            });
-            if (!detailRes.ok) {
+          const listEndpoints = [
+            `${getApiBaseUrl()}/admin/invoices?limit=50&customer_id=${payload.customer_id}`,
+            `${getApiBaseUrl()}/admin/invoices?limit=100`,
+          ];
+          for (const listEndpoint of listEndpoints) {
+            const recoveryListRes = await fetch(listEndpoint, { credentials: 'include' });
+            if (!recoveryListRes.ok) {
               continue;
             }
-            const detail = (await detailRes.json()) as InvoiceDetail;
-            const detailFingerprint = buildItemsFingerprint(detail.items);
-            if (detailFingerprint === expectedItems) {
-              router.push(`/admin/comprobantes?created=${candidate.id}`);
-              return;
+            const recoveryInvoices = (await recoveryListRes.json()) as InvoiceListItem[];
+            const candidates = recoveryInvoices.filter((invoice) => {
+              const createdAtMs = Date.parse(invoice.created_at || '');
+              const createdAtDelta = Number.isNaN(createdAtMs) ? Infinity : Math.abs(createdAtMs - createdAtReference);
+              return (
+                Number(invoice.customer_id || 0) === payload.customer_id &&
+                Number(invoice.seller_id || 0) === payload.seller_id &&
+                String(invoice.document_type || '').toUpperCase() === payload.document_type &&
+                String(invoice.sale_mode || '').toUpperCase() === payload.sale_mode &&
+                Number(invoice.price_list || 0) === payload.price_list &&
+                String(invoice.payment_method || '') === String(payload.payment_method || '') &&
+                String(invoice.notes || '') === String(payload.notes || '') &&
+                roundMoney(Number(invoice.total || 0)) === expectedTotal &&
+                createdAtDelta <= 10 * 60 * 1000
+              );
+            });
+            for (const candidate of candidates.slice(0, 10)) {
+              const detailRes = await fetch(`${getApiBaseUrl()}/admin/invoices/${candidate.id}`, {
+                credentials: 'include',
+              });
+              if (!detailRes.ok) {
+                continue;
+              }
+              const detail = (await detailRes.json()) as InvoiceDetail;
+              const detailFingerprint = buildItemsFingerprint(detail.items);
+              if (detailFingerprint === expectedItems) {
+                router.push(`/admin/comprobantes?created=${candidate.id}`);
+                return true;
+              }
             }
           }
+        }
+        return false;
+      };
+
+      let res: Response;
+      try {
+        res = await withTimeout(
+          fetch(`${getApiBaseUrl()}/admin/invoices`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }),
+          12000
+        );
+      } catch (fetchError) {
+        if (await recoverCreatedInvoice()) {
+          return;
         }
         throw fetchError;
       }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
+      if (!data || typeof data.id !== 'number') {
+        if (await recoverCreatedInvoice()) {
+          return;
+        }
+        throw new Error('No se pudo validar el comprobante creado');
+      }
       router.push(`/admin/comprobantes?created=${data.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error creando comprobante');
