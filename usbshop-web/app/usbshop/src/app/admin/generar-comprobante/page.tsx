@@ -17,25 +17,6 @@ type OrderDraft = {
   notes?: string | null;
   items: Array<{ product_id: number; sku?: string | null; name?: string | null; quantity: number; unit_price: number }>;
 };
-type BudgetDraft = {
-  invoice: {
-    id: number;
-    customer_id?: number | null;
-    customer_name: string;
-    seller_id?: number | null;
-    document_type?: string | null;
-    sale_mode?: string | null;
-    price_list?: number | null;
-    due_date?: string | null;
-    notes?: string | null;
-    payment_method?: string | null;
-  };
-  items: Array<{
-    product_id?: number | null;
-    quantity: number;
-    unit_price: number;
-  }>;
-};
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
 type InvoiceListItem = {
   id: number;
@@ -68,7 +49,6 @@ const normalizeSearchValue = (value: string) =>
     .toLowerCase();
 const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
 const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
-const toDateInputValue = (value?: string | null) => (value ? String(value).slice(0, 10) : '');
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -108,7 +88,6 @@ export default function GenerarComprobantePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderIdParam = Number(searchParams?.get('order_id') || 0);
-  const budgetInvoiceIdParam = Number(searchParams?.get('budget_invoice_id') || 0);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
@@ -156,7 +135,7 @@ export default function GenerarComprobantePage() {
   }, []);
 
   useEffect(() => {
-    if (!orderIdParam || budgetInvoiceIdParam || customers.length === 0 || products.length === 0) return;
+    if (!orderIdParam || customers.length === 0 || products.length === 0) return;
     const prefill = async () => {
       try {
         await loadRuntimeConfig();
@@ -193,45 +172,7 @@ export default function GenerarComprobantePage() {
       }
     };
     void prefill();
-  }, [orderIdParam, budgetInvoiceIdParam, customers, products]);
-
-  useEffect(() => {
-    if (!budgetInvoiceIdParam || customers.length === 0 || products.length === 0) return;
-    const prefillBudget = async () => {
-      try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${budgetInvoiceIdParam}`, { credentials: 'include' });
-        if (!res.ok) throw new Error('No se pudo cargar el presupuesto');
-        const draft = (await res.json()) as BudgetDraft;
-        const invoice = draft.invoice;
-        if (String(invoice.document_type || '').toUpperCase() !== 'PRESUPUESTO') {
-          throw new Error('El comprobante seleccionado no es un presupuesto');
-        }
-        setForm({
-          order_id: '',
-          customer_id: invoice.customer_id ? String(invoice.customer_id) : '',
-          document_type: 'FACTURA',
-          sale_mode: invoice.sale_mode || 'CONTADO',
-          seller_id: invoice.seller_id ? String(invoice.seller_id) : '',
-          price_list: String(invoice.price_list ?? 0),
-          payment_method: invoice.payment_method || 'EFECTIVO',
-          created_at: nowInputValue(),
-          due_date: toDateInputValue(invoice.due_date),
-          notes: invoice.notes || '',
-          items: draft.items.map((item) => ({
-            product_id: String(item.product_id || ''),
-            quantity: String(item.quantity),
-            unit_price: String(item.unit_price),
-            manual_price: true,
-          })),
-        });
-        setCustomerSearch(invoice.customer_name || '');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando el presupuesto');
-      }
-    };
-    void prefillBudget();
-  }, [budgetInvoiceIdParam, customers, products]);
+  }, [orderIdParam, customers, products]);
 
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -460,7 +401,6 @@ export default function GenerarComprobantePage() {
               <p>{documentBehavior}</p>
               <p className={styles.modelNote}>Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comisión.</p>
               {form.order_id ? <p className={styles.orderDraftInfo}>Pedido web #{form.order_id} cargado como borrador editable.</p> : null}
-              {budgetInvoiceIdParam ? <p className={styles.orderDraftInfo}>Presupuesto #{budgetInvoiceIdParam} cargado como borrador editable de factura.</p> : null}
             </div>
           </div>
           <form onSubmit={submitInvoice} className={styles.createForm}>
