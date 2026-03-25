@@ -246,7 +246,7 @@ export default function GenerarComprobantePage() {
   }, [budgetInvoiceIdParam, orderIdParam]);
 
   useEffect(() => {
-    const needle = normalizeSearchValue(customerSearch);
+    const needle = customerSearch.trim();
     if (!needle) {
       setCustomerOptions([]);
       return;
@@ -265,7 +265,7 @@ export default function GenerarComprobantePage() {
       } finally {
         if (active) setCustomerOptionsLoading(false);
       }
-    }, 250);
+    }, 120);
     return () => {
       active = false;
       window.clearTimeout(timer);
