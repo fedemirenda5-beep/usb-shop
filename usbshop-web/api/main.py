@@ -4094,7 +4094,25 @@ def admin_create_invoice(
         sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
         commission_percent = float(seller["commission_percent"] or 0)
         commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
+        if DB_IS_POSTGRES:
+            # Serialize manual external_ref generation to avoid duplicate values
+            # when multiple invoice creations hit the API at the same time.
+            conn.execute("LOCK TABLE invoices IN EXCLUSIVE MODE")
         external_ref_row = conn.execute(
+            """
+            SELECT external_ref
+            FROM invoices
+            WHERE external_ref IS NOT NULL AND TRIM(external_ref) <> ''
+            ORDER BY
+                CASE
+                    WHEN TRIM(external_ref) ~ '^[0-9]+$' THEN CAST(TRIM(external_ref) AS BIGINT)
+                    ELSE 0
+                END DESC,
+                id DESC
+            LIMIT 1
+            """
+            if DB_IS_POSTGRES
+            else
             """
             SELECT external_ref
             FROM invoices
