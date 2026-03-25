@@ -40,6 +40,14 @@ type BudgetDraft = {
   }>;
 };
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
+type InvoiceLookup = {
+  id: number;
+  customer_id?: number | null;
+  total: number;
+  created_at: string;
+  document_type?: string | null;
+  seller_id?: number | null;
+};
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const normalizeSearchValue = (value: string) =>
@@ -285,8 +293,41 @@ export default function GenerarComprobantePage() {
     }));
   };
 
+  const recoverCreatedInvoice = async (payload: {
+    customer_id: number;
+    seller_id: number;
+    document_type: string;
+    created_at: string | null;
+    total: number;
+  }) => {
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=50`, {
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as InvoiceLookup[];
+    const expectedCreatedAt = payload.created_at ? Date.parse(payload.created_at) : NaN;
+    const match = data.find((item) => {
+      const sameCustomer = Number(item.customer_id || 0) === payload.customer_id;
+      const sameSeller = Number(item.seller_id || 0) === payload.seller_id;
+      const sameType = String(item.document_type || '').toUpperCase() === payload.document_type;
+      const sameTotal = Math.abs(Number(item.total || 0) - payload.total) < 0.01;
+      if (!sameCustomer || !sameSeller || !sameType || !sameTotal) return false;
+      if (!Number.isFinite(expectedCreatedAt)) return true;
+      const itemCreatedAt = Date.parse(item.created_at || '');
+      if (!Number.isFinite(itemCreatedAt)) return false;
+      return Math.abs(itemCreatedAt - expectedCreatedAt) <= 10 * 60 * 1000;
+    });
+    return match?.id || null;
+  };
+
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
+    const createdAtIso = formatInputDateTime(form.created_at);
+    const expectedTotal = form.items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0),
+      0,
+    );
     try {
       setCreating(true);
       setError('');
@@ -299,7 +340,7 @@ export default function GenerarComprobantePage() {
         seller_id: Number(form.seller_id),
         price_list: Number(form.price_list || 0),
         payment_method: form.payment_method || null,
-        created_at: formatInputDateTime(form.created_at),
+        created_at: createdAtIso,
         due_date: form.due_date || null,
         notes: form.notes || null,
         items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
@@ -314,7 +355,30 @@ export default function GenerarComprobantePage() {
       if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
       router.push(`/admin/comprobantes?created=${data.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error creando comprobante');
+      const message = err instanceof Error ? err.message : 'Error creando comprobante';
+      const isNetworkFailure =
+        message === 'Failed to fetch' ||
+        message.includes('fetch') ||
+        message.includes('NetworkError') ||
+        message.includes('Load failed');
+      if (isNetworkFailure) {
+        try {
+          const recoveredId = await recoverCreatedInvoice({
+            customer_id: Number(form.customer_id),
+            seller_id: Number(form.seller_id),
+            document_type: form.document_type,
+            created_at: createdAtIso,
+            total: expectedTotal,
+          });
+          if (recoveredId) {
+            router.push(`/admin/comprobantes?created=${recoveredId}`);
+            return;
+          }
+        } catch {
+          // Keep the original error below if recovery cannot confirm creation.
+        }
+      }
+      setError(message);
     } finally {
       setCreating(false);
     }
