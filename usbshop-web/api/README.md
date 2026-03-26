@@ -12,7 +12,7 @@ API local para leer stock y precios desde la base de datos de ControlStock.
 - Variable opcional `CONTROLSTOCK_SOURCE_DB` para sincronizar desde la base principal.
 - Default: `C:\Users\Fede\ControlStock\documentos\controlStock.db`
 - Variable opcional `USB_ALLOWED_ORIGINS` (separadas por coma) para CORS.
-- Default: `http://localhost:3000,http://127.0.0.1:3000`
+- Default: `http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080`
 - Variable opcional `USB_ALLOWED_ORIGIN_REGEX` para aceptar variantes del dominio via regex.
 - Default: `^https://([a-z0-9-]+\.)*usbshop\.com\.ar$`
 - Variable opcional `USB_AUTO_SYNC` (0/1) para sincronizar automaticamente la DB local con la principal.

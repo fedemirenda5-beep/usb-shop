@@ -125,6 +125,7 @@ export default function ProductosPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [onlyOutOfStock, setOnlyOutOfStock] = useState(false);
   const [page, setPage] = useState(1);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState('');
@@ -201,6 +202,9 @@ export default function ProductosPage() {
       if (categoryFilter && String(product.category_id || '') !== categoryFilter) {
         return false;
       }
+      if (onlyOutOfStock && Number(product.stock || 0) > 0) {
+        return false;
+      }
       if (tokens.length === 0) {
         return true;
       }
@@ -209,7 +213,7 @@ export default function ProductosPage() {
       );
       return tokens.every((token) => haystack.includes(token));
     });
-  }, [products, search, categoryFilter]);
+  }, [products, search, categoryFilter, onlyOutOfStock]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
 
@@ -236,19 +240,23 @@ export default function ProductosPage() {
     setEditProduct(product);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Eliminar este producto?')) return;
+  const handleDelete = async (product: Product) => {
+    const confirmMessage =
+      product.stock <= 0
+        ? `Eliminar "${product.name}" de la lista? Tiene stock 0 y dejara de mostrarse en Productos.`
+        : `Eliminar "${product.name}" de la lista?`;
+    if (!confirm(confirmMessage)) return;
 
     try {
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/products/${id}`, {
+      const res = await fetch(`${getApiBaseUrl()}/admin/products/${product.id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
 
       if (!res.ok) throw new Error('No se pudo eliminar');
 
-      setProducts((current) => current.filter((product) => product.id !== id));
+      setProducts((current) => current.filter((item) => item.id !== product.id));
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error eliminando producto');
     }
@@ -569,6 +577,17 @@ export default function ProductosPage() {
             </option>
           ))}
         </select>
+        <label className={styles.stockToggle}>
+          <input
+            type="checkbox"
+            checked={onlyOutOfStock}
+            onChange={(e) => {
+              setOnlyOutOfStock(e.target.checked);
+              setPage(1);
+            }}
+          />
+          <span>Solo stock 0</span>
+        </label>
       </div>
 
       <div className={styles.pagination}>
@@ -660,10 +679,10 @@ export default function ProductosPage() {
                         className={styles.btnDelete}
                         onClick={(event) => {
                           event.stopPropagation();
-                          void handleDelete(product.id);
+                          void handleDelete(product);
                         }}
                       >
-                        Eliminar
+                        {product.stock <= 0 ? 'Eliminar agotado' : 'Eliminar'}
                       </button>
                     </td>
                   </tr>

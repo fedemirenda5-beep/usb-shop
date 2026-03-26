@@ -168,7 +168,7 @@ export default function ProductCard({
           observer.disconnect();
         }
       },
-      { rootMargin: "280px 0px" }
+      { rootMargin: "720px 0px" }
     );
     observer.observe(node);
     return () => observer.disconnect();

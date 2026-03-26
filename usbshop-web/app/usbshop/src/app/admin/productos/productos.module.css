@@ -98,6 +98,23 @@
   flex-wrap: wrap;
 }
 
+.stockToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.stockToggle input {
+  accent-color: var(--lime);
+}
+
 .searchInput {
   flex: 1;
   max-width: 400px;
@@ -197,6 +214,12 @@
 .table td:nth-child(4) {
   width: 96px;
   max-width: 96px;
+}
+
+.table th:last-child,
+.table td:last-child {
+  width: 1%;
+  white-space: nowrap;
 }
 
 .clickableRow {
@@ -310,27 +333,35 @@
 .actions {
   display: flex;
   gap: 8px;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 
 .btnEdit,
 .btnDelete {
-  background: none;
-  border: none;
+  background: #f8fafc;
+  border: 1px solid var(--bg-soft);
+  border-radius: 8px;
   cursor: pointer;
-  font-size: 16px;
-  padding: 4px 8px;
-  transition: transform 0.2s ease;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
   text-decoration: none;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
 .btnEdit:hover,
 .btnDelete:hover {
-  transform: scale(1.2);
+  transform: translateY(-1px);
+  border-color: var(--lime);
 }
 
 .btnDelete {
   color: #dc2626;
+  background: #fff5f5;
 }
 
 /* Loading / Empty */

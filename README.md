@@ -12,6 +12,14 @@ Puntos base:
 
 Aplicación de escritorio para la gestión de inventario, clientes, vendedores, ventas y cuentas corrientes.
 
+## Windows 7
+
+Para usar la web en una PC con Windows 7, exportala como sitio estatico y servila localmente sin Node.
+
+Guia:
+
+- [WINDOWS7_EXPORT.md](./WINDOWS7_EXPORT.md)
+
 ## Requisitos
 
 - Python 3.11+

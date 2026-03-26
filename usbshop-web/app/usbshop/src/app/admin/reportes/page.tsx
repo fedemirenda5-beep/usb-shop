@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { getArgentinaNowDateInput } from '@/lib/datetime';
 import styles from './reportes.module.css';
 
 type Summary = {
@@ -55,7 +56,7 @@ const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
 const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
-const todayInput = () => new Date().toISOString().slice(0, 10);
+const todayInput = () => getArgentinaNowDateInput();
 
 const buildLinePath = (points: number[], width: number, height: number) => {
   if (points.length === 0) return '';
@@ -81,18 +82,30 @@ export default function ReportesPage() {
   const [dailyDate, setDailyDate] = useState(todayInput());
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
   const [error, setError] = useState('');
+  const [loadingDaily, setLoadingDaily] = useState(true);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
       try {
+        if (active) {
+          setLoadingDaily(true);
+          setError('');
+        }
         await loadRuntimeConfig();
         const [overviewRes, dailyRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/reports/overview`, { credentials: 'include' }),
-          fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/reports/overview`, { credentials: 'include', cache: 'no-store' }),
+          fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, {
+            credentials: 'include',
+            cache: 'no-store',
+          }),
         ]);
         if (!overviewRes.ok || !dailyRes.ok) throw new Error('No se pudieron cargar los reportes');
         const data = await overviewRes.json();
         const dailyData = await dailyRes.json();
+        if (!active) return;
         setSummary(data.summary);
         setMonthly(data.monthly_sales || []);
         setTopProducts(data.top_products || []);
@@ -103,11 +116,42 @@ export default function ReportesPage() {
         setYearProjection(data.year_projection || null);
         setDailyReport(dailyData || null);
       } catch (err) {
+        if (!active) return;
         setError(err instanceof Error ? err.message : 'Error cargando reportes');
+      } finally {
+        if (active) {
+          setLoadingDaily(false);
+        }
       }
     };
+
     load();
-  }, [dailyDate]);
+
+    return () => {
+      active = false;
+    };
+  }, [dailyDate, refreshTick]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setRefreshTick((current) => current + 1);
+    }, 30_000);
+
+    const refreshOnFocus = () => {
+      if (document.visibilityState === 'visible') {
+        setRefreshTick((current) => current + 1);
+      }
+    };
+
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+    };
+  }, []);
 
   const maxMonthly = useMemo(() => Math.max(1, ...monthly.map((item) => item.sales || 0)), [monthly]);
   const monthlyPath = useMemo(
@@ -147,10 +191,19 @@ export default function ReportesPage() {
               <h2>Reporte diario</h2>
               <p>Venta y ganancia del día con selección de fecha.</p>
             </div>
-            <label className={styles.dateFilter}>
-              <span>Ver día</span>
-              <input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />
-            </label>
+            <div className={styles.dailyActions}>
+              <label className={styles.dateFilter}>
+                <span>Ver día</span>
+                <input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />
+              </label>
+              <button
+                type="button"
+                className={styles.refreshButton}
+                onClick={() => setRefreshTick((current) => current + 1)}
+              >
+                Actualizar
+              </button>
+            </div>
           </div>
           {dailyReport ? (
             <>
@@ -197,7 +250,7 @@ export default function ReportesPage() {
               </div>
             </>
           ) : (
-            <div className={styles.empty}>Cargando reporte diario...</div>
+            <div className={styles.empty}>{loadingDaily ? 'Cargando reporte diario...' : 'No se pudo cargar el reporte diario.'}</div>
           )}
         </article>
 
