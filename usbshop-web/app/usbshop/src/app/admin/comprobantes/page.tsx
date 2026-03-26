@@ -453,24 +453,27 @@ export default function ComprobantesPage() {
                   </div>
 
                   <div className={styles.desktopPanel}>
-                    <div className={styles.sectionTitle}>Datos del cliente</div>
-                    <div className={styles.customerBlock}>
-                      <strong>{detail.invoice.customer_name}</strong>
-                      <span>{detail.invoice.address || detail.invoice.locality || 'Sin domicilio registrado'}</span>
-                      <span>{detail.invoice.customer_phone || detail.invoice.customer_email || 'Sin contacto registrado'}</span>
-                      <span>{detail.invoice.cuit ? `CUIT / DNI: ${detail.invoice.cuit}` : 'CUIT / DNI: -'}</span>
-                      <span>{detail.invoice.tax_condition ? `Condicion fiscal: ${detail.invoice.tax_condition}` : 'Condicion fiscal: -'}</span>
-                    </div>
-                  </div>
-
-                  <div className={styles.desktopPanel}>
-                    <div className={styles.sectionTitle}>Resumen</div>
-                    <div className={styles.summaryRows}>
-                      <div className={styles.metaRow}><span>Numero</span><strong>#{detail.invoice.id}</strong></div>
-                      <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
-                      <div className={styles.metaRow}><span>Vendedor</span><strong>{detail.invoice.seller_name || '-'}</strong></div>
-                      <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
-                      <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
+                    <div className={styles.headerSplitPanel}>
+                      <div className={styles.headerSplitColumn}>
+                        <div className={styles.sectionTitle}>Datos del cliente</div>
+                        <div className={styles.customerBlock}>
+                          <strong>{detail.invoice.customer_name}</strong>
+                          <span>{detail.invoice.address || detail.invoice.locality || 'Sin domicilio registrado'}</span>
+                          <span>{detail.invoice.customer_phone || detail.invoice.customer_email || 'Sin contacto registrado'}</span>
+                          <span>{detail.invoice.cuit ? `CUIT / DNI: ${detail.invoice.cuit}` : 'CUIT / DNI: -'}</span>
+                          <span>{detail.invoice.tax_condition ? `Condicion fiscal: ${detail.invoice.tax_condition}` : 'Condicion fiscal: -'}</span>
+                        </div>
+                      </div>
+                      <div className={styles.headerSplitColumn}>
+                        <div className={styles.sectionTitle}>Resumen</div>
+                        <div className={styles.summaryRows}>
+                          <div className={styles.metaRow}><span>Numero</span><strong>#{detail.invoice.id}</strong></div>
+                          <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
+                          <div className={styles.metaRow}><span>Vendedor</span><strong>{detail.invoice.seller_name || '-'}</strong></div>
+                          <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
+                          <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

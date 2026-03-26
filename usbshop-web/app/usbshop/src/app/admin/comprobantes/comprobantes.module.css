@@ -56,12 +56,19 @@
 .documentMeta span, .detailMeta span, .summaryGrid span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
 .documentMeta strong, .detailMeta strong, .summaryGrid strong { color: var(--ink); font-size: 13px; }
 .desktopPanel { background: white; border: 1px solid #0b0b0b; border-radius: 12px; padding: 10px 12px; }
-.sectionTitle { text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; color: #2d0a5b; font-weight: 800; margin-bottom: 8px; }
-.customerBlock { display: grid; gap: 4px; color: #0b0b0b; font-size: 11px; }
-.summaryRows { display: grid; gap: 4px; }
-.metaRow { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #0f172a; }
-.metaRow span { color: #475569; }
-.metaRow strong { color: #0f172a; text-align: right; }
+.headerSplitPanel { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 0; align-items: stretch; border: 1px solid #0b0b0b; border-radius: 8px; overflow: hidden; }
+.headerSplitColumn { min-width: 0; }
+.headerSplitColumn:first-child { padding: 12px 14px; }
+.headerSplitColumn + .headerSplitColumn { border-left: 1px solid #0b0b0b; padding: 12px 14px; }
+.sectionTitle { text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px; color: #2d0a5b; font-weight: 800; margin-bottom: 10px; }
+.customerBlock { display: grid; gap: 6px; color: #0b0b0b; font-size: 11px; }
+.customerBlock strong { font-size: 17px; letter-spacing: 0.01em; }
+.customerBlock span { line-height: 1.35; }
+.summaryRows { display: grid; gap: 0; }
+.metaRow { display: grid; grid-template-columns: minmax(120px, 0.95fr) minmax(0, 1fr); gap: 16px; font-size: 11px; color: #0f172a; padding: 5px 0; border-bottom: 1px solid #e2e8f0; align-items: baseline; }
+.metaRow:last-child { border-bottom: 0; padding-bottom: 0; }
+.metaRow span { color: #475569; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; }
+.metaRow strong { color: #0f172a; text-align: right; font-size: 12px; }
 .notesBox { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid #0b0b0b; background: #f0fdfa; }
 .notesBox p { margin: 0; color: #0b0b0b; line-height: 1.45; font-size: 12px; }
 .documentTableWrap { border: 1px solid #0b0b0b; border-radius: 12px; overflow: hidden; background: white; }
@@ -158,6 +165,9 @@
   .printBanner { grid-template-columns: 1fr; }
   .brandLockup { justify-content: flex-start; }
   .brandHead, .docCenter { justify-content: flex-start; text-align: left; }
+  .headerSplitPanel { grid-template-columns: 1fr; }
+  .headerSplitColumn:first-child { padding: 12px 14px; }
+  .headerSplitColumn + .headerSplitColumn { border-left: 0; border-top: 1px solid #0b0b0b; padding: 12px 14px; }
   .modalOverlay { padding: 12px; }
   .detailModal { max-height: calc(100vh - 24px); padding: 12px; }
   .confirmOverlay { padding: 12px; }
