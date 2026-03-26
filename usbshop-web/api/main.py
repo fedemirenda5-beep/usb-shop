@@ -1839,7 +1839,7 @@ def sync_backoffice_table(
 
 
 @app.get("/products")
-def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
+def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> list[dict]:
     conn = _connect()
     try:
         _ensure_product_images_table(conn)
@@ -1902,8 +1902,8 @@ def list_products(limit: int = 50, q: Optional[str] = None) -> list[dict]:
             like = f"%{q}%"
             params.extend([like, like])
         order_by = "LOWER(p.name) ASC, p.id ASC"
-        query += f" ORDER BY {order_by} LIMIT ?"
-        params.append(limit)
+        query += f" ORDER BY {order_by} LIMIT ? OFFSET ?"
+        params.extend([max(1, int(limit)), max(0, int(offset))])
         rows = conn.execute(query, params).fetchall()
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)

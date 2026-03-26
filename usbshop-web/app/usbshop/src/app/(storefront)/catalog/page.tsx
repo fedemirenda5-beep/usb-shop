@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ProductCard from "@/components/ProductCard";
-import { fetchJson, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
+import { fetchJson, getApiBaseUrl, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
 
 type Product = {
   id: number;
@@ -37,6 +37,53 @@ const fallbackCategories = [
 
 const normalizeLabel = (value: string | null | undefined) =>
   (value || "").trim().toLowerCase();
+const PRODUCTS_CACHE_KEY = "usbshop_catalog_cache_v1";
+const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const INITIAL_PAGE_SIZE = 60;
+const REQUEST_TIMEOUT_MS = 12000;
+const SEARCH_DEBOUNCE_MS = 300;
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const loadCachedList = <T,>(key: string, ttlMs: number) => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { savedAt?: string; data?: T; baseUrl?: string };
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.data)) {
+      return null;
+    }
+    const savedAt = parsed.savedAt ? Date.parse(parsed.savedAt) : NaN;
+    if (!Number.isFinite(savedAt) || Date.now() - savedAt > ttlMs) {
+      return null;
+    }
+    return {
+      data: parsed.data,
+      baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : getApiBaseUrl(),
+    };
+  } catch {
+    return null;
+  }
+};
+
+const saveCachedList = (key: string, data: unknown, baseUrl: string) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({ data, baseUrl, savedAt: new Date().toISOString() })
+    );
+  } catch {
+    return;
+  }
+};
 
 const toComparableTimestamp = (product: Product) => {
   const raw = product.created_at || product.updated_at || "";
@@ -47,57 +94,129 @@ const toComparableTimestamp = (product: Product) => {
 export default function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const pageSize = 2000;
+  const pageSize = INITIAL_PAGE_SIZE;
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
+
+  const normalizeProducts = (items: Product[], baseUrl: string) =>
+    items.map((item) => {
+      const resolvedImageUrl = resolveImageUrl(item.imageUrl, baseUrl);
+      const resolvedImageUrls = resolveImageUrls(item.imageUrls, baseUrl);
+      const imageUrls =
+        resolvedImageUrls.length > 0
+          ? resolvedImageUrls
+          : resolvedImageUrl
+          ? [resolvedImageUrl]
+          : [];
+      return {
+        ...item,
+        imageUrl: imageUrls[0] ?? resolvedImageUrl ?? null,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      };
+    });
+
+  const fetchProductsPage = async (offset = 0, currentQuery = "") => {
+    let lastError: unknown = null;
+    await loadRuntimeConfig();
+    const host = typeof window !== "undefined" ? window.location.hostname : "";
+    const defaultBase = getApiBaseUrl();
+    const fallbackBase =
+      host === "localhost" || host === "127.0.0.1" ? `http://${host}:8000` : null;
+    const baseUrls = fallbackBase && fallbackBase !== defaultBase ? [defaultBase, fallbackBase] : [defaultBase];
+    const params = new URLSearchParams({
+      limit: String(pageSize),
+      offset: String(offset),
+    });
+    if (currentQuery) {
+      params.set("q", currentQuery);
+    }
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      for (const baseUrl of baseUrls) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        try {
+          const data =
+            baseUrl === defaultBase
+              ? await fetchJson<Product[]>(`/products?${params.toString()}`, { signal: controller.signal, cache: "no-store" })
+              : await fetch(`${baseUrl}/products?${params.toString()}`, {
+                  credentials: "include",
+                  cache: "no-store",
+                  headers: { "Content-Type": "application/json" },
+                  signal: controller.signal,
+                }).then(async (response) => {
+                  if (!response.ok) {
+                    throw new Error("API request failed");
+                  }
+                  return (await response.json()) as Product[];
+                });
+          return {
+            data,
+            baseUrl,
+            normalized: normalizeProducts(data, baseUrl),
+          };
+        } catch (fetchError) {
+          lastError = fetchError;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      }
+      if (attempt < 2) {
+        await wait(500 * (attempt + 1));
+      }
+    }
+    throw lastError ?? new Error("API request failed");
+  };
 
   useEffect(() => {
     let active = true;
     const loadProducts = async (offset = 0, mode: "replace" | "append" = "replace") => {
+      let hadCachedData = false;
       try {
+        if (mode === "replace" && !debouncedQuery) {
+          const cached = loadCachedList<Product[]>(PRODUCTS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
+          if (cached && active) {
+            hadCachedData = true;
+            setProducts(normalizeProducts(cached.data, cached.baseUrl));
+            setHasMore(cached.data.length >= pageSize);
+            setError(null);
+            setIsLoading(false);
+          }
+        }
         if (mode === "replace") {
-          setIsLoading(true);
+          if (!hadCachedData) {
+            setIsLoading(true);
+          }
         } else {
           setIsFetchingMore(true);
         }
-        setError(null);
-        await loadRuntimeConfig();
-        const trimmed = query.trim();
-        const params = new URLSearchParams({
-          limit: String(pageSize),
-          offset: String(offset),
-        });
-        if (trimmed) {
-          params.set("q", trimmed);
+        if (!hadCachedData) {
+          setError(null);
         }
-        const data = await fetchJson<Product[]>(`/products?${params.toString()}`);
-        if (!active || !Array.isArray(data)) {
+        const result = await fetchProductsPage(offset, debouncedQuery);
+        if (!active || !Array.isArray(result.data)) {
           return;
         }
-        const normalized = data.map((item) => {
-          const resolvedImageUrl = resolveImageUrl(item.imageUrl);
-          const resolvedImageUrls = resolveImageUrls(item.imageUrls);
-          const imageUrls =
-            resolvedImageUrls.length > 0
-              ? resolvedImageUrls
-              : resolvedImageUrl
-              ? [resolvedImageUrl]
-              : [];
-          return {
-            ...item,
-            imageUrl: imageUrls[0] ?? resolvedImageUrl ?? null,
-            imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-          };
-        });
-        setHasMore(data.length >= pageSize);
-        setProducts((prev) => (mode === "append" ? [...prev, ...normalized] : normalized));
+        setHasMore(result.data.length >= pageSize);
+        setProducts((prev) => (mode === "append" ? [...prev, ...result.normalized] : result.normalized));
+        if (!debouncedQuery && offset === 0) {
+          saveCachedList(PRODUCTS_CACHE_KEY, result.data, result.baseUrl);
+        }
+        setError(null);
       } catch {
         if (active) {
-          setError("No pudimos cargar el catalogo. Intenta de nuevo en unos segundos.");
-          if (mode === "replace") {
+          if (mode === "replace" && !hadCachedData) {
             setProducts([]);
+            setError("No pudimos cargar el catalogo. Intenta de nuevo en unos segundos.");
           }
         }
       } finally {
@@ -115,7 +234,7 @@ export default function CatalogPage() {
     return () => {
       active = false;
     };
-  }, [query]);
+  }, [debouncedQuery]);
 
   const filtered = useMemo(() => {
     const value = query.trim().toLowerCase();
@@ -212,35 +331,12 @@ export default function CatalogPage() {
               if (!isFetchingMore) {
                 const offset = products.length;
                 const loadMore = async () => {
-                  const trimmed = query.trim();
-                  const params = new URLSearchParams({
-                    limit: String(pageSize),
-                    offset: String(offset),
-                  });
-                  if (trimmed) {
-                    params.set("q", trimmed);
-                  }
                   try {
                     setIsFetchingMore(true);
-                    const data = await fetchJson<Product[]>(`/products?${params.toString()}`);
-                    if (Array.isArray(data)) {
-                      const normalized = data.map((item) => {
-                        const resolvedImageUrl = resolveImageUrl(item.imageUrl);
-                        const resolvedImageUrls = resolveImageUrls(item.imageUrls);
-                        const imageUrls =
-                          resolvedImageUrls.length > 0
-                            ? resolvedImageUrls
-                            : resolvedImageUrl
-                            ? [resolvedImageUrl]
-                            : [];
-                        return {
-                          ...item,
-                          imageUrl: imageUrls[0] ?? resolvedImageUrl ?? null,
-                          imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
-                        };
-                      });
-                      setProducts((prev) => [...prev, ...normalized]);
-                      setHasMore(data.length >= pageSize);
+                    const result = await fetchProductsPage(offset, debouncedQuery);
+                    if (Array.isArray(result.data)) {
+                      setProducts((prev) => [...prev, ...result.normalized]);
+                      setHasMore(result.data.length >= pageSize);
                     }
                   } finally {
                     setIsFetchingMore(false);
