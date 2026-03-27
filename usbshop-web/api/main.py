@@ -3024,6 +3024,8 @@ def admin_sellers_monthly_summary(
     _require_full_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
         now_dt = datetime.utcnow()
         period_key = now_dt.strftime("%Y-%m")
@@ -3050,7 +3052,7 @@ def admin_sellers_monthly_summary(
 
         invoices = conn.execute(
             """
-            SELECT id, seller_id, total, commission_amount, created_at, document_type
+            SELECT id, seller_id, total, special_discount, commission_amount, created_at, document_type
             FROM invoices
             WHERE seller_id IS NOT NULL
             """
@@ -3058,6 +3060,7 @@ def admin_sellers_monthly_summary(
         invoice_ids: list[int] = []
         invoice_seller_map: dict[int, int] = {}
         invoice_sign_map: dict[int, float] = {}
+        invoice_discount_map: dict[int, float] = {}
         for row in invoices:
             created = _safe_parse_datetime(row["created_at"])
             if created is None or created.strftime("%Y-%m") != period_key:
@@ -3073,6 +3076,7 @@ def admin_sellers_monthly_summary(
             invoice_ids.append(invoice_id)
             invoice_seller_map[invoice_id] = seller_id
             invoice_sign_map[invoice_id] = sign
+            invoice_discount_map[invoice_id] = float(row["special_discount"] or 0)
             summary_map[seller_id]["sales"] = round(summary_map[seller_id]["sales"] + (float(row["total"] or 0) * sign), 2)
             summary_map[seller_id]["commission"] = round(
                 summary_map[seller_id]["commission"] + (float(row["commission_amount"] or 0) * sign), 2
@@ -3101,6 +3105,16 @@ def admin_sellers_monthly_summary(
                 cost_total = quantity * float(row["cost"] or 0)
                 summary_map[seller_id]["profit"] = round(
                     summary_map[seller_id]["profit"] + ((revenue - cost_total) * sign), 2
+                )
+            for invoice_id, discount in invoice_discount_map.items():
+                if discount <= 0:
+                    continue
+                seller_id = invoice_seller_map.get(invoice_id)
+                if seller_id is None:
+                    continue
+                sign = invoice_sign_map.get(invoice_id, 1.0)
+                summary_map[seller_id]["profit"] = round(
+                    summary_map[seller_id]["profit"] - (discount * sign), 2
                 )
 
         return {
@@ -4657,6 +4671,8 @@ def admin_reports_overview(
     session_payload = _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
         products = conn.execute(
             """
             SELECT id, name, stock, price, cost, reorder_point, category_id
@@ -4672,14 +4688,14 @@ def admin_reports_overview(
         ).fetchall()
         invoice_rows = conn.execute(
             """
-            SELECT id, customer_id, total, created_at, document_type, sale_mode, seller_id, commission_amount
+            SELECT id, customer_id, total, special_discount, created_at, document_type, sale_mode, seller_id, commission_amount
             FROM invoices
             ORDER BY created_at ASC, id ASC
             """
         ).fetchall()
         invoice_items_rows = conn.execute(
             """
-            SELECT ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at, i.seller_id, i.document_type
+            SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at, i.seller_id, i.document_type
             FROM invoice_items ii
             LEFT JOIN invoices i ON i.id = ii.invoice_id
             """
@@ -4796,6 +4812,19 @@ def admin_reports_overview(
             seller_id = int(row["seller_id"] or 0)
             if seller_id > 0:
                 seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) + margin_value, 2)
+        for row in invoices:
+            discount = float(row["special_discount"] or 0)
+            if discount <= 0:
+                continue
+            sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            created = _safe_parse_datetime(row["created_at"])
+            if created is not None:
+                bucket = created.strftime("%Y-%m")
+                monthly_entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
+                monthly_entry["margin"] = round(float(monthly_entry["margin"] or 0) - (discount * sign), 2)
+            seller_id = int(row["seller_id"] or 0)
+            if seller_id > 0:
+                seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) - (discount * sign), 2)
         monthly_sales_all = [
             {
                 **monthly_map[key],
@@ -4945,6 +4974,11 @@ def admin_reports_overview(
                 * max(0.0, float(row["unit_price"] or 0) - cost_by_product.get(int(row["product_id"] or 0), 0.0))
                 * (-1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0)
                 for row in invoice_items
+            )
+            - sum(
+                float(row["special_discount"] or 0)
+                * (-1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0)
+                for row in invoices
             ),
             2,
         )
@@ -5241,9 +5275,11 @@ def admin_reports_daily(
             raise HTTPException(status_code=400, detail="Fecha invalida. Usa YYYY-MM-DD.") from exc
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
         invoices = conn.execute(
             """
-            SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, c.name AS customer_name
+            SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type, c.name AS customer_name
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
             ORDER BY i.created_at ASC, i.id ASC
@@ -5269,6 +5305,7 @@ def admin_reports_daily(
                     "customer_id": customer_id,
                     "customer_name": row["customer_name"] or (f"Cliente {customer_id}" if customer_id > 0 else "Cliente"),
                     "total": total,
+                    "special_discount": float(row["special_discount"] or 0),
                     "created_at": row["created_at"],
                     "document_type": row["document_type"],
                 }
@@ -5325,6 +5362,16 @@ def admin_reports_daily(
             )
             product_entry["quantity"] += quantity
             product_entry["sales"] = round(float(product_entry["sales"]) + revenue, 2)
+
+        total_margin = round(
+            total_margin
+            - sum(
+                float(item.get("special_discount") or 0)
+                * (-1.0 if str(item.get("document_type") or "").strip().upper() == "NOTA_CREDITO" else 1.0)
+                for item in selected_invoices
+            ),
+            2,
+        )
 
         products = sorted(
             [
