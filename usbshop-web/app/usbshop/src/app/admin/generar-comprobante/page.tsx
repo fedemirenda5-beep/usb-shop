@@ -49,6 +49,10 @@ const normalizeSearchValue = (value: string) =>
 const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
 const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
 const toDateInputValue = (value?: string | null) => (value ? String(value).slice(0, 10) : '');
+const round = (value: number, decimals = 2) => {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+};
 
 export default function GenerarComprobantePage() {
   const router = useRouter();
@@ -75,7 +79,7 @@ export default function GenerarComprobantePage() {
     created_at: nowInputValue(),
     due_date: '',
     notes: '',
-    special_discount: '0',
+    special_discount_percent: '0',
     items: [] as InvoiceFormItem[],
   });
 
@@ -130,7 +134,7 @@ export default function GenerarComprobantePage() {
           created_at: nowInputValue(),
           due_date: '',
           notes: draft.notes || '',
-          special_discount: '0',
+          special_discount_percent: '0',
           items: draft.items.length
             ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
             : [],
@@ -155,6 +159,9 @@ export default function GenerarComprobantePage() {
         if (String(invoice.document_type || '').toUpperCase() !== 'PRESUPUESTO') {
           throw new Error('El comprobante seleccionado no es un presupuesto');
         }
+        const draftSubtotal = draft.items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0);
+        const loadedDiscount = Number(invoice.special_discount ?? 0);
+        const loadedDiscountPercent = draftSubtotal > 0 ? round((loadedDiscount / draftSubtotal) * 100, 2) : 0;
         setForm({
           order_id: '',
           customer_id: invoice.customer_id ? String(invoice.customer_id) : '',
@@ -166,7 +173,7 @@ export default function GenerarComprobantePage() {
           created_at: nowInputValue(),
           due_date: toDateInputValue(invoice.due_date),
           notes: invoice.notes || '',
-          special_discount: String(invoice.special_discount ?? 0),
+          special_discount_percent: String(loadedDiscountPercent),
           items: draft.items.map((item) => ({
             product_id: String(item.product_id || ''),
             quantity: String(item.quantity),
@@ -204,8 +211,16 @@ export default function GenerarComprobantePage() {
   }, [productSearch, products]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formSubtotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
-  const specialDiscount = useMemo(() => Math.max(0, Number(form.special_discount || 0)), [form.special_discount]);
-  const formTotal = useMemo(() => Math.max(0, formSubtotal - specialDiscount), [formSubtotal, specialDiscount]);
+  const specialDiscountPercent = useMemo(
+    () => Math.min(100, Math.max(0, Number(form.special_discount_percent || 0))),
+    [form.special_discount_percent]
+  );
+  const specialDiscount = useMemo(
+    () => round((formSubtotal * specialDiscountPercent) / 100, 2),
+    [formSubtotal, specialDiscountPercent]
+  );
+  const hasSpecialDiscount = specialDiscountPercent > 0;
+  const formTotal = useMemo(() => Math.max(0, round(formSubtotal - specialDiscount, 2)), [formSubtotal, specialDiscount]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
   const documentBehavior = useMemo(() => {
     if (form.document_type === 'NOTA_CREDITO') {
@@ -448,23 +463,54 @@ export default function GenerarComprobantePage() {
                 Vencimiento
                 <input type="date" value={form.due_date} onChange={(e) => setForm((current) => ({ ...current, due_date: e.target.value }))} />
               </label>
-              <label>
-                Descuento especial
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.special_discount}
-                  onChange={(e) => setForm((current) => ({ ...current, special_discount: e.target.value }))}
-                  placeholder="0"
-                />
-                <small className={styles.fieldHint}>Monto opcional a descontar del total final del comprobante.</small>
-              </label>
               <label className={styles.fullWidth}>
                 Notas
                 <textarea rows={2} value={form.notes} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} />
               </label>
             </div>
+            <section className={styles.specialDiscountPanel}>
+              <div className={styles.specialDiscountHeader}>
+                <div>
+                  <strong>Descuento especial</strong>
+                  <p>Aplicalo solo si queres descontar un monto extra del total final del comprobante o presupuesto.</p>
+                </div>
+                <button
+                  type="button"
+                  className={hasSpecialDiscount ? styles.removeButton : styles.secondaryButton}
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      special_discount_percent: hasSpecialDiscount
+                        ? '0'
+                        : current.special_discount_percent === '0'
+                          ? ''
+                          : current.special_discount_percent,
+                    }))
+                  }
+                >
+                  {hasSpecialDiscount ? 'Quitar descuento' : 'Agregar descuento especial'}
+                </button>
+              </div>
+              {hasSpecialDiscount ? (
+                <div className={styles.specialDiscountFields}>
+                  <label>
+                    Porcentaje a descontar
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      max="100"
+                      value={form.special_discount_percent}
+                      onChange={(e) => setForm((current) => ({ ...current, special_discount_percent: e.target.value }))}
+                      placeholder="0"
+                    />
+                    <small className={styles.fieldHint}>
+                      Se aplica sobre el subtotal. Descuento actual: {money(specialDiscount)} ({specialDiscountPercent}%).
+                    </small>
+                  </label>
+                </div>
+              ) : null}
+            </section>
             <section className={styles.desktopPickerPanel}>
               <div className={styles.desktopPickerBar}>
                 <label className={styles.desktopPickerSearch}>
@@ -612,7 +658,7 @@ export default function GenerarComprobantePage() {
                 {specialDiscount > 0 ? (
                   <div className={styles.metaRow}>
                     <span>Descuento especial</span>
-                    <strong>-{money(specialDiscount)}</strong>
+                    <strong>-{money(specialDiscount)} ({specialDiscountPercent}%)</strong>
                   </div>
                 ) : null}
                 <div className={styles.metaRow}>
@@ -625,7 +671,7 @@ export default function GenerarComprobantePage() {
               <button type="button" className={styles.secondaryButton} onClick={() => {
                 setProductSearch('');
                 setSearchQuantities({});
-                setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', special_discount: '0', items: [] });
+                setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', special_discount_percent: '0', items: [] });
               }}>Limpiar</button>
               <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>
                 {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}

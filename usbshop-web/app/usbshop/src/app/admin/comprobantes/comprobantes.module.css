@@ -124,6 +124,13 @@
 .productPicker { display: grid; gap: 6px; min-width: 0; }
 .itemMeta { color: var(--muted); font-size: 12px; }
 .desktopPickerPanel, .invoiceLinesPanel { display: grid; gap: 12px; }
+.specialDiscountPanel { display: grid; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid rgba(15, 118, 110, 0.24); background: linear-gradient(180deg, rgba(240,253,250,.98), rgba(255,255,255,1)); }
+.specialDiscountHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.specialDiscountHeader strong { color: var(--ink); font-size: 15px; }
+.specialDiscountHeader p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 720px; }
+.specialDiscountFields { display: grid; grid-template-columns: minmax(220px, 320px); gap: 12px; }
+.specialDiscountFields label { display: grid; gap: 6px; color: var(--ink); font-size: 13px; }
+.specialDiscountFields input { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; }
 .desktopPickerPanel { padding: 14px; border-radius: 14px; border: 1px solid var(--bg-soft); background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%); }
 .desktopPickerBar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: flex-end; }
 .desktopPickerSearch, .desktopPickerQty { display: grid; gap: 6px; color: var(--ink); font-size: 13px; }
@@ -154,6 +161,8 @@
   .layout, .detailMeta, .summaryGrid, .formGrid, .documentFooter, .signatureRow, .documentMeta { grid-template-columns: 1fr; }
   .movementItem { grid-template-columns: 1fr; }
   .headerActions, .createHeader { flex-direction: column; align-items: stretch; }
+  .specialDiscountHeader { flex-direction: column; align-items: stretch; }
+  .specialDiscountFields { grid-template-columns: 1fr; }
   .detailInlineActions { justify-content: stretch; }
   .desktopPickerBar, .invoiceLinesHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .productSearchItem { grid-template-columns: 1fr; }
