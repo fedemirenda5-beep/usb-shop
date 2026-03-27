@@ -68,6 +68,7 @@ export default function GenerarComprobantePage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
+  const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
   const [form, setForm] = useState({
     order_id: '',
     customer_id: '',
@@ -220,6 +221,7 @@ export default function GenerarComprobantePage() {
     [formSubtotal, specialDiscountPercent]
   );
   const hasSpecialDiscount = specialDiscountPercent > 0;
+  const isSpecialDiscountOpen = showSpecialDiscountEditor || hasSpecialDiscount;
   const formTotal = useMemo(() => Math.max(0, round(formSubtotal - specialDiscount, 2)), [formSubtotal, specialDiscount]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
   const documentBehavior = useMemo(() => {
@@ -477,21 +479,19 @@ export default function GenerarComprobantePage() {
                 <button
                   type="button"
                   className={hasSpecialDiscount ? styles.removeButton : styles.secondaryButton}
-                  onClick={() =>
-                    setForm((current) => ({
-                      ...current,
-                      special_discount_percent: hasSpecialDiscount
-                        ? '0'
-                        : current.special_discount_percent === '0'
-                          ? ''
-                          : current.special_discount_percent,
-                    }))
-                  }
+                  onClick={() => {
+                    if (isSpecialDiscountOpen) {
+                      setShowSpecialDiscountEditor(false);
+                      setForm((current) => ({ ...current, special_discount_percent: '0' }));
+                      return;
+                    }
+                    setShowSpecialDiscountEditor(true);
+                  }}
                 >
-                  {hasSpecialDiscount ? 'Quitar descuento' : 'Agregar descuento especial'}
+                  {isSpecialDiscountOpen ? 'Quitar descuento' : 'Agregar descuento especial'}
                 </button>
               </div>
-              {hasSpecialDiscount ? (
+              {isSpecialDiscountOpen ? (
                 <div className={styles.specialDiscountFields}>
                   <label>
                     Porcentaje a descontar
@@ -671,6 +671,7 @@ export default function GenerarComprobantePage() {
               <button type="button" className={styles.secondaryButton} onClick={() => {
                 setProductSearch('');
                 setSearchQuantities({});
+                setShowSpecialDiscountEditor(false);
                 setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', special_discount_percent: '0', items: [] });
               }}>Limpiar</button>
               <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>
