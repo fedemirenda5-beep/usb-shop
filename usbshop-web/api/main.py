@@ -746,6 +746,13 @@ def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
     conn.commit()
 
 
+def _ensure_invoice_special_discount_column(conn: DBConn) -> None:
+    if _has_column(conn, "invoices", "special_discount"):
+        return
+    conn.execute("ALTER TABLE invoices ADD COLUMN special_discount REAL NOT NULL DEFAULT 0")
+    conn.commit()
+
+
 def _require_sync_token(request: Request) -> None:
     token = (os.getenv("USB_SYNC_TOKEN") or os.getenv("USB_SYNC_SECRET") or "").strip()
     if not token:
@@ -1080,6 +1087,10 @@ def _customer_balance(conn: DBConn, customer_id: int) -> float:
         amount = float(row["amount"] if isinstance(row, dict) else row[1] or 0)
         balance += amount if movement_type == "DEBIT" else -amount
     return round(balance, 2)
+
+
+def _balance_is_zero(balance: float, tolerance: float = 0.009) -> bool:
+    return abs(float(balance)) <= tolerance
 
 
 def _next_document_number(conn: DBConn, document_kind: str) -> str:
@@ -1479,6 +1490,7 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
         ("customer_id", "INTEGER", "INTEGER"),
         ("total", "REAL", "NUMERIC(12, 2)"),
+        ("special_discount", "REAL", "NUMERIC(12, 2)"),
         ("created_at", "TEXT", "TIMESTAMP"),
         ("seller_id", "INTEGER", "INTEGER"),
         ("document_type", "TEXT", "TEXT"),
@@ -3883,22 +3895,11 @@ def admin_cc_delete_customer(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-        movement_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM account_movements WHERE customer_id = ?",
-                (customer_id,),
-            ).fetchone()["count"]
-        )
-        invoice_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM invoices WHERE customer_id = ?",
-                (customer_id,),
-            ).fetchone()["count"]
-        )
-        if movement_count > 0 or invoice_count > 0:
+        balance = _customer_balance(conn, customer_id)
+        if not _balance_is_zero(balance):
             raise HTTPException(
                 status_code=400,
-                detail="No se puede eliminar una cuenta con movimientos o comprobantes asociados",
+                detail="No se puede eliminar una cuenta con deuda distinta de 0",
             )
 
         conn.execute(
@@ -3932,6 +3933,7 @@ def admin_list_invoices(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
         params: list[Any] = []
         where = ""
@@ -3940,7 +3942,7 @@ def admin_list_invoices(
             params.append(int(customer_id))
         rows = conn.execute(
             f"""
-            SELECT i.id, i.customer_id, i.total, i.created_at, i.document_type, i.sale_mode,
+            SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type, i.sale_mode,
                    i.price_list, i.due_date, i.notes, i.payment_method,
                    i.seller_id, i.commission_amount,
                    c.name AS customer_name, s.name AS seller_name,
@@ -3961,6 +3963,7 @@ def admin_list_invoices(
                 "customer_id": int(row["customer_id"]) if row["customer_id"] is not None else None,
                 "customer_name": row["customer_name"] or "Sin cliente",
                 "total": float(row["total"] or 0),
+                "special_discount": float(row["special_discount"] or 0),
                 "created_at": row["created_at"],
                 "document_type": row["document_type"],
                 "sale_mode": row["sale_mode"],
@@ -4009,6 +4012,7 @@ def admin_create_invoice(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
         customer = conn.execute(
             """
@@ -4043,11 +4047,14 @@ def admin_create_invoice(
         cc_entry_kind = "SALE" if document_type == "FACTURA" else "CREDIT_NOTE"
 
         normalized_items: list[dict[str, Any]] = []
-        total = 0.0
+        subtotal_total = 0.0
         price_list = int(payload.get("price_list") or 0)
         if price_list not in {0, 1, 2}:
             price_list = 0
         payment_method = str(payload.get("payment_method") or "").strip() or None
+        special_discount = round(float(payload.get("special_discount") or 0), 2)
+        if special_discount < 0:
+            raise HTTPException(status_code=400, detail="Descuento especial invalido")
         for raw in items:
             product_id = int((raw or {}).get("product_id") or 0)
             quantity = int((raw or {}).get("quantity") or 0)
@@ -4081,7 +4088,7 @@ def admin_create_invoice(
             if unit_price < 0:
                 raise HTTPException(status_code=400, detail="Precio invalido")
             subtotal = round(quantity * unit_price, 2)
-            total += subtotal
+            subtotal_total += subtotal
             normalized_items.append(
                 {
                     "product_id": product_id,
@@ -4091,6 +4098,9 @@ def admin_create_invoice(
                 }
             )
 
+        if special_discount > round(subtotal_total, 2):
+            raise HTTPException(status_code=400, detail="El descuento especial no puede superar el subtotal")
+        total = round(subtotal_total - special_discount, 2)
         sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
         commission_percent = float(seller["commission_percent"] or 0)
         commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
@@ -4127,13 +4137,14 @@ def admin_create_invoice(
 
         insert_invoice_sql = """
             INSERT INTO invoices (
-                customer_id, total, created_at, seller_id, document_type, commission_amount,
+                customer_id, total, special_discount, created_at, seller_id, document_type, commission_amount,
                 sale_mode, price_list, external_ref, due_date, notes, payment_method
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         insert_invoice_params = (
             customer_id,
             round(total, 2),
+            special_discount,
             created_at,
             seller_id,
             document_type,
@@ -4208,6 +4219,7 @@ def admin_create_invoice(
             "payment_method": payment_method,
             "seller_id": seller_id,
             "commission_amount": commission_amount,
+            "special_discount": special_discount,
             "message": "Comprobante creado",
         }
     finally:
@@ -4225,10 +4237,11 @@ def admin_invoice_detail(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
         invoice = conn.execute(
             """
-            SELECT i.id, i.customer_id, i.total, i.created_at, i.seller_id, i.document_type,
+            SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.seller_id, i.document_type,
                    i.commission_amount, i.sale_mode, i.price_list, i.external_ref, i.due_date,
                    i.notes, i.payment_method, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
                    c.sale_mode AS customer_sale_mode, c.locality, c.address, c.tax_condition, c.cuit,
@@ -4314,6 +4327,7 @@ def admin_invoice_detail(
                 "tax_condition": invoice["tax_condition"],
                 "cuit": invoice["cuit"],
                 "total": float(invoice["total"] or 0),
+                "special_discount": float(invoice["special_discount"] or 0),
                 "created_at": invoice["created_at"],
                 "seller_id": int(invoice["seller_id"]) if invoice["seller_id"] is not None else None,
                 "seller_name": invoice["seller_name"],
@@ -4332,6 +4346,8 @@ def admin_invoice_detail(
             "summary": {
                 "items": len(serialized_items),
                 "subtotal": round(subtotal, 2),
+                "special_discount": float(invoice["special_discount"] or 0),
+                "total": float(invoice["total"] or 0),
                 "payments_total": round(total_payments, 2),
                 "balance_due": balance_due,
             },
@@ -5470,24 +5486,15 @@ def admin_delete_account_customer(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-        movement_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM account_movements WHERE customer_id = ?",
-                (customer_id,),
-            ).fetchone()["count"]
-        )
-        document_count = int(
-            conn.execute(
-                "SELECT COUNT(*) AS count FROM account_documents WHERE customer_id = ?",
-                (customer_id,),
-            ).fetchone()["count"]
-        )
-        if movement_count > 0 or document_count > 0:
+        balance = _customer_balance(conn, customer_id)
+        if not _balance_is_zero(balance):
             raise HTTPException(
                 status_code=400,
-                detail="No se puede eliminar una cuenta con movimientos o documentos asociados",
+                detail="No se puede eliminar una cuenta con deuda distinta de 0",
             )
 
+        conn.execute("DELETE FROM account_movements WHERE customer_id = ?", (customer_id,))
+        conn.execute("DELETE FROM account_documents WHERE customer_id = ?", (customer_id,))
         conn.execute("DELETE FROM account_customers WHERE id = ?", (customer_id,))
         conn.commit()
         return {

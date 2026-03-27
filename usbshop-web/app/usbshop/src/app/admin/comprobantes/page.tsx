@@ -22,6 +22,7 @@ type Invoice = {
   notes?: string | null;
   payment_method?: string | null;
   commission_amount?: number | null;
+  special_discount?: number | null;
   web_order_id?: number | null;
 };
 
@@ -38,6 +39,7 @@ type InvoiceDetail = {
     price_list?: number | null;
     seller_name?: string | null;
     seller_commission_percent?: number | null;
+    special_discount?: number | null;
     web_order_id?: number | null;
   };
   items: Array<{
@@ -60,6 +62,8 @@ type InvoiceDetail = {
   summary: {
     items: number;
     subtotal: number;
+    special_discount?: number;
+    total?: number;
     payments_total: number;
     balance_due: number;
   };
@@ -113,6 +117,7 @@ export default function ComprobantesPage() {
               notes: invoice.notes,
               payment_method: invoice.payment_method,
               commission_amount: invoice.commission_amount,
+              special_discount: invoice.special_discount,
               web_order_id: invoice.web_order_id,
             }
           : item
@@ -398,6 +403,7 @@ export default function ComprobantesPage() {
                           notes: detail.invoice.notes,
                           payment_method: detail.invoice.payment_method,
                           commission_amount: detail.invoice.commission_amount,
+                          special_discount: detail.invoice.special_discount,
                           web_order_id: detail.invoice.web_order_id,
                         })
                       }
@@ -425,6 +431,7 @@ export default function ComprobantesPage() {
                         notes: detail.invoice.notes,
                         payment_method: detail.invoice.payment_method,
                         commission_amount: detail.invoice.commission_amount,
+                        special_discount: detail.invoice.special_discount,
                         web_order_id: detail.invoice.web_order_id,
                       })
                     }
@@ -472,6 +479,9 @@ export default function ComprobantesPage() {
                           <div className={styles.metaRow}><span>Vendedor</span><strong>{detail.invoice.seller_name || '-'}</strong></div>
                           <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
                           <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
+                          {Number(detail.invoice.special_discount || 0) > 0 ? (
+                            <div className={styles.metaRow}><span>Descuento especial</span><strong>-{money(Number(detail.invoice.special_discount || 0))}</strong></div>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -531,7 +541,19 @@ export default function ComprobantesPage() {
 
                     <div className={styles.totalBox}>
                       <span className={styles.totalLabel}>Total a pagar</span>
-                      <strong className={styles.totalValue}>{money(detail.summary.subtotal)}</strong>
+                      <strong className={styles.totalValue}>{money(Number(detail.summary.total ?? detail.summary.subtotal))}</strong>
+                      {Number(detail.summary.special_discount || 0) > 0 ? (
+                        <>
+                          <div className={styles.metaRow}>
+                            <span>Subtotal</span>
+                            <strong>{money(detail.summary.subtotal)}</strong>
+                          </div>
+                          <div className={styles.metaRow}>
+                            <span>Descuento especial</span>
+                            <strong>-{money(Number(detail.summary.special_discount || 0))}</strong>
+                          </div>
+                        </>
+                      ) : null}
                       <div className={styles.metaRow}>
                         <span>Cobrado</span>
                         <strong>{money(detail.summary.payments_total)}</strong>

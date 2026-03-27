@@ -29,6 +29,7 @@ type BudgetDraft = {
     due_date?: string | null;
     notes?: string | null;
     payment_method?: string | null;
+    special_discount?: number | null;
   };
   items: Array<{
     product_id?: number | null;
@@ -74,6 +75,7 @@ export default function GenerarComprobantePage() {
     created_at: nowInputValue(),
     due_date: '',
     notes: '',
+    special_discount: '0',
     items: [] as InvoiceFormItem[],
   });
 
@@ -128,6 +130,7 @@ export default function GenerarComprobantePage() {
           created_at: nowInputValue(),
           due_date: '',
           notes: draft.notes || '',
+          special_discount: '0',
           items: draft.items.length
             ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
             : [],
@@ -163,6 +166,7 @@ export default function GenerarComprobantePage() {
           created_at: nowInputValue(),
           due_date: toDateInputValue(invoice.due_date),
           notes: invoice.notes || '',
+          special_discount: String(invoice.special_discount ?? 0),
           items: draft.items.map((item) => ({
             product_id: String(item.product_id || ''),
             quantity: String(item.quantity),
@@ -199,7 +203,9 @@ export default function GenerarComprobantePage() {
       .slice(0, 12);
   }, [productSearch, products]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
-  const formTotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
+  const formSubtotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
+  const specialDiscount = useMemo(() => Math.max(0, Number(form.special_discount || 0)), [form.special_discount]);
+  const formTotal = useMemo(() => Math.max(0, formSubtotal - specialDiscount), [formSubtotal, specialDiscount]);
   const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
   const documentBehavior = useMemo(() => {
     if (form.document_type === 'NOTA_CREDITO') {
@@ -298,6 +304,7 @@ export default function GenerarComprobantePage() {
         created_at: formatInputDateTime(form.created_at),
         due_date: form.due_date || null,
         notes: form.notes || null,
+        special_discount: specialDiscount,
         items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
       };
       const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
@@ -440,6 +447,18 @@ export default function GenerarComprobantePage() {
               <label>
                 Vencimiento
                 <input type="date" value={form.due_date} onChange={(e) => setForm((current) => ({ ...current, due_date: e.target.value }))} />
+              </label>
+              <label>
+                Descuento especial
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.special_discount}
+                  onChange={(e) => setForm((current) => ({ ...current, special_discount: e.target.value }))}
+                  placeholder="0"
+                />
+                <small className={styles.fieldHint}>Monto opcional a descontar del total final del comprobante.</small>
               </label>
               <label className={styles.fullWidth}>
                 Notas
@@ -584,11 +603,29 @@ export default function GenerarComprobantePage() {
               <span>Total del comprobante</span>
               <strong className={styles.createTotal}>{money(formTotal)}</strong>
             </div>
+            <div className={styles.createTotalBar}>
+              <div className={styles.summaryRows}>
+                <div className={styles.metaRow}>
+                  <span>Subtotal</span>
+                  <strong>{money(formSubtotal)}</strong>
+                </div>
+                {specialDiscount > 0 ? (
+                  <div className={styles.metaRow}>
+                    <span>Descuento especial</span>
+                    <strong>-{money(specialDiscount)}</strong>
+                  </div>
+                ) : null}
+                <div className={styles.metaRow}>
+                  <span>Total final</span>
+                  <strong>{money(formTotal)}</strong>
+                </div>
+              </div>
+            </div>
             <div className={styles.formActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => {
                 setProductSearch('');
                 setSearchQuantities({});
-                setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', items: [] });
+                setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', special_discount: '0', items: [] });
               }}>Limpiar</button>
               <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>
                 {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
