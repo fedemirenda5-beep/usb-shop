@@ -22,6 +22,7 @@ from typing import Optional, List, Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode, quote
 from urllib.request import Request as UrlRequest, urlopen
+from zoneinfo import ZoneInfo
 
 from fastapi import Body, Cookie, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,6 +58,7 @@ SESSION_TTL_SECONDS = 8 * 60 * 60
 AUTH_SECRET = os.getenv("USB_AUTH_SECRET")
 ROLE_ADMIN = "admin"
 ROLE_STAFF = "staff"
+ARGENTINA_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 DEFAULT_ORDER_DOC = os.getenv("USB_ORDER_DOCUMENT", "PEDIDO_WEB")
 DEFAULT_ORDER_SALE_MODE = os.getenv("USB_ORDER_SALE_MODE", "ONLINE")
 DEFAULT_ORDER_EXTERNAL_REF = os.getenv("USB_ORDER_EXTERNAL_REF", "WEB-PENDIENTE")
@@ -1134,6 +1136,19 @@ def _safe_parse_datetime(value: Any) -> Optional[datetime]:
             return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S")
         except ValueError:
             return None
+
+
+def _argentina_now() -> datetime:
+    return datetime.now(ARGENTINA_TZ)
+
+
+def _argentina_date_for_filter(value: Any) -> Optional[datetime.date]:
+    parsed = _safe_parse_datetime(value)
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.date()
+    return parsed.astimezone(ARGENTINA_TZ).date()
 
 
 def _customer_current_balance_from_rows(rows: list[Any]) -> float:
@@ -5267,7 +5282,7 @@ def admin_reports_daily(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     _require_full_admin(session_token)
-    target_date = datetime.utcnow().date()
+    target_date = _argentina_now().date()
     if report_date:
         try:
             target_date = datetime.strptime(report_date, "%Y-%m-%d").date()
@@ -5289,8 +5304,8 @@ def admin_reports_daily(
         invoice_ids: list[int] = []
         customer_summary: dict[int, dict[str, Any]] = {}
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
-            if created is None or created.date() != target_date:
+            created_date = _argentina_date_for_filter(row["created_at"])
+            if created_date != target_date:
                 continue
             document_type = str(row["document_type"] or "").strip().upper()
             if document_type == "PRESUPUESTO":
