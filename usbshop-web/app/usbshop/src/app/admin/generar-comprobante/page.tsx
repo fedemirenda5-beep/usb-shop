@@ -46,6 +46,65 @@ const normalizeSearchValue = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+const normalizePhoneValue = (value?: string | null) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('549') && digits.length >= 12) return digits.slice(3);
+  if (digits.startsWith('54') && digits.length >= 11) return digits.slice(2);
+  if (digits.startsWith('9') && digits.length >= 11) return digits.slice(1);
+  if (digits.startsWith('0') && digits.length >= 11) return digits.slice(1);
+  return digits;
+};
+const tokenizeName = (value?: string | null) =>
+  normalizeSearchValue(String(value || ''))
+    .split(/\s+/)
+    .filter((token) => token.length >= 3);
+const resolveCustomerMatch = (
+  customers: CustomerOption[],
+  draft: Pick<OrderDraft, 'customer_name' | 'customer_email' | 'customer_phone'>
+) => {
+  const normalizedDraftName = normalizeSearchValue(draft.customer_name || '');
+  const normalizedDraftEmail = normalizeSearchValue(draft.customer_email || '');
+  const normalizedDraftPhone = normalizePhoneValue(draft.customer_phone || '');
+  const draftTokens = tokenizeName(draft.customer_name || '');
+  const ranked = customers
+    .map((customer) => {
+      const customerName = normalizeSearchValue(customer.name || '');
+      const customerEmail = normalizeSearchValue(String(customer.email || ''));
+      const customerPhone = normalizePhoneValue(customer.phone || '');
+      const customerTokens = tokenizeName(customer.name || '');
+      let score = 0;
+
+      if (normalizedDraftEmail && customerEmail && normalizedDraftEmail === customerEmail) score += 120;
+      if (normalizedDraftPhone && customerPhone) {
+        if (normalizedDraftPhone === customerPhone) score += 110;
+        else if (
+          normalizedDraftPhone.length >= 8 &&
+          customerPhone.length >= 8 &&
+          (normalizedDraftPhone.endsWith(customerPhone) || customerPhone.endsWith(normalizedDraftPhone))
+        ) {
+          score += 80;
+        }
+      }
+      if (normalizedDraftName && customerName) {
+        if (normalizedDraftName === customerName) score += 90;
+        else if (customerName.includes(normalizedDraftName) || normalizedDraftName.includes(customerName)) score += 60;
+      }
+      if (draftTokens.length > 0 && customerTokens.length > 0) {
+        const sharedTokens = draftTokens.filter((token) => customerTokens.includes(token)).length;
+        score += sharedTokens * 18;
+      }
+
+      return { customer, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (ranked.length === 0) return null;
+  if (ranked[0].score >= 110) return ranked[0].customer;
+  if (ranked[0].score >= 72 && (ranked.length === 1 || ranked[0].score - ranked[1].score >= 18)) return ranked[0].customer;
+  return null;
+};
 const nowInputValue = () => getArgentinaNowDateTimeLocalInput();
 const formatInputDateTime = (value?: string | null) => argentinaDateTimeLocalToIso(value);
 const toDateInputValue = (value?: string | null) => (value ? String(value).slice(0, 10) : '');
@@ -115,15 +174,7 @@ export default function GenerarComprobantePage() {
         const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderIdParam}`, { credentials: 'include' });
         if (!res.ok) throw new Error('No se pudo cargar el pedido');
         const draft = (await res.json()) as OrderDraft;
-        const normalizedDraftName = normalizeSearchValue(draft.customer_name || '');
-        const normalizedDraftEmail = normalizeSearchValue(draft.customer_email || '');
-        const normalizedDraftPhone = String(draft.customer_phone || '').trim();
-        const matchedCustomer =
-          customers.find((customer) =>
-            (normalizedDraftEmail && normalizeSearchValue(String(customer.email || '')) === normalizedDraftEmail) ||
-            (normalizedDraftPhone && String(customer.phone || '').trim() === normalizedDraftPhone) ||
-            (normalizedDraftName && normalizeSearchValue(customer.name) === normalizedDraftName)
-          ) || null;
+        const matchedCustomer = resolveCustomerMatch(customers, draft);
         setForm({
           order_id: String(draft.id),
           customer_id: matchedCustomer ? String(matchedCustomer.id) : '',
