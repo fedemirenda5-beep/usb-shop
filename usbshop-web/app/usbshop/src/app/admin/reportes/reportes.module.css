@@ -22,10 +22,13 @@
 .dailyPanel { grid-column: 1 / -1; }
 .dailyGrid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 16px; }
 .dailyActions { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.dateStepper { display: flex; gap: 8px; flex-wrap: wrap; }
 .dateFilter { display: grid; gap: 6px; min-width: 180px; }
 .dateFilter span, .subheading { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .dateFilter input { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; background: white; }
+.navButton,
 .refreshButton { height: 40px; padding: 0 14px; border: 1px solid var(--bg-soft); border-radius: 10px; background: linear-gradient(180deg, #fff, #f8fafc); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.navButton:hover,
 .refreshButton:hover { background: linear-gradient(180deg, #f8fafc, #eef2ff); }
 .subheading { font-weight: 700; color: var(--ink); }
 .chartCard { display: grid; gap: 16px; }

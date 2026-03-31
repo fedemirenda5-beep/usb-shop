@@ -61,6 +61,14 @@ const toDateInput = (value?: string | null) => {
   const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
   return match ? match[1] : '';
 };
+const shiftDateInput = (value: string, deltaDays: number) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  const [, year, month, day] = match;
+  const base = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  base.setUTCDate(base.getUTCDate() + deltaDays);
+  return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}-${String(base.getUTCDate()).padStart(2, '0')}`;
+};
 
 const buildLinePath = (points: number[], width: number, height: number) => {
   if (points.length === 0) return '';
@@ -203,6 +211,22 @@ export default function ReportesPage() {
               <p>Venta y ganancia del día con selección de fecha.</p>
             </div>
             <div className={styles.dailyActions}>
+              <div className={styles.dateStepper}>
+                <button
+                  type="button"
+                  className={styles.navButton}
+                  onClick={() => setDailyDate((current) => shiftDateInput(current || todayInput(), -1))}
+                >
+                  Dia anterior
+                </button>
+                <button
+                  type="button"
+                  className={styles.navButton}
+                  onClick={() => setDailyDate((current) => shiftDateInput(current || todayInput(), 1))}
+                >
+                  Dia siguiente
+                </button>
+              </div>
               <label className={styles.dateFilter}>
                 <span>Ver día</span>
                 <input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />
