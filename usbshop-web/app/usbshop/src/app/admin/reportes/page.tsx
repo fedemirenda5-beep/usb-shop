@@ -57,6 +57,10 @@ const money = (value: number) =>
 
 const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
 const todayInput = () => getArgentinaNowDateInput();
+const toDateInput = (value?: string | null) => {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+};
 
 const buildLinePath = (points: number[], width: number, height: number) => {
   if (points.length === 0) return '';
@@ -79,7 +83,7 @@ export default function ReportesPage() {
   const [debtors, setDebtors] = useState<Debtor[]>([]);
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
-  const [dailyDate, setDailyDate] = useState(todayInput());
+  const [dailyDate, setDailyDate] = useState('');
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
   const [error, setError] = useState('');
   const [loadingDaily, setLoadingDaily] = useState(true);
@@ -95,15 +99,19 @@ export default function ReportesPage() {
           setError('');
         }
         await loadRuntimeConfig();
-        const [overviewRes, dailyRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/reports/overview`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, {
-            credentials: 'include',
-            cache: 'no-store',
-          }),
-        ]);
-        if (!overviewRes.ok || !dailyRes.ok) throw new Error('No se pudieron cargar los reportes');
+        const overviewRes = await fetch(`${getApiBaseUrl()}/admin/reports/overview`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!overviewRes.ok) throw new Error('No se pudieron cargar los reportes');
         const data = await overviewRes.json();
+        const fallbackDate = toDateInput(data?.summary?.latest_invoice_at) || todayInput();
+        const resolvedDailyDate = dailyDate || fallbackDate;
+        const dailyRes = await fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${resolvedDailyDate}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!dailyRes.ok) throw new Error('No se pudieron cargar los reportes');
         const dailyData = await dailyRes.json();
         if (!active) return;
         setSummary(data.summary);
@@ -115,6 +123,9 @@ export default function ReportesPage() {
         setLowStock(data.low_stock || []);
         setYearProjection(data.year_projection || null);
         setDailyReport(dailyData || null);
+        if (!dailyDate && resolvedDailyDate) {
+          setDailyDate(resolvedDailyDate);
+        }
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Error cargando reportes');

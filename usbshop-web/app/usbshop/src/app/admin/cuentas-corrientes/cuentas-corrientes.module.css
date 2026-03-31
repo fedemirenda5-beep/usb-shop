@@ -49,6 +49,7 @@
 .balanceCell { color: var(--ink); font-weight: 700; }
 .invoiceCard, .formCard { border: 1px solid var(--bg-soft); border-radius: 14px; background: white; padding: 14px; display: grid; gap: 14px; }
 .sectionHeader, .formHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.formActions { display: flex; gap: 10px; flex-wrap: wrap; }
 .invoiceList { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow: auto; }
 .invoiceItem { display: flex; justify-content: space-between; gap: 10px; padding: 10px; border-radius: 12px; background: var(--bg); border: 1px solid var(--bg-soft); }
 .invoiceAmounts { display: grid; justify-items: end; gap: 4px; }
@@ -61,6 +62,9 @@
 .formGrid input, .formGrid select { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; background: white; font: inherit; }
 .fullWidth { grid-column: 1 / -1; }
 .emptyPanel, .empty, .error { padding: 14px; border-radius: 12px; }
+.actionsCell { white-space: nowrap; }
+.linkButton { border: 0; background: transparent; color: #0f766e; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+.mutedText { color: var(--muted); font-size: 12px; }
 .emptyPanel, .empty { background: var(--bg); color: var(--muted); }
 .error { background: rgba(220,38,38,.1); color: #b91c1c; border: 1px solid rgba(220,38,38,.25); }
 .modalOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: 24px; z-index: 220; }
@@ -103,7 +107,7 @@
 }
 @media (max-width: 860px) {
   .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
-  .toolbarActions, .accountActions, .modeSwitcher, .confirmActions { flex-direction: column; }
+  .toolbarActions, .accountActions, .modeSwitcher, .confirmActions, .formActions { flex-direction: column; }
   .modalOverlay { padding: 12px; }
   .confirmModal { padding: 14px; }
 }

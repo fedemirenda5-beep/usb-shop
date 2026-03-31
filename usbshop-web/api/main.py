@@ -1204,6 +1204,19 @@ def _movement_entry_label(entry_kind: str) -> str:
     }.get(entry_kind, "Movimiento")
 
 
+def _normalize_cc_entry_kind(movement_type: str, raw_entry_kind: Any) -> tuple[str, set[str]]:
+    entry_kind = str(raw_entry_kind or "").strip().upper()
+    if movement_type == "DEBIT":
+        allowed_entry_kinds = {"ADJUSTMENT", "OPENING_BALANCE"}
+        if not entry_kind:
+            entry_kind = "ADJUSTMENT"
+    else:
+        allowed_entry_kinds = {"PAYMENT", "CREDIT_NOTE", "WRITEOFF", "ADJUSTMENT"}
+        if not entry_kind:
+            entry_kind = "PAYMENT"
+    return entry_kind, allowed_entry_kinds
+
+
 def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, Any]:
     debits: list[dict[str, Any]] = []
     credits: list[dict[str, Any]] = []
@@ -3880,6 +3893,7 @@ def admin_cc_customer_detail(
                     "remaining_amount": remaining,
                     "status_label": status_label,
                     "running_balance": running_balance,
+                    "editable": not (int(row["invoice_id"] or 0) > 0 and (movement_type == "DEBIT" or entry_kind == "SALE")),
                 }
             )
         return {
@@ -4614,14 +4628,7 @@ def admin_cc_create_movement(
     created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
     reference = str(payload.get("reference") or "").strip() or None
     payment_method = str(payload.get("payment_method") or "").strip() or None
-    if movement_type == "DEBIT":
-        allowed_entry_kinds = {"ADJUSTMENT", "OPENING_BALANCE"}
-        if not entry_kind:
-            entry_kind = "ADJUSTMENT"
-    else:
-        allowed_entry_kinds = {"PAYMENT", "CREDIT_NOTE", "WRITEOFF", "ADJUSTMENT"}
-        if not entry_kind:
-            entry_kind = "PAYMENT"
+    entry_kind, allowed_entry_kinds = _normalize_cc_entry_kind(movement_type, entry_kind)
     if entry_kind not in allowed_entry_kinds:
         raise HTTPException(status_code=400, detail="Concepto de movimiento invalido")
 
@@ -4673,6 +4680,102 @@ def admin_cc_create_movement(
             "invoice_id": parsed_invoice_id,
             "balance": _customer_current_balance_from_rows(balance_row),
             "message": "Movimiento registrado",
+        }
+    finally:
+        conn.close()
+
+
+@app.put("/admin/cc/{customer_id}/movements/{movement_id}")
+def admin_cc_update_movement(
+    customer_id: int,
+    movement_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    movement_type = str(payload.get("movement_type") or "").strip().upper()
+    if movement_type not in {"DEBIT", "CREDIT"}:
+        raise HTTPException(status_code=400, detail="Tipo de movimiento invalido")
+    amount = round(float(payload.get("amount") or 0), 2)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Importe invalido")
+    entry_kind, allowed_entry_kinds = _normalize_cc_entry_kind(movement_type, payload.get("entry_kind"))
+    if entry_kind not in allowed_entry_kinds:
+        raise HTTPException(status_code=400, detail="Concepto de movimiento invalido")
+    invoice_id = payload.get("invoice_id")
+    parsed_invoice_id = int(invoice_id) if invoice_id not in (None, "", 0, "0") else None
+    reference = str(payload.get("reference") or "").strip() or None
+    payment_method = str(payload.get("payment_method") or "").strip() or None
+
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        customer = conn.execute(
+            """
+            SELECT id
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        movement = conn.execute(
+            """
+            SELECT id, customer_id, invoice_id, movement_type, entry_kind
+            FROM account_movements
+            WHERE id = ? AND customer_id = ?
+            """,
+            (movement_id, customer_id),
+        ).fetchone()
+        if movement is None:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        current_entry_kind = str(movement["entry_kind"] or "").strip().upper()
+        if int(movement["invoice_id"] or 0) > 0 and (
+            str(movement["movement_type"] or "").strip().upper() == "DEBIT" or current_entry_kind == "SALE"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede editar un movimiento generado por un comprobante de venta",
+            )
+        if parsed_invoice_id is not None:
+            invoice = conn.execute(
+                """
+                SELECT id, customer_id
+                FROM invoices
+                WHERE id = ?
+                """,
+                (parsed_invoice_id,),
+            ).fetchone()
+            if invoice is None:
+                raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+            if int(invoice["customer_id"] or 0) != customer_id:
+                raise HTTPException(status_code=400, detail="El comprobante no pertenece al cliente")
+        conn.execute(
+            """
+            UPDATE account_movements
+               SET invoice_id = ?, amount = ?, movement_type = ?, entry_kind = ?, reference = ?, payment_method = ?
+             WHERE id = ? AND customer_id = ?
+            """,
+            (parsed_invoice_id, amount, movement_type, entry_kind, reference, payment_method, movement_id, customer_id),
+        )
+        conn.commit()
+        balance_row = conn.execute(
+            """
+            SELECT amount, movement_type
+            FROM account_movements
+            WHERE customer_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (customer_id,),
+        ).fetchall()
+        return {
+            "customer_id": customer_id,
+            "movement_id": movement_id,
+            "invoice_id": parsed_invoice_id,
+            "balance": _customer_current_balance_from_rows(balance_row),
+            "message": "Movimiento actualizado",
         }
     finally:
         conn.close()
@@ -5653,6 +5756,60 @@ def admin_create_account_movement(
         )
         conn.commit()
         return {"customer_id": customer_id, "balance": _customer_balance(conn, customer_id)}
+    finally:
+        conn.close()
+
+
+@app.put("/admin/account-customers/{customer_id}/movements/{movement_id}")
+def admin_update_account_movement(
+    customer_id: int,
+    movement_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    payload: dict = Body(...),
+) -> dict:
+    _require_admin(session_token)
+    movement_type = str(payload.get("movement_type") or "").strip().upper()
+    if movement_type not in {"DEBIT", "CREDIT"}:
+        raise HTTPException(status_code=400, detail="Tipo de movimiento invalido")
+    amount = float(payload.get("amount") or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Importe invalido")
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        customer = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        movement = conn.execute(
+            "SELECT id FROM account_movements WHERE id = ? AND customer_id = ?",
+            (movement_id, customer_id),
+        ).fetchone()
+        if movement is None:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        conn.execute(
+            """
+            UPDATE account_movements
+               SET movement_type = ?, amount = ?, description = ?, document_type = ?, document_number = ?, due_date = ?
+             WHERE id = ? AND customer_id = ?
+            """,
+            (
+                movement_type,
+                amount,
+                str(payload.get("description") or "").strip() or None,
+                str(payload.get("document_type") or "").strip() or None,
+                str(payload.get("document_number") or "").strip() or None,
+                str(payload.get("due_date") or "").strip() or None,
+                movement_id,
+                customer_id,
+            ),
+        )
+        conn.execute(
+            "UPDATE account_customers SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (customer_id,),
+        )
+        conn.commit()
+        return {"customer_id": customer_id, "movement_id": movement_id, "balance": _customer_balance(conn, customer_id)}
     finally:
         conn.close()
 

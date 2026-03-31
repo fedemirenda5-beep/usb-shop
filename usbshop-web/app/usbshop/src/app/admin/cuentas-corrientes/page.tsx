@@ -59,6 +59,7 @@ type Movement = {
   remaining_amount?: number | null;
   status_label?: string | null;
   running_balance: number;
+  editable?: boolean;
 };
 
 type CustomerDetail = {
@@ -128,6 +129,7 @@ export default function CuentasCorrientesPage() {
   const [outputRange, setOutputRange] = useState<{ from: string; to: string } | null>(null);
   const [dateRangeDraft, setDateRangeDraft] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [movementMode, setMovementMode] = useState<'payment' | 'debt'>('payment');
+  const [editingMovementId, setEditingMovementId] = useState<number | null>(null);
   const [form, setForm] = useState({
     movement_type: 'CREDIT',
     entry_kind: 'PAYMENT',
@@ -221,6 +223,7 @@ export default function CuentasCorrientesPage() {
               : null,
         due_date: typeof item.due_date === 'string' ? item.due_date : null,
         running_balance: 0,
+        editable: true,
       }))
       .reverse();
     let runningBalance = 0;
@@ -344,6 +347,7 @@ export default function CuentasCorrientesPage() {
 
   useEffect(() => {
     if (!selectedId) return;
+    resetMovementForm();
     const loadSelectedCustomer = async () => {
       try {
         await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
@@ -362,8 +366,12 @@ export default function CuentasCorrientesPage() {
       setError('');
       await loadRuntimeConfig();
       const endpoint = legacyMode
-        ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements`
-        : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
+        ? editingMovementId
+          ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements/${editingMovementId}`
+          : `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements`
+        : editingMovementId
+          ? `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${editingMovementId}`
+          : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
       const payload = legacyMode
         ? {
             movement_type: form.movement_type,
@@ -379,14 +387,15 @@ export default function CuentasCorrientesPage() {
             invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
           };
       const res = await fetch(endpoint, {
-        method: 'POST',
+        method: editingMovementId ? 'PUT' : 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.detail || 'No se pudo registrar el movimiento');
+      if (!res.ok) throw new Error(data.detail || (editingMovementId ? 'No se pudo actualizar el movimiento' : 'No se pudo registrar el movimiento'));
       await Promise.all([loadOverview(), loadDetail(selectedId), loadInvoices(selectedId)]);
+      setEditingMovementId(null);
       setForm((current) => ({
         ...current,
         amount: '',
@@ -474,6 +483,33 @@ export default function CuentasCorrientesPage() {
       invoice_id: mode === 'payment' ? current.invoice_id : '',
       reference: mode === 'payment' ? current.reference : current.reference || 'Faltante de pago / deuda historica',
     }));
+  };
+
+  const resetMovementForm = () => {
+    setEditingMovementId(null);
+    setMovementMode('payment');
+    setForm({
+      movement_type: 'CREDIT',
+      entry_kind: 'PAYMENT',
+      amount: '',
+      payment_method: 'Transferencia',
+      reference: '',
+      invoice_id: '',
+    });
+  };
+
+  const startEditingMovement = (movement: Movement) => {
+    const nextMode = movement.movement_type === 'DEBIT' ? 'debt' : 'payment';
+    setEditingMovementId(movement.id);
+    setMovementMode(nextMode);
+    setForm({
+      movement_type: movement.movement_type,
+      entry_kind: movement.entry_kind || (nextMode === 'payment' ? 'PAYMENT' : 'ADJUSTMENT'),
+      amount: movement.amount ? String(movement.amount) : '',
+      payment_method: movement.payment_method || (nextMode === 'payment' ? 'Transferencia' : ''),
+      reference: movement.reference || '',
+      invoice_id: movement.invoice_id ? String(movement.invoice_id) : '',
+    });
   };
 
   const movementConceptOptions = useMemo(
@@ -667,11 +703,12 @@ export default function CuentasCorrientesPage() {
                     <th>Importe</th>
                     <th>Estado</th>
                     <th>Saldo</th>
+                    {!detailOnly ? <th>Acciones</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {visibleMovements.length === 0 ? (
-                    <tr><td colSpan={6}>Sin movimientos.</td></tr>
+                    <tr><td colSpan={detailOnly ? 6 : 7}>Sin movimientos.</td></tr>
                   ) : (
                     visibleMovements.map((movement) => (
                       <tr key={movement.id}>
@@ -685,6 +722,21 @@ export default function CuentasCorrientesPage() {
                         </td>
                         <td>{movement.status_label || '-'}</td>
                         <td className={styles.balanceCell}>{money(movement.running_balance)}</td>
+                        {!detailOnly ? (
+                          <td className={styles.actionsCell}>
+                            {movement.editable !== false ? (
+                              <button
+                                type="button"
+                                className={styles.linkButton}
+                                onClick={() => startEditingMovement(movement)}
+                              >
+                                Editar
+                              </button>
+                            ) : (
+                              <span className={styles.mutedText}>Bloqueado</span>
+                            )}
+                          </td>
+                        ) : null}
                       </tr>
                     ))
                   )}
@@ -742,12 +794,27 @@ export default function CuentasCorrientesPage() {
             <form className={styles.formCard} onSubmit={submitMovement}>
                 <div className={styles.formHeader}>
                   <div>
-                    <h3>{movementMode === 'payment' ? 'Registrar pago' : 'Registrar deuda historica'}</h3>
+                    <h3>
+                      {editingMovementId
+                        ? movementMode === 'payment'
+                          ? 'Editar pago'
+                          : 'Editar deuda'
+                        : movementMode === 'payment'
+                          ? 'Registrar pago'
+                          : 'Registrar deuda historica'}
+                    </h3>
                     <p>Impacta directamente en la cuenta del cliente.</p>
                   </div>
-                  <button type="submit" className={styles.primaryButton} disabled={saving}>
-                    {saving ? 'Guardando...' : movementMode === 'payment' ? 'Guardar pago' : 'Guardar deuda'}
-                  </button>
+                  <div className={styles.formActions}>
+                    {editingMovementId ? (
+                      <button type="button" className={styles.secondaryButton} onClick={resetMovementForm} disabled={saving}>
+                        Cancelar edicion
+                      </button>
+                    ) : null}
+                    <button type="submit" className={styles.primaryButton} disabled={saving}>
+                      {saving ? 'Guardando...' : editingMovementId ? 'Guardar cambios' : movementMode === 'payment' ? 'Guardar pago' : 'Guardar deuda'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className={styles.modeSwitcher}>
@@ -755,6 +822,7 @@ export default function CuentasCorrientesPage() {
                     type="button"
                     className={`${styles.modeButton} ${movementMode === 'payment' ? styles.modeButtonActive : ''}`}
                     onClick={() => setMode('payment')}
+                    disabled={saving}
                   >
                     Pago
                   </button>
@@ -762,6 +830,7 @@ export default function CuentasCorrientesPage() {
                     type="button"
                     className={`${styles.modeButton} ${movementMode === 'debt' ? styles.modeButtonActive : ''}`}
                     onClick={() => setMode('debt')}
+                    disabled={saving}
                   >
                     Deuda
                   </button>
