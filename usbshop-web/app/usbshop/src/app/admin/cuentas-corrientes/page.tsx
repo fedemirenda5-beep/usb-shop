@@ -99,6 +99,7 @@ const formatDate = (value?: string | null) => {
 export default function CuentasCorrientesPage() {
   const { user } = useAdminSession();
   const detailRef = useRef<HTMLElement | null>(null);
+  const movementFormRef = useRef<HTMLFormElement | null>(null);
   const [customers, setCustomers] = useState<CustomerOverview[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
@@ -510,6 +511,9 @@ export default function CuentasCorrientesPage() {
       reference: movement.reference || '',
       invoice_id: movement.invoice_id ? String(movement.invoice_id) : '',
     });
+    window.requestAnimationFrame(() => {
+      movementFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const movementConceptOptions = useMemo(
@@ -791,7 +795,7 @@ export default function CuentasCorrientesPage() {
               </div>
             </section>
 
-            <form className={styles.formCard} onSubmit={submitMovement}>
+            <form className={styles.formCard} onSubmit={submitMovement} ref={movementFormRef}>
                 <div className={styles.formHeader}>
                   <div>
                     <h3>
@@ -816,6 +820,12 @@ export default function CuentasCorrientesPage() {
                     </button>
                   </div>
                 </div>
+
+                {editingMovementId ? (
+                  <div className={styles.editingNotice}>
+                    Editando movimiento #{editingMovementId}. Al guardar se recalcula el saldo de la cuenta.
+                  </div>
+                ) : null}
 
                 <div className={styles.modeSwitcher}>
                   <button

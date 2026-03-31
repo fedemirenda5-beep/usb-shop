@@ -62,6 +62,7 @@
 .formGrid input, .formGrid select { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; background: white; font: inherit; }
 .fullWidth { grid-column: 1 / -1; }
 .emptyPanel, .empty, .error { padding: 14px; border-radius: 12px; }
+.editingNotice { padding: 12px 14px; border-radius: 12px; background: rgba(15,118,110,.08); color: #0f766e; border: 1px solid rgba(15,118,110,.18); font-size: 13px; font-weight: 600; }
 .actionsCell { white-space: nowrap; }
 .linkButton { border: 0; background: transparent; color: #0f766e; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
 .mutedText { color: var(--muted); font-size: 12px; }
