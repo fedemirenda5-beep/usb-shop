@@ -1151,6 +1151,22 @@ def _argentina_date_for_filter(value: Any) -> Optional[datetime.date]:
     return parsed.astimezone(ARGENTINA_TZ).date()
 
 
+def _argentina_datetime(value: Any) -> Optional[datetime]:
+    parsed = _safe_parse_datetime(value)
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        return parsed
+    return parsed.astimezone(ARGENTINA_TZ)
+
+
+def _argentina_month_bucket(value: Any) -> Optional[str]:
+    parsed = _argentina_datetime(value)
+    if parsed is None:
+        return None
+    return parsed.strftime("%Y-%m")
+
+
 def _customer_current_balance_from_rows(rows: list[Any]) -> float:
     balance = 0.0
     for row in rows:
@@ -4884,10 +4900,9 @@ def admin_reports_overview(
 
         monthly_map: dict[str, dict[str, Any]] = {}
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
-            if created is None:
+            bucket = _argentina_month_bucket(row["created_at"])
+            if bucket is None:
                 continue
-            bucket = created.strftime("%Y-%m")
             entry = monthly_map.setdefault(
                 bucket,
                 {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
@@ -4915,9 +4930,8 @@ def admin_reports_overview(
             margin_value = quantity * max(0.0, unit_price - cost_by_product.get(product_id, 0.0)) * sign
             entry["quantity"] += quantity
             entry["revenue"] += revenue
-            created = _safe_parse_datetime(row["created_at"])
-            if created is not None:
-                bucket = created.strftime("%Y-%m")
+            bucket = _argentina_month_bucket(row["created_at"])
+            if bucket is not None:
                 monthly_entry = monthly_map.setdefault(
                     bucket,
                     {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
@@ -4941,9 +4955,8 @@ def admin_reports_overview(
             if discount <= 0:
                 continue
             sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
-            created = _safe_parse_datetime(row["created_at"])
-            if created is not None:
-                bucket = created.strftime("%Y-%m")
+            bucket = _argentina_month_bucket(row["created_at"])
+            if bucket is not None:
                 monthly_entry = monthly_map.setdefault(
                     bucket,
                     {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
@@ -4953,10 +4966,9 @@ def admin_reports_overview(
             if seller_id > 0:
                 seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) - (discount * sign), 2)
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
-            if created is None:
+            bucket = _argentina_month_bucket(row["created_at"])
+            if bucket is None:
                 continue
-            bucket = created.strftime("%Y-%m")
             monthly_entry = monthly_map.setdefault(
                 bucket,
                 {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
@@ -4967,10 +4979,9 @@ def admin_reports_overview(
                 2,
             )
         for row in expense_rows:
-            created = _safe_parse_datetime(row["created_at"])
-            if created is None:
+            bucket = _argentina_month_bucket(row["created_at"])
+            if bucket is None:
                 continue
-            bucket = created.strftime("%Y-%m")
             monthly_entry = monthly_map.setdefault(
                 bucket,
                 {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
@@ -5040,7 +5051,7 @@ def admin_reports_overview(
 
         cash_events: list[tuple[datetime, float]] = []
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             sale_mode = str(row["sale_mode"] or "").strip().upper()
@@ -5048,18 +5059,18 @@ def admin_reports_overview(
                 sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
                 cash_events.append((created, round(float(row["total"] or 0) * sign, 2)))
         for row in cc_rows:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             if str(row["movement_type"] or "").strip().upper() == "CREDIT":
                 cash_events.append((created, round(float(row["amount"] or 0), 2)))
         for row in purchase_rows:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             cash_events.append((created, -round(float(row["total"] or 0), 2)))
         for row in expense_rows:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             cash_events.append((created, -round(float(row["amount"] or 0), 2)))
@@ -5173,7 +5184,7 @@ def admin_reports_overview(
             entry["margin"] += float(item["margin"] or 0)
             entry["count"] += int(item["count"] or 0)
         for row in purchase_rows:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             entry = yearly_map.setdefault(
@@ -5182,7 +5193,7 @@ def admin_reports_overview(
             )
             entry["purchases"] += float(row["total"] or 0)
         for row in expense_rows:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             entry = yearly_map.setdefault(
@@ -5191,7 +5202,7 @@ def admin_reports_overview(
             )
             entry["expenses"] += float(row["amount"] or 0)
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             entry = yearly_map.setdefault(
@@ -5201,7 +5212,7 @@ def admin_reports_overview(
             sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
             entry["commissions"] += float(row["commission_amount"] or 0) * sign
 
-        now_dt = datetime.utcnow()
+        now_dt = _argentina_now()
         current_year = now_dt.year
         current_month = now_dt.month
         current_year_months = [item for item in monthly_sales_all if str(item["month"]).startswith(f"{current_year}-")]
@@ -5236,7 +5247,7 @@ def admin_reports_overview(
         year_end_cc_balance: dict[int, float] = {}
         running_cc_balance = 0.0
         for row in cc_rows:
-            created = _safe_parse_datetime(row["created_at"])
+            created = _argentina_datetime(row["created_at"])
             if created is None:
                 continue
             amount = float(row["amount"] or 0)
