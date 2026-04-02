@@ -4888,7 +4888,10 @@ def admin_reports_overview(
             if created is None:
                 continue
             bucket = created.strftime("%Y-%m")
-            entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
+            entry = monthly_map.setdefault(
+                bucket,
+                {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
+            )
             sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
             entry["sales"] += float(row["total"] or 0) * sign
             entry["count"] += 1
@@ -4915,7 +4918,10 @@ def admin_reports_overview(
             created = _safe_parse_datetime(row["created_at"])
             if created is not None:
                 bucket = created.strftime("%Y-%m")
-                monthly_entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
+                monthly_entry = monthly_map.setdefault(
+                    bucket,
+                    {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
+                )
                 monthly_entry["margin"] += margin_value
             category_name = category_names.get(category_by_product.get(product_id, 0), "Sin rubro")
             category_sales_map[category_name] = round(category_sales_map.get(category_name, 0.0) + revenue, 2)
@@ -4938,16 +4944,51 @@ def admin_reports_overview(
             created = _safe_parse_datetime(row["created_at"])
             if created is not None:
                 bucket = created.strftime("%Y-%m")
-                monthly_entry = monthly_map.setdefault(bucket, {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0})
+                monthly_entry = monthly_map.setdefault(
+                    bucket,
+                    {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
+                )
                 monthly_entry["margin"] = round(float(monthly_entry["margin"] or 0) - (discount * sign), 2)
             seller_id = int(row["seller_id"] or 0)
             if seller_id > 0:
                 seller_margin_map[seller_id] = round(seller_margin_map.get(seller_id, 0.0) - (discount * sign), 2)
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            bucket = created.strftime("%Y-%m")
+            monthly_entry = monthly_map.setdefault(
+                bucket,
+                {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
+            )
+            sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            monthly_entry["commissions"] = round(
+                float(monthly_entry["commissions"] or 0) + (float(row["commission_amount"] or 0) * sign),
+                2,
+            )
+        for row in expense_rows:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None:
+                continue
+            bucket = created.strftime("%Y-%m")
+            monthly_entry = monthly_map.setdefault(
+                bucket,
+                {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
+            )
+            monthly_entry["expenses"] = round(float(monthly_entry["expenses"] or 0) + float(row["amount"] or 0), 2)
         monthly_sales_all = [
             {
                 **monthly_map[key],
                 "sales": round(float(monthly_map[key]["sales"] or 0), 2),
                 "margin": round(float(monthly_map[key]["margin"] or 0), 2),
+                "expenses": round(float(monthly_map[key]["expenses"] or 0), 2),
+                "commissions": round(float(monthly_map[key]["commissions"] or 0), 2),
+                "operating_result": round(
+                    float(monthly_map[key]["margin"] or 0)
+                    - float(monthly_map[key]["expenses"] or 0)
+                    - float(monthly_map[key]["commissions"] or 0),
+                    2,
+                ),
             }
             for key in sorted(monthly_map.keys())
         ]
@@ -5157,7 +5198,8 @@ def admin_reports_overview(
                 created.year,
                 {"year": created.year, "sales": 0.0, "margin": 0.0, "count": 0, "purchases": 0.0, "expenses": 0.0, "commissions": 0.0},
             )
-            entry["commissions"] += float(row["commission_amount"] or 0)
+            sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+            entry["commissions"] += float(row["commission_amount"] or 0) * sign
 
         now_dt = datetime.utcnow()
         current_year = now_dt.year
@@ -5254,16 +5296,18 @@ def admin_reports_overview(
             previous_item = previous_month_map.get(previous_key, {})
             sales_value = round(float(item["sales"] or 0), 2)
             margin_value = round(float(item["margin"] or 0), 2)
+            operating_result_value = round(float(item["operating_result"] or 0), 2)
             previous_sales = round(float(previous_item.get("sales") or 0), 2)
             previous_margin = round(float(previous_item.get("margin") or 0), 2)
+            previous_operating_result = round(float(previous_item.get("operating_result") or 0), 2)
             sales_growth_pct = (
                 round(((sales_value - previous_sales) / previous_sales) * 100, 2)
                 if previous_sales > 0
                 else None
             )
-            margin_growth_pct = (
-                round(((margin_value - previous_margin) / previous_margin) * 100, 2)
-                if previous_margin > 0
+            operating_result_growth_pct = (
+                round(((operating_result_value - previous_operating_result) / previous_operating_result) * 100, 2)
+                if previous_operating_result > 0
                 else None
             )
             current_year_comparison.append(
@@ -5271,11 +5315,13 @@ def admin_reports_overview(
                     "month": month_key,
                     "sales": sales_value,
                     "margin": margin_value,
+                    "operating_result": operating_result_value,
                     "count": int(item["count"] or 0),
                     "previous_year_sales": previous_sales,
                     "previous_year_margin": previous_margin,
+                    "previous_year_operating_result": previous_operating_result,
                     "sales_growth_pct": sales_growth_pct,
-                    "margin_growth_pct": margin_growth_pct,
+                    "operating_result_growth_pct": operating_result_growth_pct,
                 }
             )
 

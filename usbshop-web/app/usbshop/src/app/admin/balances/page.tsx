@@ -22,17 +22,20 @@ type CurrentYearMonth = {
   month: string;
   sales: number;
   margin: number;
+  operating_result: number;
   count: number;
   previous_year_sales: number;
   previous_year_margin: number;
+  previous_year_operating_result: number;
   sales_growth_pct?: number | null;
-  margin_growth_pct?: number | null;
+  operating_result_growth_pct?: number | null;
 };
 
 type MonthlySalesPoint = {
   month: string;
   sales: number;
   margin: number;
+  operating_result: number;
   count: number;
 };
 
@@ -135,6 +138,7 @@ export default function BalancesPage() {
           month: String(item.month || ''),
           sales: Number(item.sales || 0),
           margin: Number(item.margin || 0),
+          operating_result: Number(item.operating_result || 0),
           count: Number(item.count || 0),
         }))
         .filter((item) => item.month)
@@ -358,10 +362,10 @@ export default function BalancesPage() {
                             <td className={(item.sales_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                               {formatPercent(item.sales_growth_pct)}
                             </td>
-                            <td>{money(item.margin)}</td>
-                            <td>{money(item.previous_year_margin)}</td>
-                            <td className={(item.margin_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
-                              {formatPercent(item.margin_growth_pct)}
+                            <td>{money(item.operating_result)}</td>
+                            <td>{money(item.previous_year_operating_result)}</td>
+                            <td className={(item.operating_result_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
+                              {formatPercent(item.operating_result_growth_pct)}
                             </td>
                           </tr>
                         ))
