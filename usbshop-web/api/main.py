@@ -5307,13 +5307,20 @@ def admin_reports_overview(
             previous_item = previous_month_map.get(previous_key, {})
             sales_value = round(float(item["sales"] or 0), 2)
             margin_value = round(float(item["margin"] or 0), 2)
+            expenses_value = round(float(item["expenses"] or 0), 2)
             operating_result_value = round(float(item["operating_result"] or 0), 2)
             previous_sales = round(float(previous_item.get("sales") or 0), 2)
             previous_margin = round(float(previous_item.get("margin") or 0), 2)
+            previous_expenses = round(float(previous_item.get("expenses") or 0), 2)
             previous_operating_result = round(float(previous_item.get("operating_result") or 0), 2)
             sales_growth_pct = (
                 round(((sales_value - previous_sales) / previous_sales) * 100, 2)
                 if previous_sales > 0
+                else None
+            )
+            margin_growth_pct = (
+                round(((margin_value - previous_margin) / previous_margin) * 100, 2)
+                if previous_margin > 0
                 else None
             )
             operating_result_growth_pct = (
@@ -5326,12 +5333,15 @@ def admin_reports_overview(
                     "month": month_key,
                     "sales": sales_value,
                     "margin": margin_value,
+                    "expenses": expenses_value,
                     "operating_result": operating_result_value,
                     "count": int(item["count"] or 0),
                     "previous_year_sales": previous_sales,
                     "previous_year_margin": previous_margin,
+                    "previous_year_expenses": previous_expenses,
                     "previous_year_operating_result": previous_operating_result,
                     "sales_growth_pct": sales_growth_pct,
+                    "margin_growth_pct": margin_growth_pct,
                     "operating_result_growth_pct": operating_result_growth_pct,
                 }
             )

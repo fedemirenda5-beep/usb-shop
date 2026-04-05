@@ -22,12 +22,15 @@ type CurrentYearMonth = {
   month: string;
   sales: number;
   margin: number;
+  expenses: number;
   operating_result: number;
   count: number;
   previous_year_sales: number;
   previous_year_margin: number;
+  previous_year_expenses: number;
   previous_year_operating_result: number;
   sales_growth_pct?: number | null;
+  margin_growth_pct?: number | null;
   operating_result_growth_pct?: number | null;
 };
 
@@ -347,12 +350,14 @@ export default function BalancesPage() {
                         <th>Var.</th>
                         <th>Ganancia {currentYear.year}</th>
                         <th>Ganancia {currentYear.year - 1}</th>
+                        <th>Gastos {currentYear.year}</th>
+                        <th>Gastos {currentYear.year - 1}</th>
                         <th>Var.</th>
                       </tr>
                     </thead>
                     <tbody>
                       {currentYear.months.length === 0 ? (
-                        <tr><td colSpan={7}>Todavia no hay movimientos para {currentYear.year}.</td></tr>
+                        <tr><td colSpan={9}>Todavia no hay movimientos para {currentYear.year}.</td></tr>
                       ) : (
                         currentYear.months.map((item) => (
                           <tr key={item.month}>
@@ -362,10 +367,12 @@ export default function BalancesPage() {
                             <td className={(item.sales_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                               {formatPercent(item.sales_growth_pct)}
                             </td>
-                            <td>{money(item.operating_result)}</td>
-                            <td>{money(item.previous_year_operating_result)}</td>
-                            <td className={(item.operating_result_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
-                              {formatPercent(item.operating_result_growth_pct)}
+                            <td>{money(item.margin)}</td>
+                            <td>{money(item.previous_year_margin)}</td>
+                            <td>{money(item.expenses)}</td>
+                            <td>{money(item.previous_year_expenses)}</td>
+                            <td className={(item.margin_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
+                              {formatPercent(item.margin_growth_pct)}
                             </td>
                           </tr>
                         ))
