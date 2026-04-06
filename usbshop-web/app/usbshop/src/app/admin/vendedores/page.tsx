@@ -153,6 +153,9 @@ export default function VendedoresPage() {
       return;
     }
     const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       void loadMonthlySummary(true);
     }, 30000);
 

@@ -14,6 +14,7 @@ const DEFAULT_ORDER_SECRET = process.env.NEXT_PUBLIC_ORDER_SECRET || "";
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
 let runtimeConfigLoaded = false;
+let runtimeConfigPromise: Promise<string | null> | null = null;
 
 export const getApiBaseUrl = () => runtimeApiBaseUrl;
 export const getOrderSecret = () => runtimeOrderSecret;
@@ -39,34 +40,42 @@ export async function loadRuntimeConfig(): Promise<string | null> {
   if (runtimeConfigLoaded || typeof window === "undefined") {
     return null;
   }
-  try {
-    const host = window.location.hostname;
-    const response = await fetch("/usbshop-config.json", { cache: "no-store" });
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { apiBaseUrl?: string; orderSecret?: string };
-    if (!data || typeof data.apiBaseUrl !== "string") {
-      return null;
-    }
-    const apiBaseUrl = data.apiBaseUrl.trim();
-    if (!apiBaseUrl) {
-      return null;
-    }
-    if ((host === "localhost" || host === "127.0.0.1") && /^https?:\/\//i.test(apiBaseUrl)) {
-      runtimeConfigLoaded = true;
-      return runtimeApiBaseUrl;
-    }
-    setRuntimeApiBaseUrl(apiBaseUrl);
-    if (typeof data.orderSecret === "string") {
-      setRuntimeOrderSecret(data.orderSecret);
-    }
-    runtimeConfigLoaded = true;
-    return apiBaseUrl;
-  } catch {
-    runtimeConfigLoaded = false;
-    return null;
+  if (runtimeConfigPromise) {
+    return runtimeConfigPromise;
   }
+  runtimeConfigPromise = (async () => {
+    try {
+      const host = window.location.hostname;
+      const response = await fetch("/usbshop-config.json", { cache: "no-store" });
+      if (!response.ok) {
+        return null;
+      }
+      const data = (await response.json()) as { apiBaseUrl?: string; orderSecret?: string };
+      if (!data || typeof data.apiBaseUrl !== "string") {
+        return null;
+      }
+      const apiBaseUrl = data.apiBaseUrl.trim();
+      if (!apiBaseUrl) {
+        return null;
+      }
+      if ((host === "localhost" || host === "127.0.0.1") && /^https?:\/\//i.test(apiBaseUrl)) {
+        runtimeConfigLoaded = true;
+        return runtimeApiBaseUrl;
+      }
+      setRuntimeApiBaseUrl(apiBaseUrl);
+      if (typeof data.orderSecret === "string") {
+        setRuntimeOrderSecret(data.orderSecret);
+      }
+      runtimeConfigLoaded = true;
+      return apiBaseUrl;
+    } catch {
+      runtimeConfigLoaded = false;
+      return null;
+    } finally {
+      runtimeConfigPromise = null;
+    }
+  })();
+  return runtimeConfigPromise;
 }
 export const ORDER_SECRET = DEFAULT_ORDER_SECRET;
 export const SYNC_SECRET = process.env.NEXT_PUBLIC_SYNC_SECRET || "";

@@ -153,6 +153,9 @@ export default function ReportesPage() {
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
       setRefreshTick((current) => current + 1);
     }, 30_000);
 

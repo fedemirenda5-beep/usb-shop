@@ -713,6 +713,35 @@ export default function HomeClient({
   }, [searchQuery]);
   const isSearching = searchTokens.length > 0;
   const skeletonCards = useMemo(() => Array.from({ length: 8 }, (_, idx) => idx), []);
+  const allIndexedProducts = useMemo(() => {
+    const map = new Map<number, Product>();
+    for (const product of products) {
+      map.set(product.id, product);
+    }
+    for (const product of featuredSource) {
+      if (!map.has(product.id)) {
+        map.set(product.id, product);
+      }
+    }
+    return Array.from(map.values());
+  }, [products, featuredSource]);
+  const productSearchIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const product of allIndexedProducts) {
+      map.set(
+        product.id,
+        [product.name, product.category, product.badge].filter(Boolean).join(" ").toLowerCase()
+      );
+    }
+    return map;
+  }, [allIndexedProducts]);
+  const productCategoryIndex = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const product of allIndexedProducts) {
+      map.set(product.id, normalizeLabel(product.category) || "general");
+    }
+    return map;
+  }, [allIndexedProducts]);
 
   useEffect(() => {
     if (isSearching && hasMoreProducts && !isFetchingMore) {
@@ -730,39 +759,41 @@ export default function HomeClient({
     if (searchTokens.length === 0) {
       return true;
     }
-    const haystack = [product.name, product.category, product.badge]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
+    const haystack =
+      productSearchIndex.get(product.id) ||
+      [product.name, product.category, product.badge].filter(Boolean).join(" ").toLowerCase();
     return searchTokens.every((token) => haystack.includes(token));
+  };
+  const matchesSelectedCategory = (product: Product) => {
+    if (!selectedCategory) {
+      return true;
+    }
+    return (
+      (productCategoryIndex.get(product.id) || normalizeLabel(product.category) || "general") ===
+      normalizeLabel(selectedCategory)
+    );
   };
 
   const filteredFeatured = useMemo(() => {
     return [...featuredSource]
       .filter((product) => {
-      if (
-        selectedCategory &&
-        normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
-      ) {
+      if (!matchesSelectedCategory(product)) {
         return false;
       }
       return matchesSearch(product);
       })
       .sort(compareByNewest);
-  }, [featuredSource, searchTokens, selectedCategory]);
+  }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
   const filteredProducts = useMemo(() => {
     return [...products]
       .filter((product) => {
-      if (
-        selectedCategory &&
-        normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
-      ) {
+      if (!matchesSelectedCategory(product)) {
         return false;
       }
       return matchesSearch(product);
       })
       .sort(compareByCategoryThenName);
-  }, [products, searchTokens, selectedCategory, categoryRank]);
+  }, [products, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
 
   const catalogSource = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
@@ -777,16 +808,13 @@ export default function HomeClient({
   const filteredCatalog = useMemo(() => {
     return [...catalogSource]
       .filter((product) => {
-      if (
-        selectedCategory &&
-        normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
-      ) {
+      if (!matchesSelectedCategory(product)) {
         return false;
       }
       return matchesSearch(product);
       })
       .sort(selectedCategory ? compareByNewest : compareByCategoryThenName);
-  }, [catalogSource, searchTokens, selectedCategory, categoryRank]);
+  }, [catalogSource, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
 
   const visibleCatalog = useMemo(
     () => filteredCatalog.slice(0, catalogLimit),
@@ -857,27 +885,21 @@ export default function HomeClient({
 
   const filteredTopSales = useMemo(() => {
     return topSales.filter((product) => {
-      if (
-        selectedCategory &&
-        normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
-      ) {
+      if (!matchesSelectedCategory(product)) {
         return false;
       }
       return matchesSearch(product);
     });
-  }, [topSales, searchTokens, selectedCategory]);
+  }, [topSales, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
 
   const filteredWeeklyOffers = useMemo(() => {
     return weeklyOffers.filter((product) => {
-      if (
-        selectedCategory &&
-        normalizeLabel(product.category) !== normalizeLabel(selectedCategory)
-      ) {
+      if (!matchesSelectedCategory(product)) {
         return false;
       }
       return matchesSearch(product);
     });
-  }, [weeklyOffers, searchTokens, selectedCategory]);
+  }, [weeklyOffers, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
 
   const addItem = (product: Product) => {
     setCart((prev) => {

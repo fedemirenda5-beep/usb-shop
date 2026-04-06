@@ -399,6 +399,8 @@ _load_env_file()
 DB_URL = (os.getenv("CONTROLSTOCK_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
 DB_IS_POSTGRES = DB_URL.lower().startswith("postgres")
 LOGGER = _setup_logging()
+_TABLE_EXISTS_CACHE: dict[tuple[bool, str], bool] = {}
+_COLUMN_EXISTS_CACHE: dict[tuple[bool, str, str], bool] = {}
 
 app = FastAPI(title="USB Shop API", version="1.0.0")
 
@@ -707,28 +709,53 @@ def _render_thumbnail_bytes(
 
 
 def _has_column(conn: DBConn, table: str, column: str) -> bool:
+    cache_key = (conn.is_postgres, table, column)
+    cached = _COLUMN_EXISTS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     if DB_IS_POSTGRES:
         row = conn.execute(
             "SELECT 1 FROM information_schema.columns WHERE table_name = ? AND column_name = ?",
             (table, column),
         ).fetchone()
-        return row is not None
+        exists = row is not None
+        _COLUMN_EXISTS_CACHE[cache_key] = exists
+        return exists
     info = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    return any(row[1] == column for row in info)
+    exists = any(row[1] == column for row in info)
+    _COLUMN_EXISTS_CACHE[cache_key] = exists
+    return exists
 
 
 def _has_table(conn: DBConn, table: str) -> bool:
+    cache_key = (conn.is_postgres, table)
+    cached = _TABLE_EXISTS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     if DB_IS_POSTGRES:
         row = conn.execute(
             "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?",
             (table,),
         ).fetchone()
-        return row is not None
+        exists = row is not None
+        _TABLE_EXISTS_CACHE[cache_key] = exists
+        return exists
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
         (table,),
     ).fetchone()
-    return row is not None
+    exists = row is not None
+    _TABLE_EXISTS_CACHE[cache_key] = exists
+    return exists
+
+
+def _invalidate_table_cache(table: str) -> None:
+    for key in list(_TABLE_EXISTS_CACHE.keys()):
+        if key[1] == table:
+            _TABLE_EXISTS_CACHE.pop(key, None)
+    for key in list(_COLUMN_EXISTS_CACHE.keys()):
+        if key[1] == table:
+            _COLUMN_EXISTS_CACHE.pop(key, None)
 
 
 def _ensure_products_cost_column(conn: DBConn) -> None:
@@ -739,6 +766,7 @@ def _ensure_products_cost_column(conn: DBConn) -> None:
     else:
         conn.execute("ALTER TABLE products ADD COLUMN cost REAL DEFAULT 0")
     conn.commit()
+    _invalidate_table_cache("products")
 
 
 def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
@@ -746,6 +774,7 @@ def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
         return
     conn.execute("ALTER TABLE invoices ADD COLUMN payment_method TEXT")
     conn.commit()
+    _invalidate_table_cache("invoices")
 
 
 def _ensure_invoice_special_discount_column(conn: DBConn) -> None:
@@ -753,6 +782,7 @@ def _ensure_invoice_special_discount_column(conn: DBConn) -> None:
         return
     conn.execute("ALTER TABLE invoices ADD COLUMN special_discount REAL NOT NULL DEFAULT 0")
     conn.commit()
+    _invalidate_table_cache("invoices")
 
 
 def _require_sync_token(request: Request) -> None:
@@ -823,6 +853,8 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
         if not _has_column(conn, "web_orders", "external_ref"):
             conn.execute("ALTER TABLE web_orders ADD COLUMN external_ref TEXT")
         conn.commit()
+        _invalidate_table_cache("web_orders")
+        _invalidate_table_cache("web_order_items")
         return
     conn.execute(
         """
@@ -861,6 +893,8 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
     if not _has_column(conn, "web_orders", "external_ref"):
         conn.execute("ALTER TABLE web_orders ADD COLUMN external_ref TEXT")
     conn.commit()
+    _invalidate_table_cache("web_orders")
+    _invalidate_table_cache("web_order_items")
 
 
 def _product_images_column(conn: DBConn) -> Optional[str]:
@@ -892,6 +926,7 @@ def _ensure_product_images_table(conn: DBConn) -> None:
             "CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id)"
         )
         conn.commit()
+        _invalidate_table_cache("product_images")
         return
     conn.execute(
         """
@@ -907,6 +942,7 @@ def _ensure_product_images_table(conn: DBConn) -> None:
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id)")
     conn.commit()
+    _invalidate_table_cache("product_images")
 
 
 def _fetch_product_images(conn: DBConn, product_ids: list[int]) -> dict[int, list[str]]:

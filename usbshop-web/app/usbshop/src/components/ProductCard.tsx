@@ -23,6 +23,38 @@ type CardProps = {
   style?: React.CSSProperties;
 };
 
+const shallowEqualStyle = (
+  left?: React.CSSProperties,
+  right?: React.CSSProperties
+) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return !left && !right;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every(
+    (key) => left[key as keyof React.CSSProperties] === right[key as keyof React.CSSProperties]
+  );
+};
+
+const equalImageUrls = (left?: string[] | null, right?: string[] | null) => {
+  if (left === right) {
+    return true;
+  }
+  const safeLeft = left ?? [];
+  const safeRight = right ?? [];
+  if (safeLeft.length !== safeRight.length) {
+    return false;
+  }
+  return safeLeft.every((value, index) => value === safeRight[index]);
+};
+
 const CARD_IMAGE_WIDTH = 420;
 const CARD_IMAGE_HEIGHT = 315;
 
@@ -97,7 +129,7 @@ const getFallbackLabel = (value?: string | null) => {
     .join("");
 };
 
-export default function ProductCard({
+function ProductCard({
   product,
   inCart = 0,
   onAdd,
@@ -351,3 +383,27 @@ export default function ProductCard({
     </article>
   );
 }
+
+const areCardPropsEqual = (prev: CardProps, next: CardProps) => {
+  return (
+    prev.inCart === next.inCart &&
+    prev.imagePriority === next.imagePriority &&
+    prev.imageRefreshKey === next.imageRefreshKey &&
+    Boolean(prev.onAdd) === Boolean(next.onAdd) &&
+    Boolean(prev.onView) === Boolean(next.onView) &&
+    Boolean(prev.onToggleFeatured) === Boolean(next.onToggleFeatured) &&
+    shallowEqualStyle(prev.style, next.style) &&
+    prev.product.id === next.product.id &&
+    prev.product.name === next.product.name &&
+    prev.product.price === next.product.price &&
+    prev.product.category === next.product.category &&
+    prev.product.stock === next.product.stock &&
+    prev.product.badge === next.product.badge &&
+    prev.product.imageUrl === next.product.imageUrl &&
+    prev.product.description === next.product.description &&
+    prev.product.isFeatured === next.product.isFeatured &&
+    equalImageUrls(prev.product.imageUrls, next.product.imageUrls)
+  );
+};
+
+export default React.memo(ProductCard, areCardPropsEqual);
