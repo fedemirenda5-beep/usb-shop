@@ -32,6 +32,7 @@
 .accountActions { display: flex; gap: 10px; flex-wrap: wrap; }
 .detailGrid { display: grid; grid-template-columns: minmax(0, 1.25fr) 360px; gap: 16px; align-items: start; }
 .mainColumn, .sideColumn { display: grid; gap: 14px; min-width: 0; }
+.sideColumn { position: sticky; top: 16px; }
 .desktopStats { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
 .statChip { border: 1px solid var(--bg-soft); border-radius: 12px; padding: 10px; background: var(--bg); display: grid; gap: 4px; }
 .statChip strong { color: var(--ink); font-size: 14px; }

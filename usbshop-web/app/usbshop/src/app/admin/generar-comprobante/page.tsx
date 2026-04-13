@@ -118,6 +118,7 @@ export default function GenerarComprobantePage() {
   const searchParams = useSearchParams();
   const orderIdParam = Number(searchParams?.get('order_id') || 0);
   const budgetInvoiceIdParam = Number(searchParams?.get('budget_invoice_id') || 0);
+  const customerIdParam = Number(searchParams?.get('customer_id') || 0);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
@@ -134,7 +135,7 @@ export default function GenerarComprobantePage() {
     document_type: 'FACTURA',
     sale_mode: 'CONTADO',
     seller_id: '',
-    price_list: '0',
+    price_list: '1',
     payment_method: 'EFECTIVO',
     created_at: nowInputValue(),
     due_date: '',
@@ -181,7 +182,7 @@ export default function GenerarComprobantePage() {
           document_type: 'FACTURA',
           sale_mode: matchedCustomer?.sale_mode || 'CONTADO',
           seller_id: '',
-          price_list: '0',
+          price_list: '1',
           payment_method: 'EFECTIVO',
           created_at: nowInputValue(),
           due_date: '',
@@ -240,6 +241,18 @@ export default function GenerarComprobantePage() {
     };
     void prefillBudget();
   }, [budgetInvoiceIdParam, customers, products]);
+
+  useEffect(() => {
+    if (!customerIdParam || orderIdParam || budgetInvoiceIdParam || customers.length === 0) return;
+    const matchedCustomer = customers.find((customer) => customer.id === customerIdParam);
+    if (!matchedCustomer) return;
+    setCustomerSearch(matchedCustomer.name || '');
+    setForm((current) => ({
+      ...current,
+      customer_id: String(matchedCustomer.id),
+      sale_mode: matchedCustomer.sale_mode || current.sale_mode,
+    }));
+  }, [customerIdParam, orderIdParam, budgetInvoiceIdParam, customers]);
 
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);

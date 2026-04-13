@@ -2,7 +2,7 @@ import type { AdminModuleId } from './adminModules';
 
 export type AdminRole = 'admin' | 'staff' | string;
 
-const STAFF_HIDDEN_MODULES = new Set<AdminModuleId>(['gastos', 'balances', 'reportes']);
+const STAFF_HIDDEN_MODULES = new Set<AdminModuleId>(['balances', 'reportes']);
 
 export const canAccessAdminModule = (role: AdminRole | null | undefined, moduleId: AdminModuleId) => {
   if ((role || '').toLowerCase() === 'staff') {
@@ -11,5 +11,5 @@ export const canAccessAdminModule = (role: AdminRole | null | undefined, moduleI
   return true;
 };
 
-export const canViewFinancialModules = (role: AdminRole | null | undefined) =>
+export const canViewProfitMetrics = (role: AdminRole | null | undefined) =>
   (role || '').toLowerCase() !== 'staff';

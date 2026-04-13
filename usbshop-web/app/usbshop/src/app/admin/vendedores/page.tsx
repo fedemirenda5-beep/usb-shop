@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { canViewProfitMetrics } from '../adminPermissions';
 import styles from './vendedores.module.css';
 
 type Seller = {
@@ -26,7 +27,7 @@ type SellerMonthlySummary = {
   name: string;
   commission_percent: number;
   sales: number;
-  profit: number;
+  profit: number | null;
   commission: number;
   invoice_count: number;
 };
@@ -50,6 +51,7 @@ const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 
 export default function VendedoresPage() {
   const { user } = useAdminSession();
+  const canViewProfit = canViewProfitMetrics(user?.role);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<SellerMonthlySummary[]>([]);
   const [monthlyPeriod, setMonthlyPeriod] = useState('');
@@ -63,7 +65,6 @@ export default function VendedoresPage() {
   const [sellerForm, setSellerForm] = useState<SellerFormState>(emptySellerForm);
 
   const selectedSeller = sellers.find((seller) => seller.id === selectedSellerId) ?? null;
-  const isFullAdmin = (user?.role || '').toLowerCase() === 'admin';
   const monthlySummaryMap = useMemo(
     () => new Map(monthlySummary.map((item) => [item.seller_id, item])),
     [monthlySummary]
@@ -114,11 +115,6 @@ export default function VendedoresPage() {
   }, [search]);
 
   const loadMonthlySummary = async (silent = false) => {
-    if (!isFullAdmin) {
-      setMonthlySummary([]);
-      setMonthlyPeriod('');
-      return;
-    }
     try {
       if (!silent) {
         setSummaryLoading(true);
@@ -146,12 +142,9 @@ export default function VendedoresPage() {
 
   useEffect(() => {
     void loadMonthlySummary();
-  }, [isFullAdmin]);
+  }, []);
 
   useEffect(() => {
-    if (!isFullAdmin) {
-      return;
-    }
     const intervalId = window.setInterval(() => {
       if (document.visibilityState !== 'visible') {
         return;
@@ -176,7 +169,7 @@ export default function VendedoresPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, [isFullAdmin]);
+  }, []);
 
   const handleSellerFormChange = (
     e: React.ChangeEvent<HTMLInputElement>
@@ -285,9 +278,9 @@ export default function VendedoresPage() {
                 <tr>
                   <th>ID</th>
                   <th>Vendedor</th>
-                  {isFullAdmin ? <th>Comision</th> : null}
-                  {isFullAdmin ? <th>Venta mes</th> : null}
-                  {isFullAdmin ? <th>Comprobantes</th> : null}
+                  <th>Comision</th>
+                  <th>Venta mes</th>
+                  <th>Comprobantes</th>
                   <th>Estado</th>
                   <th>Actualizado</th>
                   <th>Acciones</th>
@@ -310,9 +303,9 @@ export default function VendedoresPage() {
                           Creado: {formatDate(seller.created_at)}
                         </span>
                       </td>
-                      {isFullAdmin ? <td>{formatPercent(seller.commission_percent)}</td> : null}
-                      {isFullAdmin ? <td>{money(sellerSummary?.sales || 0)}</td> : null}
-                      {isFullAdmin ? <td>{sellerSummary?.invoice_count || 0}</td> : null}
+                      <td>{formatPercent(seller.commission_percent)}</td>
+                      <td>{money(sellerSummary?.sales || 0)}</td>
+                      <td>{sellerSummary?.invoice_count || 0}</td>
                       <td>
                         <span className={seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
                           {seller.is_active ? 'Activo' : 'Inactivo'}
@@ -340,43 +333,51 @@ export default function VendedoresPage() {
         </div>
       </div>
 
-      {isFullAdmin ? (
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <h3>Resumen mensual por vendedor</h3>
-              <p>Ventas y ganancia estimada de {formattedMonthlyPeriod} para los vendedores activos.</p>
-            </div>
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <div>
+            <h3>Resumen mensual por vendedor</h3>
+            <p>
+              {canViewProfit
+                ? `Ventas y ganancia estimada de ${formattedMonthlyPeriod} para los vendedores activos.`
+                : `Ventas y comisiones de ${formattedMonthlyPeriod} para los vendedores activos.`}
+            </p>
           </div>
+        </div>
 
-          {summaryLoading ? (
-            <div className={styles.empty}>Cargando resumen mensual...</div>
-          ) : monthlySummary.length === 0 ? (
-            <div className={styles.empty}>No hay ventas registradas este mes para vendedores activos.</div>
-          ) : (
-            <div className={styles.monthlySummaryGrid}>
-              {monthlySummary.map((item) => (
-                <article key={item.seller_id} className={styles.summaryCard}>
-                  <div className={styles.summaryHeader}>
-                    <strong>{item.name}</strong>
-                    <span>{formatPercent(item.commission_percent)}</span>
+        {summaryLoading ? (
+          <div className={styles.empty}>Cargando resumen mensual...</div>
+        ) : monthlySummary.length === 0 ? (
+          <div className={styles.empty}>No hay ventas registradas este mes para vendedores activos.</div>
+        ) : (
+          <div className={styles.monthlySummaryGrid}>
+            {monthlySummary.map((item) => (
+              <article key={item.seller_id} className={styles.summaryCard}>
+                <div className={styles.summaryHeader}>
+                  <strong>{item.name}</strong>
+                  <span>{formatPercent(item.commission_percent)}</span>
+                </div>
+                <div className={styles.summaryMetrics}>
+                  <div>
+                    <span>Venta del mes</span>
+                    <strong>{money(item.sales)}</strong>
                   </div>
-                  <div className={styles.summaryMetrics}>
-                    <div>
-                      <span>Venta del mes</span>
-                      <strong>{money(item.sales)}</strong>
-                    </div>
+                  <div>
+                    <span>Comision</span>
+                    <strong>{money(item.commission)}</strong>
+                  </div>
+                  {canViewProfit ? (
                     <div>
                       <span>Ganancia</span>
-                      <strong>{money(item.profit)}</strong>
+                      <strong>{money(item.profit || 0)}</strong>
                     </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-      ) : null}
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className={styles.main}>
         {showSellerForm ? (
@@ -398,20 +399,18 @@ export default function VendedoresPage() {
                   required
                 />
               </label>
-              {isFullAdmin ? (
-                <label>
-                  Comision (%)
-                  <input
-                    name="commission_percent"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={sellerForm.commission_percent}
-                    onChange={handleSellerFormChange}
-                    required
-                  />
-                </label>
-              ) : null}
+              <label>
+                Comision (%)
+                <input
+                  name="commission_percent"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={sellerForm.commission_percent}
+                  onChange={handleSellerFormChange}
+                  required
+                />
+              </label>
               <label className={styles.checkboxField}>
                 <input
                   name="is_active"
@@ -454,31 +453,23 @@ export default function VendedoresPage() {
                 <span>Nombre</span>
                 <strong>{selectedSeller.name}</strong>
               </div>
-              {isFullAdmin ? (
-                <div className={styles.detailItem}>
-                  <span>Comision actual</span>
-                  <strong>{formatPercent(selectedSeller.commission_percent)}</strong>
-                </div>
-              ) : null}
-              {isFullAdmin ? (
-                <div className={styles.detailItem}>
-                  <span>Venta del mes</span>
-                  <strong>{money(selectedSellerSummary?.sales || 0)}</strong>
-                </div>
-              ) : null}
-              {isFullAdmin ? (
-                <div className={styles.detailItem}>
-                  <span>Comprobantes del mes</span>
-                  <strong>{selectedSellerSummary?.invoice_count || 0}</strong>
-                </div>
-              ) : null}
-              {isFullAdmin ? (
-                <div className={styles.detailItem}>
-                  <span>Comision acumulada</span>
-                  <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
-                </div>
-              ) : null}
-              {isFullAdmin ? (
+              <div className={styles.detailItem}>
+                <span>Comision actual</span>
+                <strong>{formatPercent(selectedSeller.commission_percent)}</strong>
+              </div>
+              <div className={styles.detailItem}>
+                <span>Venta del mes</span>
+                <strong>{money(selectedSellerSummary?.sales || 0)}</strong>
+              </div>
+              <div className={styles.detailItem}>
+                <span>Comprobantes del mes</span>
+                <strong>{selectedSellerSummary?.invoice_count || 0}</strong>
+              </div>
+              <div className={styles.detailItem}>
+                <span>Comision acumulada</span>
+                <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
+              </div>
+              {canViewProfit ? (
                 <div className={styles.detailItem}>
                   <span>Ganancia estimada</span>
                   <strong>{money(selectedSellerSummary?.profit || 0)}</strong>

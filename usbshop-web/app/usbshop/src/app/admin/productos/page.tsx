@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
+import { canViewProfitMetrics } from '../adminPermissions';
 import { ProductForm } from './components/ProductForm';
 import styles from './productos.module.css';
 
@@ -113,6 +114,7 @@ const downloadTextFile = (content: string, fileName: string, mimeType: string) =
 
 export default function ProductosPage() {
   const { user } = useAdminSession();
+  const canViewProfit = canViewProfitMetrics(user?.role);
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams?.get('edit');
@@ -615,7 +617,7 @@ export default function ProductosPage() {
                 <th>Rubro</th>
                 <th>Precio</th>
                 <th>Costo</th>
-                <th>Margen</th>
+                {canViewProfit ? <th>Margen</th> : null}
                 <th>Stock</th>
                 <th>Destacado</th>
                 <th>Oferta</th>
@@ -646,9 +648,11 @@ export default function ProductosPage() {
                     <td>{product.category || categoryMap.get(product.category_id || 0) || 'Sin rubro'}</td>
                     <td className={styles.price}>${product.price.toFixed(2)}</td>
                     <td className={styles.price}>${product.cost.toFixed(2)}</td>
-                    <td className={styles.margin}>
-                      {margin === null ? <span className={styles.marginEmpty}>Sin costo</span> : `${margin.toFixed(1)}%`}
-                    </td>
+                    {canViewProfit ? (
+                      <td className={styles.margin}>
+                        {margin === null ? <span className={styles.marginEmpty}>Sin costo</span> : `${margin.toFixed(1)}%`}
+                      </td>
+                    ) : null}
                     <td>
                       <span className={product.stock > 0 ? styles.inStock : styles.outOfStock}>
                         {product.stock}
@@ -733,6 +737,7 @@ export default function ProductosPage() {
               }}
               title="Editar producto"
               categories={categories}
+              canViewProfitMetrics={canViewProfit}
               onSubmit={async (data) => {
                 await loadRuntimeConfig();
                 const res = await fetch(`${getApiBaseUrl()}/admin/products/${editProduct.id}`, {

@@ -5,7 +5,7 @@ import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDate } from '@/lib/datetime';
 import { ADMIN_MODULES } from './adminModules';
-import { canAccessAdminModule, canViewFinancialModules } from './adminPermissions';
+import { canAccessAdminModule, canViewProfitMetrics } from './adminPermissions';
 import styles from './dashboard.module.css';
 
 type Summary = {
@@ -16,7 +16,7 @@ type Summary = {
   stock_value_sale: number;
   sales_count: number;
   sales_total: number;
-  estimated_margin: number;
+  estimated_margin: number | null;
   expenses_total: number;
   cc_open_balance: number;
   account_movements: number;
@@ -72,9 +72,7 @@ export default function AdminDashboard() {
           return {
             ...module,
             value: summary ? integer(summary.products) : '...',
-            label: summary
-              ? `${integer(summary.stock_units)} unidades en stock`
-              : module.dashboardLabel,
+            label: summary ? `${integer(summary.stock_units)} unidades en stock` : module.dashboardLabel,
           };
         }
         if (module.id === 'pedidos') {
@@ -95,9 +93,7 @@ export default function AdminDashboard() {
           return {
             ...module,
             value: summary ? money(summary.expenses_total) : '...',
-            label: summary
-              ? 'Gastos operativos acumulados registrados'
-              : module.dashboardLabel,
+            label: summary ? 'Gastos operativos acumulados registrados' : module.dashboardLabel,
           };
         }
         if (module.id === 'comprobantes') {
@@ -110,16 +106,8 @@ export default function AdminDashboard() {
         if (module.id === 'cuentas-corrientes') {
           return {
             ...module,
-            value: summary
-              ? canViewFinancialModules(user?.role)
-                ? money(summary.cc_open_balance)
-                : integer(summary.debtors)
-              : '...',
-            label: summary
-              ? canViewFinancialModules(user?.role)
-                ? `${integer(summary.account_movements)} movimientos registrados`
-                : 'Clientes con cuenta corriente activa'
-              : module.dashboardLabel,
+            value: summary ? money(summary.cc_open_balance) : '...',
+            label: summary ? `${integer(summary.account_movements)} movimientos registrados` : module.dashboardLabel,
           };
         }
         return {
@@ -128,7 +116,7 @@ export default function AdminDashboard() {
           label: module.dashboardLabel,
         };
       }),
-    [summary, user?.role]
+    [summary]
   );
 
   const visibleSections = useMemo(
@@ -142,22 +130,12 @@ export default function AdminDashboard() {
         <div className={styles.headerCopy}>
           <span className={styles.kicker}>Centro de control</span>
           <h1>Escritorio</h1>
-          <p>Bienvenido, {user?.username}. El resumen toma datos reales de la base actual y prioriza lo que más usás en la operación diaria.</p>
+          <p>Bienvenido, {user?.username}. El resumen toma datos reales de la base actual y prioriza lo que mas usas en la operacion diaria.</p>
         </div>
         <div className={styles.headerCallout}>
-          {canViewFinancialModules(user?.role) ? (
-            <>
-              <span>Ventas acumuladas</span>
-              <strong>{summary ? money(summary.sales_total) : '...'}</strong>
-              <p>Último registro: {formatDate(summary?.latest_invoice_at)}</p>
-            </>
-          ) : (
-            <>
-              <span>Operación activa</span>
-              <strong>{summary ? integer(summary.sales_count) : '...'}</strong>
-              <p>Comprobantes emitidos y gestión diaria disponible.</p>
-            </>
-          )}
+          <span>Ventas acumuladas</span>
+          <strong>{summary ? money(summary.sales_total) : '...'}</strong>
+          <p>Ultimo registro: {formatDate(summary?.latest_invoice_at)}</p>
         </div>
       </div>
 
@@ -180,17 +158,17 @@ export default function AdminDashboard() {
             <strong>{integer(summary.active_customers)}</strong>
             <p>{integer(summary.account_movements)} movimientos de cuenta corriente</p>
           </article>
-          {canViewFinancialModules(user?.role) ? (
+          {canViewProfitMetrics(user?.role) ? (
             <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
               <span>Balance comercial</span>
-              <strong>{money(summary.estimated_margin)}</strong>
+              <strong>{money(summary.estimated_margin || 0)}</strong>
               <p>Margen estimado sobre ventas por {money(summary.sales_total)}</p>
             </article>
           ) : (
             <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
               <span>Stock operativo</span>
               <strong>{integer(summary.stock_units)}</strong>
-              <p>Unidades disponibles para la operación diaria.</p>
+              <p>Unidades disponibles para la operacion diaria.</p>
             </article>
           )}
         </section>
@@ -233,7 +211,9 @@ export default function AdminDashboard() {
         <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Alertas de stock</h2>
-            <a href="/admin/balances">Ver balances</a>
+            <a href={canAccessAdminModule(user?.role, 'balances') ? '/admin/balances' : '/admin/productos'}>
+              {canAccessAdminModule(user?.role, 'balances') ? 'Ver balances' : 'Ver productos'}
+            </a>
           </div>
           <div className={styles.list}>
             {lowStock.length === 0 ? (

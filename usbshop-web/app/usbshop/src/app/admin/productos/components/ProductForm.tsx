@@ -42,6 +42,7 @@ interface ProductFormProps {
   title: string;
   onSubmit: (data: ProductFormData & { image_urls: string[] }) => Promise<void>;
   categories?: CategoryOption[];
+  canViewProfitMetrics?: boolean;
 }
 
 const toDecimalString = (value: number) => {
@@ -132,7 +133,13 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
   };
 };
 
-export function ProductForm({ initialData, title, onSubmit, categories = [] }: ProductFormProps) {
+export function ProductForm({
+  initialData,
+  title,
+  onSubmit,
+  categories = [],
+  canViewProfitMetrics = true,
+}: ProductFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
   const [imageInputs, setImageInputs] = useState<string[]>(() => buildInitialImages(initialData));
@@ -467,28 +474,30 @@ export function ProductForm({ initialData, title, onSubmit, categories = [] }: P
           </div>
         </div>
 
-        <div className={styles.fieldRow}>
-          <div className={styles.field}>
-            <label htmlFor="margin">Margen (%)</label>
-            <input
-              id="margin"
-              type="text"
-              inputMode="decimal"
-              name="margin"
-              value={formData.margin}
-              onChange={handleChange}
-              disabled={loading}
-              className={styles.input}
-            />
-            <p className={styles.help}>Si cambias el margen, se recalcula el precio de venta.</p>
-          </div>
+        {canViewProfitMetrics ? (
+          <div className={styles.fieldRow}>
+            <div className={styles.field}>
+              <label htmlFor="margin">Margen (%)</label>
+              <input
+                id="margin"
+                type="text"
+                inputMode="decimal"
+                name="margin"
+                value={formData.margin}
+                onChange={handleChange}
+                disabled={loading}
+                className={styles.input}
+              />
+              <p className={styles.help}>Si cambias el margen, se recalcula el precio de venta.</p>
+            </div>
 
-          <div className={styles.summaryCard}>
-            <span className={styles.summaryLabel}>Margen actual</span>
-            <strong className={styles.summaryValue}>{formatMargin(marginPreview)}%</strong>
-            <p className={styles.help}>Calculado como `(precio - costo) / costo`.</p>
+            <div className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Margen actual</span>
+              <strong className={styles.summaryValue}>{formatMargin(marginPreview)}%</strong>
+              <p className={styles.help}>Calculado como `(precio - costo) / costo`.</p>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className={styles.field}>
           <label>Imagenes del producto</label>

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
@@ -486,6 +487,13 @@ export default function CuentasCorrientesPage() {
     }));
   };
 
+  const openMovementForm = (mode: 'payment' | 'debt') => {
+    setMode(mode);
+    window.requestAnimationFrame(() => {
+      movementFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const resetMovementForm = () => {
     setEditingMovementId(null);
     setMovementMode('payment');
@@ -658,7 +666,7 @@ export default function CuentasCorrientesPage() {
                 <button type="button" className={styles.secondaryButton} onClick={() => setMode('payment')}>
                   Registrar pago
                 </button>
-                <button type="button" className={styles.secondaryButton} onClick={() => setMode('debt')}>
+                <button type="button" className={styles.secondaryButton} onClick={() => openMovementForm('debt')}>
                   Registrar deuda
                 </button>
                 <button type="button" className={styles.secondaryButton} onClick={() => requestOutput('print')}>
@@ -750,51 +758,6 @@ export default function CuentasCorrientesPage() {
           </div>
 
           {!detailOnly ? <div className={styles.sideColumn}>
-            <section className={styles.invoiceCard}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h3>Estado de cuenta</h3>
-                  <p>Separado por cobranza, vencimiento, notas de credito y ajustes.</p>
-                </div>
-              </div>
-              <div className={styles.breakdownList}>
-                <div className={styles.breakdownRowCompact}><span>Pendiente</span><strong>{money(detail.classification?.pending || detail.balance)}</strong></div>
-                <div className={styles.breakdownRowCompact}><span>Vencido</span><strong>{money(detail.classification?.overdue || 0)}</strong></div>
-                <div className={styles.breakdownRowCompact}><span>Cobranzas</span><strong>{money(detail.classification?.payments || 0)}</strong></div>
-                <div className={styles.breakdownRowCompact}><span>Notas de credito</span><strong>{money(detail.classification?.credit_notes || 0)}</strong></div>
-                <div className={styles.breakdownRowCompact}><span>Incobrables</span><strong>{money(detail.classification?.writeoffs || 0)}</strong></div>
-                <div className={styles.breakdownRowCompact}><span>Ajustes / saldo inicial</span><strong>{money((detail.classification?.adjustments || 0) + (detail.classification?.opening_balance || 0))}</strong></div>
-              </div>
-            </section>
-
-            <section className={styles.invoiceCard}>
-              <div className={styles.sectionHeader}>
-                <div>
-                  <h3>Comprobantes emitidos</h3>
-                  <p>Detalle de comprobantes generados a nombre de este cliente.</p>
-                </div>
-                <span className={styles.sectionMeta}>{invoices.length} comprobantes</span>
-              </div>
-              <div className={styles.invoiceList}>
-                {invoices.length === 0 ? (
-                  <div className={styles.emptyPanel}>No hay comprobantes asociados a este cliente.</div>
-                ) : (
-                  invoices.map((invoice) => (
-                    <article key={invoice.id} className={styles.invoiceItem}>
-                      <div>
-                        <strong>#{invoice.id} - {invoice.document_type || 'Comprobante'}</strong>
-                        <span>{formatDate(invoice.created_at)}</span>
-                      </div>
-                      <div className={styles.invoiceAmounts}>
-                        <em>{money(invoice.total)}</em>
-                        <small>{invoice.sale_mode || invoice.status || 'Emitido'}</small>
-                      </div>
-                    </article>
-                  ))
-                )}
-              </div>
-            </section>
-
             <form className={styles.formCard} onSubmit={submitMovement} ref={movementFormRef}>
                 <div className={styles.formHeader}>
                   <div>
@@ -909,6 +872,51 @@ export default function CuentasCorrientesPage() {
                   </label>
                 </div>
               </form>
+
+            <section className={styles.invoiceCard}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h3>Estado de cuenta</h3>
+                  <p>Separado por cobranza, vencimiento, notas de credito y ajustes.</p>
+                </div>
+              </div>
+              <div className={styles.breakdownList}>
+                <div className={styles.breakdownRowCompact}><span>Pendiente</span><strong>{money(detail.classification?.pending || detail.balance)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Vencido</span><strong>{money(detail.classification?.overdue || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Cobranzas</span><strong>{money(detail.classification?.payments || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Notas de credito</span><strong>{money(detail.classification?.credit_notes || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Incobrables</span><strong>{money(detail.classification?.writeoffs || 0)}</strong></div>
+                <div className={styles.breakdownRowCompact}><span>Ajustes / saldo inicial</span><strong>{money((detail.classification?.adjustments || 0) + (detail.classification?.opening_balance || 0))}</strong></div>
+              </div>
+            </section>
+
+            <section className={styles.invoiceCard}>
+              <div className={styles.sectionHeader}>
+                <div>
+                  <h3>Comprobantes emitidos</h3>
+                  <p>Detalle de comprobantes generados a nombre de este cliente.</p>
+                </div>
+                <span className={styles.sectionMeta}>{invoices.length} comprobantes</span>
+              </div>
+              <div className={styles.invoiceList}>
+                {invoices.length === 0 ? (
+                  <div className={styles.emptyPanel}>No hay comprobantes asociados a este cliente.</div>
+                ) : (
+                  invoices.map((invoice) => (
+                    <article key={invoice.id} className={styles.invoiceItem}>
+                      <div>
+                        <strong>#{invoice.id} - {invoice.document_type || 'Comprobante'}</strong>
+                        <span>{formatDate(invoice.created_at)}</span>
+                      </div>
+                      <div className={styles.invoiceAmounts}>
+                        <em>{money(invoice.total)}</em>
+                        <small>{invoice.sale_mode || invoice.status || 'Emitido'}</small>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
           </div> : null}
         </div>
       </>
@@ -939,12 +947,21 @@ export default function CuentasCorrientesPage() {
               />
             </div>
             <div className={styles.toolbarActions}>
-              <button type="button" className={styles.primaryButton} onClick={() => setMode('payment')}>
+              <button type="button" className={styles.primaryButton} onClick={() => openMovementForm('payment')}>
                 Registrar pago
               </button>
-              <button type="button" className={styles.secondaryButton} onClick={() => setMode('debt')}>
+              <button type="button" className={styles.secondaryButton} onClick={() => openMovementForm('debt')}>
                 Registrar deuda historica
               </button>
+              <Link href="/admin/clientes" className={styles.secondaryButton}>
+                Nuevo cliente
+              </Link>
+              <Link
+                href={selectedId ? `/admin/generar-comprobante?customer_id=${selectedId}` : '/admin/generar-comprobante'}
+                className={styles.secondaryButton}
+              >
+                Nuevo comprobante
+              </Link>
               <button
                 type="button"
                 className={styles.dangerButton}

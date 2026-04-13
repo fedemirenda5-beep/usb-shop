@@ -3101,7 +3101,7 @@ def admin_sellers_monthly_summary(
     request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
-    _require_full_admin(session_token)
+    session_payload = _require_admin(session_token)
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
@@ -3206,7 +3206,11 @@ def admin_sellers_monthly_summary(
                         "name": payload["name"],
                         "commission_percent": round(float(payload["commission_percent"] or 0), 2),
                         "sales": round(float(payload["sales"] or 0), 2),
-                        "profit": round(float(payload["profit"] or 0), 2),
+                        "profit": (
+                            round(float(payload["profit"] or 0), 2)
+                            if str(session_payload.get("role") or "").strip().lower() == ROLE_ADMIN
+                            else None
+                        ),
                         "commission": round(float(payload["commission"] or 0), 2),
                         "invoice_count": int(payload["invoice_count"] or 0),
                     }
@@ -5453,14 +5457,14 @@ def admin_reports_overview(
                     "products": len(products),
                     "active_customers": len(customer_names),
                     "stock_units": total_stock_units,
-                    "stock_value_cost": None,
-                    "stock_value_sale": None,
+                    "stock_value_cost": stock_value_cost,
+                    "stock_value_sale": stock_value_sale,
                     "sales_count": len(invoices),
-                    "sales_total": None,
+                    "sales_total": total_sales,
                     "estimated_margin": None,
                     "operating_result": None,
                     "cc_open_balance": round(sum(customer_balance_map.values()), 2),
-                    "cash_on_hand": None,
+                    "cash_on_hand": cash_on_hand,
                     "account_movements": len(cc_rows),
                     "debtors": len([balance for balance in customer_balance_map.values() if balance > 0]),
                     "latest_invoice_at": invoices[-1]["created_at"] if invoices else None,

@@ -2,11 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { canViewProfitMetrics } from '../../adminPermissions';
 import { ProductForm } from '../components/ProductForm';
 
 export default function NuevaProductoPage() {
   const router = useRouter();
+  const { user } = useAdminSession();
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
 
   useEffect(() => {
@@ -53,6 +56,7 @@ export default function NuevaProductoPage() {
       title="Crear Nuevo Producto"
       onSubmit={handleSubmit}
       categories={categories}
+      canViewProfitMetrics={canViewProfitMetrics(user?.role)}
     />
   );
 }
