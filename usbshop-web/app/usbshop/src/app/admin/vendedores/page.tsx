@@ -71,6 +71,45 @@ type SellerMonthlyDetail = {
   items: SellerMonthlyInvoice[];
 };
 
+type InvoiceListItem = {
+  id: number;
+  customer_id?: number | null;
+  customer_name: string;
+  seller_id?: number | null;
+  total: number;
+  created_at: string;
+  document_type?: string | null;
+  sale_mode?: string | null;
+  notes?: string | null;
+  payment_method?: string | null;
+  commission_amount?: number | null;
+  special_discount?: number | null;
+};
+
+type InvoiceDetailResponse = {
+  invoice: {
+    id: number;
+    customer_id?: number | null;
+    customer_name: string;
+    seller_id?: number | null;
+    total: number;
+    created_at: string;
+    document_type?: string | null;
+    sale_mode?: string | null;
+    notes?: string | null;
+    payment_method?: string | null;
+    commission_amount?: number | null;
+    special_discount?: number | null;
+  };
+  items: Array<{
+    product_id?: number | null;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  }>;
+};
+
 const emptySellerForm = (): SellerFormState => ({
   name: '',
   commission_percent: '0',
@@ -87,6 +126,13 @@ const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
+
+const currentPeriodKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
 
 export default function VendedoresPage() {
   const router = useRouter();
@@ -130,6 +176,90 @@ export default function VendedoresPage() {
       ? sellerDetail.period
       : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
   }, [sellerDetail?.period]);
+
+  const buildSellerDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
+    const selected = sellers.find((seller) => seller.id === sellerId);
+    if (!selected) {
+      throw new Error('Vendedor no encontrado');
+    }
+
+    const period = monthlyPeriod || currentPeriodKey();
+    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    const listData = await listRes.json().catch(() => null);
+    if (!listRes.ok) {
+      throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes del vendedor');
+    }
+
+    const filteredInvoices = (Array.isArray(listData) ? listData : [])
+      .filter((item: InvoiceListItem) => {
+        const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
+        const documentType = String(item.document_type || '').trim().toUpperCase();
+        return (
+          Number(item.seller_id || 0) === sellerId &&
+          createdAt === period &&
+          documentType !== 'PRESUPUESTO'
+        );
+      })
+      .sort((a: InvoiceListItem, b: InvoiceListItem) => {
+        const left = new Date(b.created_at).getTime();
+        const right = new Date(a.created_at).getTime();
+        return left - right;
+      });
+
+    const detailResponses = await Promise.all(
+      filteredInvoices.map(async (item: InvoiceListItem) => {
+        const detailRes = await fetch(`${getApiBaseUrl()}/admin/invoices/${item.id}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const detailData = await detailRes.json().catch(() => null);
+        if (!detailRes.ok) {
+          throw new Error(detailData?.detail || `No se pudo cargar el comprobante #${item.id}`);
+        }
+        return detailData as InvoiceDetailResponse;
+      })
+    );
+
+    const items = detailResponses.map((detail) => ({
+      invoice_id: detail.invoice.id,
+      created_at: detail.invoice.created_at,
+      document_type: detail.invoice.document_type,
+      sale_mode: detail.invoice.sale_mode,
+      payment_method: detail.invoice.payment_method,
+      notes: detail.invoice.notes,
+      customer_id: detail.invoice.customer_id,
+      customer_name: detail.invoice.customer_name || 'Sin cliente',
+      total: Number(detail.invoice.total || 0),
+      special_discount: Number(detail.invoice.special_discount || 0),
+      commission: Number(detail.invoice.commission_amount || 0),
+      profit: null,
+      items: Array.isArray(detail.items)
+        ? detail.items.map((product) => ({
+            product_id: product.product_id,
+            product_name: product.product_name,
+            quantity: Number(product.quantity || 0),
+            unit_price: Number(product.unit_price || 0),
+            line_total: Number(product.line_total || 0),
+            cost_total: 0,
+          }))
+        : [],
+    }));
+
+    return {
+      period,
+      seller: selected,
+      summary: {
+        sales: items.reduce((sum, item) => sum + Number(item.total || 0), 0),
+        commission: items.reduce((sum, item) => sum + Number(item.commission || 0), 0),
+        profit: null,
+        invoice_count: items.length,
+      },
+      items,
+    };
+  };
 
   const loadSellers = async (query = '') => {
     try {
@@ -206,15 +336,20 @@ export default function VendedoresPage() {
         setDetailLoading(true);
         setError('');
         await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/sellers/${detailSellerId}/monthly-detail`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(data?.detail || 'No se pudo cargar el detalle mensual del vendedor');
+        try {
+          const res = await fetch(`${getApiBaseUrl()}/admin/sellers/${detailSellerId}/monthly-detail`, {
+            credentials: 'include',
+            cache: 'no-store',
+          });
+          const data = await res.json().catch(() => null);
+          if (!res.ok) {
+            throw new Error(data?.detail || 'No se pudo cargar el detalle mensual del vendedor');
+          }
+          setSellerDetail(data);
+        } catch {
+          const fallbackDetail = await buildSellerDetailFromInvoices(detailSellerId);
+          setSellerDetail(fallbackDetail);
         }
-        setSellerDetail(data);
       } catch (err) {
         setSellerDetail(null);
         setError(err instanceof Error ? err.message : 'Error cargando detalle del vendedor');
