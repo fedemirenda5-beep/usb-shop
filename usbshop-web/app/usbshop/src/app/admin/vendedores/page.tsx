@@ -180,6 +180,20 @@ export default function VendedoresPage() {
       ? sellerDetail.period
       : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
   }, [sellerDetail?.period]);
+  const sortedSellerDetailItems = useMemo(() => {
+    if (!sellerDetail?.items) return [];
+    return [...sellerDetail.items].sort((a, b) => {
+      const left = new Date(b.created_at || '').getTime();
+      const right = new Date(a.created_at || '').getTime();
+      if (Number.isNaN(left) && Number.isNaN(right)) {
+        return b.invoice_id - a.invoice_id;
+      }
+      if (Number.isNaN(left)) return -1;
+      if (Number.isNaN(right)) return 1;
+      if (left !== right) return left - right;
+      return b.invoice_id - a.invoice_id;
+    });
+  }, [sellerDetail?.items]);
 
   const buildSellerDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
     const selected = sellers.find((seller) => seller.id === sellerId);
@@ -516,7 +530,7 @@ export default function VendedoresPage() {
                 </div>
               </div>
 
-              {sellerDetail.items.length === 0 ? (
+              {sortedSellerDetailItems.length === 0 ? (
                 <div className={styles.empty}>No hay ventas registradas para este vendedor en {formattedDetailMonthlyPeriod}.</div>
               ) : (
                 <div className={styles.saleTableWrap}>
@@ -533,7 +547,7 @@ export default function VendedoresPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sellerDetail.items.map((item) => (
+                      {sortedSellerDetailItems.map((item) => (
                         <tr key={item.invoice_id}>
                           <td>
                             <div className={styles.saleCustomerCell}>
