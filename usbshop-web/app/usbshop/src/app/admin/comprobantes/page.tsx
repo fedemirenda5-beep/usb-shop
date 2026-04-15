@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
@@ -84,6 +84,7 @@ const getPriceListLabel = (value?: number | null) => {
 
 export default function ComprobantesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<Invoice[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
@@ -182,6 +183,14 @@ export default function ComprobantesPage() {
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    const rawInvoiceId = searchParams.get('invoice');
+    if (!rawInvoiceId) return;
+    const invoiceId = Number(rawInvoiceId);
+    if (!Number.isInteger(invoiceId) || invoiceId <= 0) return;
+    void openInvoice(invoiceId);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();

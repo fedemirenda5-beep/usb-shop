@@ -72,6 +72,12 @@
   margin-bottom: 12px;
 }
 
+.boardHint {
+  margin-bottom: 12px;
+  color: #64748b;
+  font-size: 13px;
+}
+
 .tableWrap {
   overflow-x: auto;
 }
@@ -130,10 +136,65 @@
   gap: 20px;
 }
 
+.inlineActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 .monthlySummaryGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
+}
+
+.salesList {
+  display: grid;
+  gap: 16px;
+}
+
+.saleCard {
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.saleHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.saleHeader > div {
+  display: grid;
+  gap: 4px;
+}
+
+.saleHeader strong {
+  color: #132238;
+}
+
+.saleHeader span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.saleMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.saleNote {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #334155;
 }
 
 .summaryCard {
@@ -275,5 +336,11 @@
   .formGrid,
   .detailGrid {
     grid-template-columns: 1fr;
+  }
+
+  .saleHeader,
+  .inlineActions {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

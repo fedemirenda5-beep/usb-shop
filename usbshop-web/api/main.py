@@ -3223,6 +3223,171 @@ def admin_sellers_monthly_summary(
         conn.close()
 
 
+@app.get("/admin/sellers/{seller_id}/monthly-detail")
+def admin_seller_monthly_detail(
+    seller_id: int,
+    request: Request,
+    period: Optional[str] = None,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    session_payload = _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
+        _ensure_sellers_table(conn)
+        seller = conn.execute(
+            """
+            SELECT id, name, commission_percent, is_active, created_at, updated_at
+            FROM sellers
+            WHERE id = ?
+            """,
+            (seller_id,),
+        ).fetchone()
+        if seller is None:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+
+        period_key = (period or datetime.utcnow().strftime("%Y-%m")).strip()
+        if not re.fullmatch(r"\d{4}-\d{2}", period_key):
+            raise HTTPException(status_code=400, detail="Periodo invalido. Usa YYYY-MM")
+
+        invoices = conn.execute(
+            """
+            SELECT i.id, i.total, i.special_discount, i.commission_amount, i.created_at, i.document_type,
+                   i.sale_mode, i.payment_method, i.notes, i.customer_id, c.name AS customer_name
+            FROM invoices i
+            LEFT JOIN customers c ON c.id = i.customer_id
+            WHERE i.seller_id = ?
+            ORDER BY i.created_at DESC, i.id DESC
+            """,
+            (seller_id,),
+        ).fetchall()
+
+        invoice_ids: list[int] = []
+        invoice_sign_map: dict[int, float] = {}
+        items_by_invoice: dict[int, list[dict[str, Any]]] = {}
+        detail_items: list[dict[str, Any]] = []
+        totals = {
+            "sales": 0.0,
+            "commission": 0.0,
+            "profit": 0.0,
+            "invoice_count": 0,
+        }
+
+        for row in invoices:
+            created = _safe_parse_datetime(row["created_at"])
+            if created is None or created.strftime("%Y-%m") != period_key:
+                continue
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+            invoice_id = int(row["id"] or 0)
+            invoice_ids.append(invoice_id)
+            invoice_sign_map[invoice_id] = sign
+            items_by_invoice[invoice_id] = []
+
+            total_value = round(float(row["total"] or 0) * sign, 2)
+            commission_value = round(float(row["commission_amount"] or 0) * sign, 2)
+            totals["sales"] = round(totals["sales"] + total_value, 2)
+            totals["commission"] = round(totals["commission"] + commission_value, 2)
+            totals["invoice_count"] += 1
+            detail_items.append(
+                {
+                    "invoice_id": invoice_id,
+                    "created_at": row["created_at"],
+                    "document_type": row["document_type"],
+                    "sale_mode": row["sale_mode"],
+                    "payment_method": row["payment_method"],
+                    "notes": row["notes"],
+                    "customer_id": int(row["customer_id"]) if row["customer_id"] is not None else None,
+                    "customer_name": row["customer_name"] or "Sin cliente",
+                    "total": total_value,
+                    "special_discount": round(float(row["special_discount"] or 0) * sign, 2),
+                    "commission": commission_value,
+                    "profit": 0.0,
+                    "items": items_by_invoice[invoice_id],
+                }
+            )
+
+        if invoice_ids:
+            placeholders = ",".join(["?"] * len(invoice_ids))
+            invoice_items = conn.execute(
+                f"""
+                SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.cost
+                FROM invoice_items ii
+                LEFT JOIN products p ON p.id = ii.product_id
+                WHERE ii.invoice_id IN ({placeholders})
+                ORDER BY ii.invoice_id ASC, ii.id ASC
+                """,
+                tuple(invoice_ids),
+            ).fetchall()
+            detail_map = {int(item["invoice_id"]): item for item in detail_items}
+            for row in invoice_items:
+                invoice_id = int(row["invoice_id"] or 0)
+                detail = detail_map.get(invoice_id)
+                if detail is None:
+                    continue
+                sign = invoice_sign_map.get(invoice_id, 1.0)
+                quantity = float(row["quantity"] or 0)
+                unit_price = float(row["unit_price"] or 0)
+                cost = float(row["cost"] or 0)
+                revenue = quantity * unit_price
+                cost_total = quantity * cost
+                margin = round((revenue - cost_total) * sign, 2)
+                detail["profit"] = round(float(detail["profit"] or 0) + margin, 2)
+                detail["items"].append(
+                    {
+                        "product_id": int(row["product_id"]) if row["product_id"] is not None else None,
+                        "product_name": row["product_name"] or "Producto",
+                        "quantity": quantity,
+                        "unit_price": round(unit_price * sign, 2),
+                        "line_total": round(revenue * sign, 2),
+                        "cost_total": round(cost_total * sign, 2),
+                    }
+                )
+
+            for item in detail_items:
+                discount = float(item["special_discount"] or 0)
+                item["profit"] = round(float(item["profit"] or 0) - discount, 2)
+                totals["profit"] = round(totals["profit"] + float(item["profit"] or 0), 2)
+
+        return {
+            "period": period_key,
+            "seller": {
+                "id": int(seller["id"]),
+                "name": seller["name"],
+                "commission_percent": round(float(seller["commission_percent"] or 0), 2),
+                "is_active": bool(seller["is_active"]),
+                "created_at": seller["created_at"],
+                "updated_at": seller["updated_at"],
+            },
+            "summary": {
+                "sales": round(float(totals["sales"] or 0), 2),
+                "commission": round(float(totals["commission"] or 0), 2),
+                "profit": (
+                    round(float(totals["profit"] or 0), 2)
+                    if str(session_payload.get("role") or "").strip().lower() == ROLE_ADMIN
+                    else None
+                ),
+                "invoice_count": int(totals["invoice_count"] or 0),
+            },
+            "items": [
+                {
+                    **item,
+                    "profit": (
+                        round(float(item["profit"] or 0), 2)
+                        if str(session_payload.get("role") or "").strip().lower() == ROLE_ADMIN
+                        else None
+                    ),
+                }
+                for item in detail_items
+            ],
+        }
+    finally:
+        conn.close()
+
+
 @app.post("/admin/sellers")
 def admin_create_seller(
     payload: SellerPayload,

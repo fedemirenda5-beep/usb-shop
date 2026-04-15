@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime } from '@/lib/datetime';
@@ -32,6 +34,43 @@ type SellerMonthlySummary = {
   invoice_count: number;
 };
 
+type SellerMonthlyInvoiceItem = {
+  product_id?: number | null;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  cost_total: number;
+};
+
+type SellerMonthlyInvoice = {
+  invoice_id: number;
+  created_at?: string | null;
+  document_type?: string | null;
+  sale_mode?: string | null;
+  payment_method?: string | null;
+  notes?: string | null;
+  customer_id?: number | null;
+  customer_name: string;
+  total: number;
+  special_discount: number;
+  commission: number;
+  profit: number | null;
+  items: SellerMonthlyInvoiceItem[];
+};
+
+type SellerMonthlyDetail = {
+  period: string;
+  seller: Seller;
+  summary: {
+    sales: number;
+    commission: number;
+    profit: number | null;
+    invoice_count: number;
+  };
+  items: SellerMonthlyInvoice[];
+};
+
 const emptySellerForm = (): SellerFormState => ({
   name: '',
   commission_percent: '0',
@@ -50,6 +89,8 @@ const money = (value: number) =>
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 
 export default function VendedoresPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -59,11 +100,14 @@ export default function VendedoresPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showSellerForm, setShowSellerForm] = useState(false);
+  const [sellerDetail, setSellerDetail] = useState<SellerMonthlyDetail | null>(null);
   const [sellerForm, setSellerForm] = useState<SellerFormState>(emptySellerForm);
 
+  const detailSellerId = Number(searchParams.get('seller') || 0) || null;
   const selectedSeller = sellers.find((seller) => seller.id === selectedSellerId) ?? null;
   const monthlySummaryMap = useMemo(
     () => new Map(monthlySummary.map((item) => [item.seller_id, item])),
@@ -78,6 +122,14 @@ export default function VendedoresPage() {
       ? monthlyPeriod
       : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
   }, [monthlyPeriod]);
+  const formattedDetailMonthlyPeriod = useMemo(() => {
+    if (!sellerDetail?.period) return 'este mes';
+    const [year, month] = sellerDetail.period.split('-');
+    const parsed = new Date(Number(year), Number(month) - 1, 1);
+    return Number.isNaN(parsed.getTime())
+      ? sellerDetail.period
+      : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
+  }, [sellerDetail?.period]);
 
   const loadSellers = async (query = '') => {
     try {
@@ -107,13 +159,6 @@ export default function VendedoresPage() {
     }
   };
 
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadSellers(search);
-    }, 250);
-    return () => window.clearTimeout(timeoutId);
-  }, [search]);
-
   const loadMonthlySummary = async (silent = false) => {
     try {
       if (!silent) {
@@ -141,8 +186,44 @@ export default function VendedoresPage() {
   };
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadSellers(search);
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
+
+  useEffect(() => {
     void loadMonthlySummary();
   }, []);
+
+  useEffect(() => {
+    if (!detailSellerId) {
+      setSellerDetail(null);
+      return;
+    }
+    const loadSellerDetail = async () => {
+      try {
+        setDetailLoading(true);
+        setError('');
+        await loadRuntimeConfig();
+        const res = await fetch(`${getApiBaseUrl()}/admin/sellers/${detailSellerId}/monthly-detail`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.detail || 'No se pudo cargar el detalle mensual del vendedor');
+        }
+        setSellerDetail(data);
+      } catch (err) {
+        setSellerDetail(null);
+        setError(err instanceof Error ? err.message : 'Error cargando detalle del vendedor');
+      } finally {
+        setDetailLoading(false);
+      }
+    };
+    void loadSellerDetail();
+  }, [detailSellerId]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -238,6 +319,170 @@ export default function VendedoresPage() {
     }
   };
 
+  const openSellerMonthlyDetail = (sellerId: number) => {
+    router.push(`/admin/vendedores?seller=${sellerId}`);
+  };
+
+  const closeSellerMonthlyDetail = () => {
+    router.push('/admin/vendedores');
+  };
+
+  if (detailSellerId) {
+    return (
+      <div className={styles.page}>
+        <section className={styles.header}>
+          <div>
+            <h1>Detalle mensual del vendedor</h1>
+            <p>Ventas del mes, cliente asociado y acceso a cada comprobante.</p>
+          </div>
+          <div className={styles.headerActions}>
+            <button type="button" className={styles.secondaryButton} onClick={closeSellerMonthlyDetail}>
+              Volver a vendedores
+            </button>
+          </div>
+        </section>
+
+        {error ? <div className={styles.errorBox}>{error}</div> : null}
+
+        {detailLoading ? (
+          <div className={styles.empty}>Cargando detalle mensual...</div>
+        ) : !sellerDetail ? (
+          <div className={styles.empty}>No se pudo cargar el vendedor.</div>
+        ) : (
+          <>
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h2>{sellerDetail.seller.name}</h2>
+                  <p>Periodo {formattedDetailMonthlyPeriod}.</p>
+                </div>
+                <span className={sellerDetail.seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
+                  {sellerDetail.seller.is_active ? 'Activo' : 'Inactivo'}
+                </span>
+              </div>
+
+              <div className={styles.detailGrid}>
+                <div className={styles.detailItem}>
+                  <span>Comision actual</span>
+                  <strong>{formatPercent(sellerDetail.seller.commission_percent)}</strong>
+                </div>
+                <div className={styles.detailItem}>
+                  <span>Venta del mes</span>
+                  <strong>{money(sellerDetail.summary.sales)}</strong>
+                </div>
+                <div className={styles.detailItem}>
+                  <span>Comprobantes</span>
+                  <strong>{sellerDetail.summary.invoice_count}</strong>
+                </div>
+                <div className={styles.detailItem}>
+                  <span>Comision acumulada</span>
+                  <strong>{money(sellerDetail.summary.commission)}</strong>
+                </div>
+                {canViewProfit ? (
+                  <div className={styles.detailItem}>
+                    <span>Ganancia estimada</span>
+                    <strong>{money(sellerDetail.summary.profit || 0)}</strong>
+                  </div>
+                ) : null}
+                <div className={styles.detailItem}>
+                  <span>Ultima actualizacion</span>
+                  <strong>{formatDate(sellerDetail.seller.updated_at || sellerDetail.seller.created_at)}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h3>Ventas del mes</h3>
+                  <p>Cada venta muestra cliente, importe e items del comprobante.</p>
+                </div>
+              </div>
+
+              {sellerDetail.items.length === 0 ? (
+                <div className={styles.empty}>No hay ventas registradas para este vendedor en {formattedDetailMonthlyPeriod}.</div>
+              ) : (
+                <div className={styles.salesList}>
+                  {sellerDetail.items.map((item) => (
+                    <article key={item.invoice_id} className={styles.saleCard}>
+                      <div className={styles.saleHeader}>
+                        <div>
+                          <strong>#{item.invoice_id} {item.document_type || 'Comprobante'}</strong>
+                          <span>{formatDate(item.created_at)}</span>
+                        </div>
+                        <Link href={`/admin/comprobantes?invoice=${item.invoice_id}`} className={styles.primaryButton}>
+                          Ver comprobante
+                        </Link>
+                      </div>
+
+                      <div className={styles.saleMetaGrid}>
+                        <div className={styles.detailItem}>
+                          <span>Cliente</span>
+                          <strong>{item.customer_name}</strong>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span>Modo de venta</span>
+                          <strong>{item.sale_mode || '-'}</strong>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span>Pago</span>
+                          <strong>{item.payment_method || '-'}</strong>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span>Total</span>
+                          <strong>{money(item.total)}</strong>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span>Comision</span>
+                          <strong>{money(item.commission)}</strong>
+                        </div>
+                        {canViewProfit ? (
+                          <div className={styles.detailItem}>
+                            <span>Ganancia</span>
+                            <strong>{money(item.profit || 0)}</strong>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {item.notes ? <div className={styles.saleNote}>{item.notes}</div> : null}
+
+                      <div className={styles.tableWrap}>
+                        <table className={styles.table}>
+                          <thead>
+                            <tr>
+                              <th>Producto</th>
+                              <th>Cantidad</th>
+                              <th>Precio unit.</th>
+                              <th>Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {item.items.length === 0 ? (
+                              <tr><td colSpan={4}>Sin items cargados.</td></tr>
+                            ) : (
+                              item.items.map((product, index) => (
+                                <tr key={`${item.invoice_id}-${product.product_id || index}`}>
+                                  <td>{product.product_name}</td>
+                                  <td>{product.quantity}</td>
+                                  <td>{money(product.unit_price)}</td>
+                                  <td>{money(product.line_total)}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -267,6 +512,7 @@ export default function VendedoresPage() {
         <div className={styles.tableMeta}>
           <span>{sellers.length} vendedores{search ? ` para "${search}"` : ''}</span>
         </div>
+        <div className={styles.boardHint}>Doble click sobre un vendedor para abrir el detalle de sus ventas del mes.</div>
         <div className={styles.tableWrap}>
           {loading ? (
             <div className={styles.empty}>Cargando vendedores...</div>
@@ -294,7 +540,7 @@ export default function VendedoresPage() {
                       key={seller.id}
                       className={seller.id === selectedSellerId ? styles.activeRow : ''}
                       onClick={() => setSelectedSellerId(seller.id)}
-                      onDoubleClick={() => editSeller(seller)}
+                      onDoubleClick={() => openSellerMonthlyDetail(seller.id)}
                     >
                       <td>{seller.id}</td>
                       <td>
@@ -483,6 +729,11 @@ export default function VendedoresPage() {
                 <span>Ultima actualizacion</span>
                 <strong>{formatDate(selectedSeller.updated_at || selectedSeller.created_at)}</strong>
               </div>
+            </div>
+            <div className={styles.inlineActions}>
+              <Link href={`/admin/vendedores?seller=${selectedSeller.id}`} className={styles.primaryButton}>
+                Ver ventas del mes
+              </Link>
             </div>
           </div>
         ) : (
