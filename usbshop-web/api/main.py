@@ -3266,6 +3266,7 @@ def admin_seller_monthly_detail(
         invoice_ids: list[int] = []
         invoice_sign_map: dict[int, float] = {}
         items_by_invoice: dict[int, list[dict[str, Any]]] = {}
+        payments_by_invoice: dict[int, float] = {}
         detail_items: list[dict[str, Any]] = []
         totals = {
             "sales": 0.0,
@@ -3305,6 +3306,7 @@ def admin_seller_monthly_detail(
                     "total": total_value,
                     "special_discount": round(float(row["special_discount"] or 0) * sign, 2),
                     "commission": commission_value,
+                    "balance_due": total_value,
                     "profit": 0.0,
                     "items": items_by_invoice[invoice_id],
                 }
@@ -3312,6 +3314,21 @@ def admin_seller_monthly_detail(
 
         if invoice_ids:
             placeholders = ",".join(["?"] * len(invoice_ids))
+            payment_rows = conn.execute(
+                f"""
+                SELECT invoice_id, movement_type, amount
+                FROM account_movements
+                WHERE invoice_id IN ({placeholders})
+                """,
+                tuple(invoice_ids),
+            ).fetchall()
+            for row in payment_rows:
+                invoice_id = int(row["invoice_id"] or 0)
+                movement_type = str(row["movement_type"] or "").strip().upper()
+                amount = float(row["amount"] or 0)
+                signed_amount = amount if movement_type == "DEBIT" else -amount
+                payments_by_invoice[invoice_id] = round(payments_by_invoice.get(invoice_id, 0.0) + signed_amount, 2)
+
             invoice_items = conn.execute(
                 f"""
                 SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.cost
@@ -3350,6 +3367,7 @@ def admin_seller_monthly_detail(
             for item in detail_items:
                 discount = float(item["special_discount"] or 0)
                 item["profit"] = round(float(item["profit"] or 0) - discount, 2)
+                item["balance_due"] = round(float(payments_by_invoice.get(int(item["invoice_id"]), float(item["total"] or 0)) or 0), 2)
                 totals["profit"] = round(totals["profit"] + float(item["profit"] or 0), 2)
 
         return {

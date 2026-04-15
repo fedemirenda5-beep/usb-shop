@@ -53,6 +53,7 @@ type SellerMonthlyInvoice = {
   customer_id?: number | null;
   customer_name: string;
   total: number;
+  balance_due: number;
   special_discount: number;
   commission: number;
   profit: number | null;
@@ -100,6 +101,9 @@ type InvoiceDetailResponse = {
     payment_method?: string | null;
     commission_amount?: number | null;
     special_discount?: number | null;
+  };
+  summary?: {
+    balance_due?: number | null;
   };
   items: Array<{
     product_id?: number | null;
@@ -233,6 +237,7 @@ export default function VendedoresPage() {
       customer_id: detail.invoice.customer_id,
       customer_name: detail.invoice.customer_name || 'Sin cliente',
       total: Number(detail.invoice.total || 0),
+      balance_due: Number(detail.summary?.balance_due ?? detail.invoice.total ?? 0),
       special_discount: Number(detail.invoice.special_discount || 0),
       commission: Number(detail.invoice.commission_amount || 0),
       profit: null,
@@ -541,9 +546,9 @@ export default function VendedoresPage() {
                   {sellerDetail.items.map((item) => (
                     <article key={item.invoice_id} className={styles.saleCard}>
                       <div className={styles.saleHeader}>
-                        <div>
-                          <strong>#{item.invoice_id} {item.document_type || 'Comprobante'}</strong>
-                          <span>{formatDate(item.created_at)}</span>
+                        <div className={styles.saleLead}>
+                          <strong>{item.customer_name}</strong>
+                          <span>{formatDate(item.created_at)} · Saldo {money(item.balance_due)}</span>
                         </div>
                         <Link href={`/admin/comprobantes?invoice=${item.invoice_id}`} className={styles.primaryButton}>
                           Ver comprobante
@@ -552,8 +557,12 @@ export default function VendedoresPage() {
 
                       <div className={styles.saleMetaGrid}>
                         <div className={styles.detailItem}>
-                          <span>Cliente</span>
-                          <strong>{item.customer_name}</strong>
+                          <span>Comprobante</span>
+                          <strong>#{item.invoice_id} {item.document_type || 'Comprobante'}</strong>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span>Fecha</span>
+                          <strong>{formatDate(item.created_at)}</strong>
                         </div>
                         <div className={styles.detailItem}>
                           <span>Modo de venta</span>
@@ -564,8 +573,12 @@ export default function VendedoresPage() {
                           <strong>{item.payment_method || '-'}</strong>
                         </div>
                         <div className={styles.detailItem}>
-                          <span>Total</span>
+                          <span>Total venta</span>
                           <strong>{money(item.total)}</strong>
+                        </div>
+                        <div className={styles.detailItem}>
+                          <span>Saldo</span>
+                          <strong>{money(item.balance_due)}</strong>
                         </div>
                         <div className={styles.detailItem}>
                           <span>Comision</span>
