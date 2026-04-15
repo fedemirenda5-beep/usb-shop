@@ -271,16 +271,23 @@ export default function ProductosPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_featured: !product.is_featured }),
+        body: JSON.stringify({
+          name: product.name,
+          sku: product.sku,
+          price: product.price,
+          cost: product.cost,
+          stock: product.stock,
+          category_id: product.category_id,
+          image_path: product.image_path || '',
+          image_urls: Array.isArray(product.image_urls) ? product.image_urls : [],
+          is_offer: product.is_offer,
+          is_featured: !product.is_featured,
+        }),
       });
 
       if (!res.ok) throw new Error('No se pudo actualizar');
 
-      setProducts((current) =>
-        current.map((item) =>
-          item.id === product.id ? { ...item, is_featured: !item.is_featured } : item
-        )
-      );
+      await loadProducts();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error actualizando');
     }
