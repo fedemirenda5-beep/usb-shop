@@ -196,7 +196,18 @@ export default function VendedoresPage() {
   }, [sellerDetail?.items]);
 
   const buildSellerDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
-    const selected = sellers.find((seller) => seller.id === sellerId);
+    let selected = sellers.find((seller) => seller.id === sellerId) ?? null;
+    if (!selected) {
+      const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=150`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const sellerData = await sellerRes.json().catch(() => null);
+      if (!sellerRes.ok) {
+        throw new Error(sellerData?.detail || 'No se pudo cargar el vendedor');
+      }
+      selected = (Array.isArray(sellerData) ? sellerData : []).find((seller: Seller) => seller.id === sellerId) ?? null;
+    }
     if (!selected) {
       throw new Error('Vendedor no encontrado');
     }
