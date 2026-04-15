@@ -213,44 +213,21 @@ export default function VendedoresPage() {
         return left - right;
       });
 
-    const detailResponses = await Promise.all(
-      filteredInvoices.map(async (item: InvoiceListItem) => {
-        const detailRes = await fetch(`${getApiBaseUrl()}/admin/invoices/${item.id}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const detailData = await detailRes.json().catch(() => null);
-        if (!detailRes.ok) {
-          throw new Error(detailData?.detail || `No se pudo cargar el comprobante #${item.id}`);
-        }
-        return detailData as InvoiceDetailResponse;
-      })
-    );
-
-    const items = detailResponses.map((detail) => ({
-      invoice_id: detail.invoice.id,
-      created_at: detail.invoice.created_at,
-      document_type: detail.invoice.document_type,
-      sale_mode: detail.invoice.sale_mode,
-      payment_method: detail.invoice.payment_method,
-      notes: detail.invoice.notes,
-      customer_id: detail.invoice.customer_id,
-      customer_name: detail.invoice.customer_name || 'Sin cliente',
-      total: Number(detail.invoice.total || 0),
-      balance_due: Number(detail.summary?.balance_due ?? detail.invoice.total ?? 0),
-      special_discount: Number(detail.invoice.special_discount || 0),
-      commission: Number(detail.invoice.commission_amount || 0),
+    const items = filteredInvoices.map((item: InvoiceListItem) => ({
+      invoice_id: item.id,
+      created_at: item.created_at,
+      document_type: item.document_type,
+      sale_mode: item.sale_mode,
+      payment_method: item.payment_method,
+      notes: item.notes,
+      customer_id: item.customer_id,
+      customer_name: item.customer_name || 'Sin cliente',
+      total: Number(item.total || 0),
+      balance_due: Number(item.total || 0),
+      special_discount: Number(item.special_discount || 0),
+      commission: Number(item.commission_amount || 0),
       profit: null,
-      items: Array.isArray(detail.items)
-        ? detail.items.map((product) => ({
-            product_id: product.product_id,
-            product_name: product.product_name,
-            quantity: Number(product.quantity || 0),
-            unit_price: Number(product.unit_price || 0),
-            line_total: Number(product.line_total || 0),
-            cost_total: 0,
-          }))
-        : [],
+      items: [],
     }));
 
     return {
@@ -593,33 +570,6 @@ export default function VendedoresPage() {
                       </div>
 
                       {item.notes ? <div className={styles.saleNote}>{item.notes}</div> : null}
-
-                      <div className={styles.tableWrap}>
-                        <table className={styles.table}>
-                          <thead>
-                            <tr>
-                              <th>Producto</th>
-                              <th>Cantidad</th>
-                              <th>Precio unit.</th>
-                              <th>Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {item.items.length === 0 ? (
-                              <tr><td colSpan={4}>Sin items cargados.</td></tr>
-                            ) : (
-                              item.items.map((product, index) => (
-                                <tr key={`${item.invoice_id}-${product.product_id || index}`}>
-                                  <td>{product.product_name}</td>
-                                  <td>{product.quantity}</td>
-                                  <td>{money(product.unit_price)}</td>
-                                  <td>{money(product.line_total)}</td>
-                                </tr>
-                              ))
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
                     </article>
                   ))}
                 </div>
