@@ -512,66 +512,49 @@ export default function VendedoresPage() {
               <div className={styles.panelHeader}>
                 <div>
                   <h3>Ventas del mes</h3>
-                  <p>Cada venta muestra cliente, importe e items del comprobante.</p>
+                  <p>Listado compacto por venta para administrar mejor el espacio.</p>
                 </div>
               </div>
 
               {sellerDetail.items.length === 0 ? (
                 <div className={styles.empty}>No hay ventas registradas para este vendedor en {formattedDetailMonthlyPeriod}.</div>
               ) : (
-                <div className={styles.salesList}>
-                  {sellerDetail.items.map((item) => (
-                    <article key={item.invoice_id} className={styles.saleCard}>
-                      <div className={styles.saleHeader}>
-                        <div className={styles.saleLead}>
-                          <strong>{item.customer_name}</strong>
-                          <span>{formatDate(item.created_at)} · Saldo {money(item.balance_due)}</span>
-                        </div>
-                        <Link href={`/admin/comprobantes?invoice=${item.invoice_id}`} className={styles.primaryButton}>
-                          Ver comprobante
-                        </Link>
-                      </div>
-
-                      <div className={styles.saleMetaGrid}>
-                        <div className={styles.detailItem}>
-                          <span>Comprobante</span>
-                          <strong>#{item.invoice_id} {item.document_type || 'Comprobante'}</strong>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span>Fecha</span>
-                          <strong>{formatDate(item.created_at)}</strong>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span>Modo de venta</span>
-                          <strong>{item.sale_mode || '-'}</strong>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span>Pago</span>
-                          <strong>{item.payment_method || '-'}</strong>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span>Total venta</span>
-                          <strong>{money(item.total)}</strong>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span>Saldo</span>
-                          <strong>{money(item.balance_due)}</strong>
-                        </div>
-                        <div className={styles.detailItem}>
-                          <span>Comision</span>
-                          <strong>{money(item.commission)}</strong>
-                        </div>
-                        {canViewProfit ? (
-                          <div className={styles.detailItem}>
-                            <span>Ganancia</span>
-                            <strong>{money(item.profit || 0)}</strong>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {item.notes ? <div className={styles.saleNote}>{item.notes}</div> : null}
-                    </article>
-                  ))}
+                <div className={styles.saleTableWrap}>
+                  <table className={styles.saleTable}>
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Fecha</th>
+                        <th>Comprobante</th>
+                        <th>Modo</th>
+                        <th>Total</th>
+                        <th>Saldo</th>
+                        <th>Accion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sellerDetail.items.map((item) => (
+                        <tr key={item.invoice_id}>
+                          <td>
+                            <div className={styles.saleCustomerCell}>
+                              <strong>{item.customer_name}</strong>
+                              {item.notes ? <span>{item.notes}</span> : null}
+                            </div>
+                          </td>
+                          <td>{formatDate(item.created_at)}</td>
+                          <td>#{item.invoice_id} {item.document_type || 'Comprobante'}</td>
+                          <td>{item.sale_mode || '-'}</td>
+                          <td>{money(item.total)}</td>
+                          <td>{money(item.balance_due)}</td>
+                          <td>
+                            <Link href={`/admin/comprobantes?invoice=${item.invoice_id}`} className={styles.rowLink}>
+                              Ver comprobante
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </section>

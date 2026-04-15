@@ -153,53 +153,52 @@
   gap: 16px;
 }
 
-.saleCard {
-  border: 1px solid #dbe4ee;
-  border-radius: 16px;
-  padding: 16px;
-  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
-  display: grid;
-  gap: 14px;
+.saleTableWrap {
+  overflow-x: auto;
 }
 
-.saleHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+.saleTable {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.saleHeader > div {
+.saleTable th,
+.saleTable td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.saleTable th {
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.saleCustomerCell {
   display: grid;
   gap: 4px;
 }
 
-.saleLead {
-  display: grid;
-  gap: 4px;
-}
-
-.saleHeader strong {
+.saleCustomerCell strong {
   color: #132238;
 }
 
-.saleHeader span {
+.saleCustomerCell span {
   color: #64748b;
-  font-size: 13px;
+  font-size: 12px;
 }
 
-.saleMetaGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+.rowLink {
+  color: #0f766e;
+  text-decoration: none;
+  font-weight: 600;
 }
 
-.saleNote {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 12px 14px;
-  color: #334155;
+.rowLink:hover {
+  text-decoration: underline;
 }
 
 .summaryCard {
@@ -343,7 +342,6 @@
     grid-template-columns: 1fr;
   }
 
-  .saleHeader,
   .inlineActions {
     flex-direction: column;
     align-items: flex-start;
