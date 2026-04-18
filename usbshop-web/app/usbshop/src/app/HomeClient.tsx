@@ -257,9 +257,21 @@ export default function HomeClient({
   const [quickView, setQuickView] = useState<Product | null>(null);
   const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
   const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
   const isPublic =
     typeof window !== "undefined" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const media = window.matchMedia("(max-width: 700px)");
+    const sync = () => setIsMobileLayout(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1127,6 +1139,32 @@ export default function HomeClient({
     };
   }, [topSales.length]);
 
+  const showCategoryStripBeforeProducts = !isMobileLayout || isSearching || Boolean(selectedCategory);
+  const categoryStrip = (
+    <div className="category-strip category-strip--hero" id="category-strip">
+      <div className="category-strip-title">Categorias</div>
+      <div className="category-strip-list">
+        <button
+          type="button"
+          className={`category-chip ${selectedCategory ? "" : "is-active"}`}
+          onClick={() => handleCategorySelect(null)}
+        >
+          Todas
+        </button>
+        {availableCategories.map((category) => (
+          <button
+            key={category}
+            type="button"
+            className={`category-chip ${selectedCategory === category ? "is-active" : ""}`}
+            onClick={() => handleCategorySelect(category)}
+          >
+            {category}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <main className="page">
       <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} />
@@ -1161,28 +1199,7 @@ export default function HomeClient({
           Buscar
         </button>
       </div>
-      <div className="category-strip category-strip--hero" id="category-strip">
-        <div className="category-strip-title">Categorias</div>
-        <div className="category-strip-list">
-          <button
-            type="button"
-            className={`category-chip ${selectedCategory ? "" : "is-active"}`}
-            onClick={() => handleCategorySelect(null)}
-          >
-            Todas
-          </button>
-          {availableCategories.map((category) => (
-            <button
-              key={category}
-              type="button"
-              className={`category-chip ${selectedCategory === category ? "is-active" : ""}`}
-              onClick={() => handleCategorySelect(category)}
-            >
-              {category}
-            </button>
-          ))}
-        </div>
-      </div>
+      {showCategoryStripBeforeProducts ? categoryStrip : null}
 
       {!isSearching && !selectedCategory ? (
       <section id="novedades" className="section">
@@ -1229,6 +1246,8 @@ export default function HomeClient({
         </div>
       </section>
       ) : null}
+
+      {!showCategoryStripBeforeProducts ? categoryStrip : null}
 
         <section id="destacados" className="section">
           <div className="section-header">
