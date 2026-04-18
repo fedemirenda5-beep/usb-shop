@@ -3035,6 +3035,7 @@ def admin_backoffice_customers(
         ).fetchall()
         query_text = _normalize_search_text(q)
         if query_text:
+            query_tokens = [token for token in query_text.split() if token]
             filtered_rows = []
             for row in rows:
                 haystack = _normalize_search_text(
@@ -3049,7 +3050,7 @@ def admin_backoffice_customers(
                         ]
                     )
                 )
-                if query_text in haystack:
+                if query_text in haystack or all(token in haystack for token in query_tokens):
                     filtered_rows.append(row)
             rows = filtered_rows
         rows = rows[offset : offset + limit]
