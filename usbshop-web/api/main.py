@@ -4230,17 +4230,18 @@ def admin_cc_delete_customer(
         conn.execute(
             """
             UPDATE customers
-               SET is_active = 0,
-                   deleted_at = ?
+               SET sale_mode = ?,
+                   is_active = 1,
+                   deleted_at = NULL
              WHERE id = ?
             """,
-            (datetime.utcnow().isoformat(), customer_id),
+            ("CONTADO", customer_id),
         )
         conn.commit()
         return {
             "id": int(customer["id"]),
             "name": customer["name"],
-            "message": "Cuenta eliminada",
+            "message": "Cuenta corriente eliminada",
         }
     finally:
         conn.close()
