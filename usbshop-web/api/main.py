@@ -3844,21 +3844,25 @@ def admin_account_customers(
             params + [limit, offset],
         ).fetchall()
         return [
-            {
-                "id": int(row["id"]),
-                "name": row["name"],
-                "email": row["email"],
-                "phone": row["phone"],
-                "tax_id": row["tax_id"],
-                "tax_condition": row["tax_condition"],
-                "address": row["address"],
-                "city": row["city"],
-                "notes": row["notes"],
-                "balance": _customer_balance(conn, int(row["id"])),
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
+            customer
             for row in rows
+            for customer in [
+                {
+                    "id": int(row["id"]),
+                    "name": row["name"],
+                    "email": row["email"],
+                    "phone": row["phone"],
+                    "tax_id": row["tax_id"],
+                    "tax_condition": row["tax_condition"],
+                    "address": row["address"],
+                    "city": row["city"],
+                    "notes": row["notes"],
+                    "balance": _customer_balance(conn, int(row["id"])),
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+            ]
+            if not _balance_is_zero(customer["balance"])
         ]
     finally:
         conn.close()
@@ -4054,6 +4058,8 @@ def admin_cc_overview(
                 if str(item["movement_type"] or "").upper() == "CREDIT"
             )
             balance = round(debit - credit, 2)
+            if _balance_is_zero(balance):
+                continue
             aging = _aging_from_movements(customer_movements)
             classification = aging.get("classification", {})
             total_debit += debit
