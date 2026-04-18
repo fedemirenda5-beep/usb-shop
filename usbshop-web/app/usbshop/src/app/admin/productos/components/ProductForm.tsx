@@ -16,6 +16,7 @@ interface ProductFormData {
   category_id?: number | null;
   is_featured: boolean;
   is_offer: boolean;
+  highlight_new_arrivals: boolean;
   image_path: string;
   image_urls?: string[];
 }
@@ -30,6 +31,7 @@ interface ProductFormState {
   margin: string;
   is_featured: boolean;
   is_offer: boolean;
+  highlight_new_arrivals: boolean;
 }
 
 interface CategoryOption {
@@ -117,6 +119,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     category_id: null,
     is_featured: false,
     is_offer: false,
+    highlight_new_arrivals: false,
     image_path: '',
     image_urls: [],
   };
@@ -130,6 +133,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     margin: formatMargin(calculateMargin(source.cost, source.price)),
     is_featured: source.is_featured,
     is_offer: source.is_offer,
+    highlight_new_arrivals: source.highlight_new_arrivals,
   };
 };
 
@@ -361,6 +365,7 @@ export function ProductForm({
         category_id: formData.category_id ? Number(formData.category_id) : null,
         is_featured: formData.is_featured,
         is_offer: formData.is_offer,
+        highlight_new_arrivals: formData.highlight_new_arrivals,
         image_path: finalImages[0] || '',
         image_urls: finalImages.slice(1),
       });
@@ -580,6 +585,17 @@ export function ProductForm({
               disabled={loading}
             />
             <span>Es una oferta especial</span>
+          </label>
+
+          <label className={styles.checkbox}>
+            <input
+              type="checkbox"
+              name="highlight_new_arrivals"
+              checked={formData.highlight_new_arrivals}
+              onChange={handleChange}
+              disabled={loading}
+            />
+            <span>Mostrar arriba en Ultimos ingresos</span>
           </label>
         </div>
 

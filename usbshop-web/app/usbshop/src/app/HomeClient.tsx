@@ -27,6 +27,7 @@ type Product = {
   isFeatured?: boolean;
   isOffer?: boolean;
   isRecommended?: boolean;
+  highlightNewArrivals?: boolean;
 };
 
 type CartItem = {
@@ -171,7 +172,12 @@ const isStoredCartExpired = (raw: string) => {
   }
 };
 const normalizeProductWithBase = (
-  item: Product & { is_featured?: boolean; is_offer?: boolean; is_recommended?: boolean },
+  item: Product & {
+    is_featured?: boolean;
+    is_offer?: boolean;
+    is_recommended?: boolean;
+    highlight_new_arrivals?: boolean;
+  },
   baseUrl: string
 ) => {
   const isFeatured = Boolean(item.is_featured ?? item.isFeatured);
@@ -190,6 +196,7 @@ const normalizeProductWithBase = (
     isFeatured,
     isOffer: Boolean(item.is_offer ?? item.isOffer),
     isRecommended: Boolean(item.is_recommended ?? item.isRecommended),
+    highlightNewArrivals: Boolean(item.highlight_new_arrivals ?? item.highlightNewArrivals),
     badge: item.badge ?? (isFeatured ? "Destacado" : undefined),
   };
 };
@@ -851,7 +858,14 @@ export default function HomeClient({
     const source = products.length > 0 ? products : featuredSource;
     const available = [...source]
       .filter((product) => (product.stock ?? 0) > 0)
-      .sort(compareByNewest);
+      .sort((a, b) => {
+        const highlightedDelta =
+          Number(Boolean(b.highlightNewArrivals)) - Number(Boolean(a.highlightNewArrivals));
+        if (highlightedDelta !== 0) {
+          return highlightedDelta;
+        }
+        return compareByNewest(a, b);
+      });
     if (!selectedCategory) {
       return available.slice(0, 8);
     }

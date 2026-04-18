@@ -1066,7 +1066,7 @@ export default function CuentasCorrientesPage() {
             <div className={styles.confirmHeader}>
               <div>
                 <h2 id="delete-account-title">Eliminar cuenta corriente</h2>
-                <p>Esta accion solo se puede completar si la cuenta tiene deuda 0. El historial no bloquea la eliminacion.</p>
+                <p>Esta accion elimina la cuenta corriente aunque tenga saldo o movimientos.</p>
               </div>
             </div>
 
@@ -1080,7 +1080,7 @@ export default function CuentasCorrientesPage() {
                 <strong>{money(selectedOverview.balance)}</strong>
               </div>
               <div className={styles.confirmWarning}>
-                Si el saldo es distinto de 0, el sistema no la va a borrar y te va a mostrar el motivo.
+                Se van a borrar los movimientos de la cuenta. Los comprobantes ya emitidos no se eliminan.
               </div>
             </div>
 

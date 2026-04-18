@@ -769,6 +769,19 @@ def _ensure_products_cost_column(conn: DBConn) -> None:
     _invalidate_table_cache("products")
 
 
+def _ensure_products_highlight_new_arrivals_column(conn: DBConn) -> None:
+    if _has_column(conn, "products", "highlight_new_arrivals"):
+        return
+    if DB_IS_POSTGRES:
+        conn.execute(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS highlight_new_arrivals INTEGER DEFAULT 0"
+        )
+    else:
+        conn.execute("ALTER TABLE products ADD COLUMN highlight_new_arrivals INTEGER DEFAULT 0")
+    conn.commit()
+    _invalidate_table_cache("products")
+
+
 def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
     if _has_column(conn, "invoices", "payment_method"):
         return
@@ -1936,6 +1949,7 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
     try:
         _ensure_product_images_table(conn)
         _ensure_products_cost_column(conn)
+        _ensure_products_highlight_new_arrivals_column(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -1945,6 +1959,7 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
         featured_enabled = _has_column(conn, "products", "is_featured")
         offer_enabled = _has_column(conn, "products", "is_offer")
         recommended_enabled = _has_column(conn, "products", "is_recommended")
+        highlight_new_arrivals_enabled = _has_column(conn, "products", "highlight_new_arrivals")
         select_fields = [
             "p.id",
             "p.name",
@@ -1963,6 +1978,11 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
         select_fields.append("p.is_featured" if featured_enabled else "NULL AS is_featured")
         select_fields.append("p.is_offer" if offer_enabled else "NULL AS is_offer")
         select_fields.append("p.is_recommended" if recommended_enabled else "NULL AS is_recommended")
+        select_fields.append(
+            "p.highlight_new_arrivals"
+            if highlight_new_arrivals_enabled
+            else "NULL AS highlight_new_arrivals"
+        )
         conditions = []
         if has_deleted_at:
             conditions.append("p.deleted_at IS NULL")
@@ -2022,6 +2042,9 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
             "is_featured": bool(row["is_featured"]) if featured_enabled else False,
             "is_offer": bool(row["is_offer"]) if offer_enabled else False,
             "is_recommended": bool(row["is_recommended"]) if recommended_enabled else False,
+            "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
+            if highlight_new_arrivals_enabled
+            else False,
         }
         for row in rows
     ]
@@ -2364,6 +2387,7 @@ def featured_products(limit: int = 6) -> list[dict]:
     conn = _connect()
     try:
         _ensure_product_images_table(conn)
+        _ensure_products_highlight_new_arrivals_column(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -2373,6 +2397,7 @@ def featured_products(limit: int = 6) -> list[dict]:
         featured_enabled = _has_column(conn, "products", "is_featured")
         offer_enabled = _has_column(conn, "products", "is_offer")
         recommended_enabled = _has_column(conn, "products", "is_recommended")
+        highlight_new_arrivals_enabled = _has_column(conn, "products", "highlight_new_arrivals")
         select_fields = [
             "p.id",
             "p.name",
@@ -2390,6 +2415,11 @@ def featured_products(limit: int = 6) -> list[dict]:
         select_fields.append("p.is_featured" if featured_enabled else "NULL AS is_featured")
         select_fields.append("p.is_offer" if offer_enabled else "NULL AS is_offer")
         select_fields.append("p.is_recommended" if recommended_enabled else "NULL AS is_recommended")
+        select_fields.append(
+            "p.highlight_new_arrivals"
+            if highlight_new_arrivals_enabled
+            else "NULL AS highlight_new_arrivals"
+        )
         conditions = []
         if has_deleted_at:
             conditions.append("p.deleted_at IS NULL")
@@ -2450,6 +2480,9 @@ def featured_products(limit: int = 6) -> list[dict]:
             "is_featured": True if featured_enabled else False,
             "is_offer": bool(row["is_offer"]) if offer_enabled else False,
             "is_recommended": bool(row["is_recommended"]) if recommended_enabled else False,
+            "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
+            if highlight_new_arrivals_enabled
+            else False,
         }
         for row in rows
     ]
@@ -2616,8 +2649,10 @@ def admin_list_products(
     try:
         _ensure_product_images_table(conn)
         _ensure_products_cost_column(conn)
+        _ensure_products_highlight_new_arrivals_column(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
+        has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
         
         conditions = []
         params: list = []
@@ -2641,7 +2676,8 @@ def admin_list_products(
         rows = conn.execute(
             f"""
             SELECT id, name, sku, price, price_list_1, price_list_2, cost, stock, 
-                   image_path, category_id, is_active, is_featured, is_offer
+                   image_path, category_id, is_active, is_featured, is_offer,
+                   {"highlight_new_arrivals" if has_highlight_new_arrivals else "NULL AS highlight_new_arrivals"}
             FROM products
             {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
@@ -2670,6 +2706,9 @@ def admin_list_products(
                 "is_active": bool(row["is_active"]) if has_is_active else True,
                 "is_featured": bool(row["is_featured"]),
                 "is_offer": bool(row["is_offer"]),
+                "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
+                if has_highlight_new_arrivals
+                else False,
                 "image_path": row["image_path"],
                 **_build_product_image_fields(
                     row["image_path"],
@@ -2716,6 +2755,7 @@ def admin_create_product(
     conn = _connect()
     try:
         _ensure_products_cost_column(conn)
+        _ensure_products_highlight_new_arrivals_column(conn)
         if conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone():
             raise HTTPException(status_code=400, detail="Ya existe un producto con ese SKU")
 
@@ -2740,6 +2780,9 @@ def admin_create_product(
         if _has_column(conn, "products", "is_offer"):
             columns.append("is_offer")
             values.append(is_offer)
+        if _has_column(conn, "products", "highlight_new_arrivals"):
+            columns.append("highlight_new_arrivals")
+            values.append(1 if bool(payload.get("highlight_new_arrivals")) else 0)
 
         placeholders = ", ".join(["?"] * len(columns))
         insert_sql = f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})"
@@ -2766,6 +2809,7 @@ def admin_create_product(
             "image_path": primary_image,
             "is_featured": bool(is_featured),
             "is_offer": bool(is_offer),
+            "highlight_new_arrivals": bool(payload.get("highlight_new_arrivals")),
             "image_urls": image_values,
         }
     finally:
@@ -2820,6 +2864,7 @@ def admin_update_product(
     conn = _connect()
     try:
         _ensure_products_cost_column(conn)
+        _ensure_products_highlight_new_arrivals_column(conn)
         row = conn.execute(
             "SELECT id FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
@@ -2862,7 +2907,10 @@ def admin_update_product(
         if "is_offer" in payload:
             updates.append("is_offer = ?")
             params.append(1 if payload["is_offer"] else 0)
-        
+        if "highlight_new_arrivals" in payload and _has_column(conn, "products", "highlight_new_arrivals"):
+            updates.append("highlight_new_arrivals = ?")
+            params.append(1 if payload["highlight_new_arrivals"] else 0)
+
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
             params.append(product_id)
@@ -4177,12 +4225,7 @@ def admin_cc_delete_customer(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-        balance = _customer_balance(conn, customer_id)
-        if not _balance_is_zero(balance):
-            raise HTTPException(
-                status_code=400,
-                detail="No se puede eliminar una cuenta con deuda distinta de 0",
-            )
+        conn.execute("DELETE FROM account_movements WHERE customer_id = ?", (customer_id,))
 
         conn.execute(
             """
@@ -5940,13 +5983,6 @@ def admin_delete_account_customer(
         ).fetchone()
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
-
-        balance = _customer_balance(conn, customer_id)
-        if not _balance_is_zero(balance):
-            raise HTTPException(
-                status_code=400,
-                detail="No se puede eliminar una cuenta con deuda distinta de 0",
-            )
 
         conn.execute("DELETE FROM account_movements WHERE customer_id = ?", (customer_id,))
         conn.execute("DELETE FROM account_documents WHERE customer_id = ?", (customer_id,))

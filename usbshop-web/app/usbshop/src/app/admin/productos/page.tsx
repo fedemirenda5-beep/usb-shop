@@ -24,6 +24,7 @@ interface Product {
   is_active: boolean;
   is_featured: boolean;
   is_offer: boolean;
+  highlight_new_arrivals: boolean;
   image_path?: string | null;
   image_urls?: string[];
 }
@@ -282,6 +283,7 @@ export default function ProductosPage() {
           image_urls: Array.isArray(product.image_urls) ? product.image_urls : [],
           is_offer: product.is_offer,
           is_featured: !product.is_featured,
+          highlight_new_arrivals: product.highlight_new_arrivals,
         }),
       });
 
