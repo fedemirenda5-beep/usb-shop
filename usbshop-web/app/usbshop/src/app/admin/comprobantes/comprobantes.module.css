@@ -139,6 +139,9 @@
 .productSearchList { display: grid; gap: 8px; padding: 10px; }
 .productSearchItem { width: 100%; border: 1px solid var(--bg-soft); border-radius: 12px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); padding: 12px; display: grid; grid-template-columns: minmax(0, 1.2fr) auto auto; gap: 14px; align-items: center; text-align: left; font: inherit; }
 .productSearchItem:hover { border-color: rgba(29, 78, 216, 0.28); background: linear-gradient(180deg, rgba(239,246,255,.95), rgba(255,255,255,1)); }
+.productSearchIdentity { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; min-width: 0; }
+.productSearchThumb { width: 64px; height: 64px; border: 1px solid var(--bg-soft); border-radius: 10px; background: #f8fafc; overflow: hidden; display: grid; place-items: center; color: var(--muted); font-size: 11px; font-weight: 700; text-align: center; line-height: 1.1; }
+.productSearchThumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .productSearchMain { display: grid; gap: 4px; min-width: 0; }
 .productSearchMain strong { color: var(--ink); overflow-wrap: anywhere; }
 .productSearchMain span, .productSearchPrices span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -166,6 +169,8 @@
   .detailInlineActions { justify-content: stretch; }
   .desktopPickerBar, .invoiceLinesHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .productSearchItem { grid-template-columns: 1fr; }
+  .productSearchIdentity { grid-template-columns: 56px minmax(0, 1fr); }
+  .productSearchThumb { width: 56px; height: 56px; }
   .productSearchPrices { justify-items: start; }
   .productSearchActions { flex-direction: column; align-items: stretch; }
   .createTotalBar { flex-direction: column; align-items: flex-start; }

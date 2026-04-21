@@ -2,12 +2,22 @@
 
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
 
 type CustomerOption = { id: number; name: string; email?: string | null; phone?: string | null; sale_mode?: string | null; cuit?: string | null };
-type ProductOption = { id: number; name: string; sku: string; price: number; price_list_1?: number | null; price_list_2?: number | null; stock: number };
+type ProductOption = {
+  id: number;
+  name: string;
+  sku: string;
+  price: number;
+  price_list_1?: number | null;
+  price_list_2?: number | null;
+  stock: number;
+  imageUrl?: string | null;
+  image_path?: string | null;
+};
 type SellerOption = { id: number; name: string; commission_percent: number; is_active: boolean };
 type OrderDraft = {
   id: number;
@@ -595,11 +605,22 @@ export default function GenerarComprobantePage() {
                   <div className={styles.emptyCell}>No hay productos que coincidan con la búsqueda.</div>
                 ) : (
                   <div className={styles.productSearchList}>
-                    {filteredProducts.map((product) => (
-                      <div key={product.id} className={styles.productSearchItem}>
-                        <div className={styles.productSearchMain}>
-                          <strong>{product.name}</strong>
+                    {filteredProducts.map((product) => {
+                      const productImageUrl = resolveImageUrl(product.imageUrl || product.image_path, getApiBaseUrl());
+                      return (
+                        <div key={product.id} className={styles.productSearchItem}>
+                          <div className={styles.productSearchIdentity}>
+                          <div className={styles.productSearchThumb}>
+                            {productImageUrl ? (
+                              <img src={productImageUrl} alt={product.name} loading="lazy" />
+                            ) : (
+                              <span>Sin imagen</span>
+                            )}
+                          </div>
+                          <div className={styles.productSearchMain}>
+                            <strong>{product.name}</strong>
                           <span>#{product.id} · {product.sku || 'Sin SKU'} · Stock {product.stock}</span>
+                          </div>
                         </div>
                         <div className={styles.productSearchPrices}>
                           <span>Esp. {money(product.price)}</span>
@@ -628,8 +649,9 @@ export default function GenerarComprobantePage() {
                             Agregar
                           </button>
                         </div>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
