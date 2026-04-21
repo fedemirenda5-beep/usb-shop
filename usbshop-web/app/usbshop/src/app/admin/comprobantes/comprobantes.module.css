@@ -189,13 +189,49 @@
 }
 @media print {
   .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay { display: none !important; }
-  .page, .layout, .detailPane, .detailModal, .printArea, .documentShell { display: block; }
+  .page, .layout, .detailPane, .detailModal, .printArea { display: block; }
+  .documentShell { display: grid; gap: 6px; }
   .modalOverlay { position: static; inset: auto; background: white; padding: 0; display: block; }
   .detailPane, .detailModal, .tableWrap, .documentTableWrap, .documentShell { box-shadow: none; border: 0; padding: 0; background: white; }
   .printArea { gap: 0; }
-  .detailHeader, .printBanner, .detailMeta, .documentFooter, .signatureRow, .documentMeta, .summaryGrid { break-inside: avoid; }
+  .detailHeader, .printBanner, .detailMeta, .documentFooter, .signatureRow, .documentMeta, .summaryGrid, .desktopPanel, .notesBox { break-inside: avoid; }
   .detailPane, .detailModal { padding: 0; max-height: none; overflow: visible; }
-  .table th, .table td { font-size: 12px; padding: 8px 6px; }
+  .desktopAccentBar { height: 2px; margin: 0 0 2px; }
+  .printBanner { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+  .brandLockup { justify-content: flex-start; gap: 8px; }
+  .logoBox { width: 42px; height: 42px; border-radius: 5px; padding: 3px; }
+  .brandName { font-size: 18px; }
+  .brandMeta { font-size: 10px; }
+  .docKindBadge { padding: 5px 10px; border-radius: 6px; font-size: 12px; letter-spacing: 0.08em; }
+  .desktopPanel { padding: 5px 6px; border-radius: 6px; }
+  .headerSplitPanel { grid-template-columns: minmax(0, 1.1fr) minmax(210px, 0.9fr); border-radius: 4px; }
+  .headerSplitColumn:first-child, .headerSplitColumn + .headerSplitColumn { padding: 5px 8px; }
+  .sectionTitle { font-size: 8px; letter-spacing: 0.08em; margin-bottom: 4px; }
+  .customerBlock { gap: 2px; font-size: 9px; }
+  .customerBlock strong { font-size: 12px; }
+  .customerBlock span { line-height: 1.15; }
+  .metaRow { grid-template-columns: minmax(86px, 0.9fr) minmax(0, 1fr); gap: 8px; padding: 2px 0; font-size: 9px; }
+  .metaRow span { font-size: 8px; letter-spacing: 0.03em; }
+  .metaRow strong { font-size: 9px; }
+  .notesBox { gap: 3px; padding: 5px 7px; border-radius: 6px; }
+  .notesBox p { font-size: 9px; line-height: 1.2; }
+  .documentTableWrap { border-radius: 6px; }
+  .table { page-break-inside: auto; }
+  .table thead { display: table-header-group; }
+  .table tr { page-break-inside: avoid; page-break-after: auto; }
+  .table th, .table td { font-size: 9.5px; line-height: 1.15; padding: 3px 5px; }
+  .documentFooter { grid-template-columns: minmax(0, 1fr) 210px; gap: 8px; }
+  .paymentBlock { gap: 4px; }
+  .paymentBlock h3 { font-size: 10px; }
+  .paymentBlock p { margin: 0; font-size: 9px; }
+  .movementList { gap: 3px; }
+  .movementItem { grid-template-columns: 0.8fr 1fr 0.8fr auto; gap: 5px; padding: 4px 5px; border-radius: 5px; }
+  .movementItem span, .movementItem strong, .movementItem em { font-size: 8.5px; }
+  .totalBox { gap: 4px; padding: 7px; border-radius: 6px; border-width: 1px; }
+  .totalLabel { font-size: 8px; letter-spacing: 0.04em; }
+  .totalValue { font-size: 14px; }
+  .signatureRow { gap: 12px; padding-top: 6px; }
+  .signatureBox { min-height: 34px; padding-top: 4px; font-size: 9px; }
   .total, .movementItem em { color: #111827; }
-  @page { size: A4; margin: 12mm; }
+  @page { size: A4; margin: 8mm; }
 }
