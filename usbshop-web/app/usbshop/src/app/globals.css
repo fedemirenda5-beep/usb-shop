@@ -970,6 +970,78 @@ a:focus-visible {
   cursor: not-allowed;
 }
 
+.flash-offer {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 360px);
+  gap: 18px;
+  align-items: stretch;
+  padding: 18px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(127, 29, 29, 0.95), rgba(45, 10, 91, 0.94));
+  border: 1px solid rgba(254, 202, 202, 0.35);
+  box-shadow: 0 24px 60px rgba(127, 29, 29, 0.25);
+}
+
+.flash-offer__content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 16px;
+  align-items: center;
+  color: #fff7ed;
+}
+
+.flash-offer h2 {
+  margin: 0;
+  color: white;
+  font-family: var(--font-head);
+  font-size: clamp(26px, 3vw, 44px);
+}
+
+.flash-offer p {
+  margin: 4px 0 0;
+  color: #fed7aa;
+}
+
+.flash-offer .section-kicker {
+  color: #a5f341;
+}
+
+.flash-offer__price,
+.flash-offer__timer {
+  display: grid;
+  gap: 4px;
+  justify-items: end;
+}
+
+.flash-offer__price span {
+  color: #fecaca;
+  text-decoration: line-through;
+  font-size: 14px;
+}
+
+.flash-offer__price strong {
+  color: #a5f341;
+  font-size: 26px;
+}
+
+.flash-offer__timer span {
+  color: #fed7aa;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.flash-offer__timer strong {
+  color: white;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.flash-offer .product-card {
+  background: rgba(255, 247, 237, 0.96);
+}
+
 .product-card::after {
   content: "";
   position: absolute;
@@ -1136,6 +1208,13 @@ a:focus-visible {
   font-size: 15px;
   font-weight: 700;
   color: var(--lime);
+}
+
+.product-price--before {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: line-through;
+  margin-bottom: 2px;
 }
 
 .product-actions {
@@ -1697,6 +1776,21 @@ input.button {
 
   .hero {
     padding: 22px;
+  }
+
+  .flash-offer {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .flash-offer__content {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .flash-offer__price,
+  .flash-offer__timer {
+    justify-items: start;
   }
 
   .logo {

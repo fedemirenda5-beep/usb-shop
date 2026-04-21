@@ -16,6 +16,7 @@ type Product = {
   id: number;
   name: string;
   price: number;
+  originalPrice?: number | null;
   category: string;
   stock: number;
   created_at?: string | null;
@@ -28,6 +29,10 @@ type Product = {
   isOffer?: boolean;
   isRecommended?: boolean;
   highlightNewArrivals?: boolean;
+  flashOffer?: {
+    price: number;
+    endsAt: string;
+  } | null;
 };
 
 type CartItem = {
@@ -64,8 +69,8 @@ const PRODUCTS_PAGE_SIZE = 2000;
 const CATALOG_PAGE_SIZE = 12;
 const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
-const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v8";
-const FEATURED_CACHE_KEY = "usbshop_featured_cache_v8";
+const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v9";
+const FEATURED_CACHE_KEY = "usbshop_featured_cache_v9";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
@@ -78,6 +83,28 @@ const toComparableTimestamp = (product: Product) => {
 };
 const compareByNewest = (a: Product, b: Product) =>
   toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
+const getFlashOfferTimeLeft = (product?: Product | null) => {
+  const endsAt = product?.flashOffer?.endsAt;
+  if (!endsAt) {
+    return 0;
+  }
+  const parsed = Date.parse(endsAt);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, parsed - Date.now());
+};
+const formatFlashTimeLeft = (ms: number) => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return days > 0
+    ? `${days}d ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+};
 const parseStoredCart = (raw: string) => {
   try {
     const parsed = JSON.parse(raw) as
@@ -258,6 +285,7 @@ export default function HomeClient({
   const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
   const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [flashNow, setFlashNow] = useState(() => Date.now());
   const isPublic =
     typeof window !== "undefined" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -271,6 +299,11 @@ export default function HomeClient({
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setFlashNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -909,6 +942,15 @@ export default function HomeClient({
       .slice(0, 4);
   }, [products, featuredSource]);
 
+  const flashOfferProduct = useMemo(() => {
+    const source = products.length > 0 ? products : featuredSource;
+    return [...source]
+      .filter((product) => (product.stock ?? 0) > 0 && getFlashOfferTimeLeft(product) > 0)
+      .sort((a, b) => getFlashOfferTimeLeft(a) - getFlashOfferTimeLeft(b))[0] ?? null;
+  }, [products, featuredSource, flashNow]);
+
+  const flashOfferTimeLeft = getFlashOfferTimeLeft(flashOfferProduct);
+
   const filteredTopSales = useMemo(() => {
     return topSales.filter((product) => {
       if (!matchesSelectedCategory(product)) {
@@ -1013,6 +1055,7 @@ export default function HomeClient({
         items: cartItems.map((item) => ({
           product_id: item.product.id,
           quantity: item.qty,
+          unit_price: item.product.price,
         })),
         customer_name: orderName.trim(),
         customer_phone: orderPhone.trim(),
@@ -1200,6 +1243,43 @@ export default function HomeClient({
         </button>
       </div>
       {showCategoryStripBeforeProducts ? categoryStrip : null}
+
+      {!isSearching && !selectedCategory && flashOfferProduct && flashOfferTimeLeft > 0 ? (
+        <section className="flash-offer">
+          <div className="flash-offer__content">
+            <div>
+              <p className="section-kicker">Oferta relampago</p>
+              <h2>{flashOfferProduct.name}</h2>
+              <p>Precio especial por tiempo limitado.</p>
+            </div>
+            <div className="flash-offer__price">
+              {flashOfferProduct.originalPrice && flashOfferProduct.originalPrice > flashOfferProduct.price ? (
+                <span>${flashOfferProduct.originalPrice.toLocaleString("es-AR")}</span>
+              ) : null}
+              <strong>${flashOfferProduct.price.toLocaleString("es-AR")}</strong>
+            </div>
+            <div className="flash-offer__timer" aria-label="Tiempo restante">
+              <span>Termina en</span>
+              <strong>{formatFlashTimeLeft(flashOfferTimeLeft)}</strong>
+            </div>
+            <button
+              type="button"
+              className="button button--lime"
+              onClick={() => addItem(flashOfferProduct)}
+            >
+              Agregar oferta
+            </button>
+          </div>
+          <ProductCard
+            product={{ ...applyBadge(flashOfferProduct, "offer"), badge: "Relampago" }}
+            imageRefreshKey={imageRefreshKey}
+            imagePriority="high"
+            inCart={cart[flashOfferProduct.id]?.qty ?? 0}
+            onAdd={() => addItem(flashOfferProduct)}
+            onView={() => handleOpenQuickView(flashOfferProduct)}
+          />
+        </section>
+      ) : null}
 
       {!isSearching && !selectedCategory ? (
       <section id="novedades" className="section">

@@ -25,6 +25,9 @@ interface Product {
   is_featured: boolean;
   is_offer: boolean;
   highlight_new_arrivals: boolean;
+  flash_offer_price?: number | null;
+  flash_offer_ends_at?: string | null;
+  flash_offer_active?: boolean;
   image_path?: string | null;
   image_urls?: string[];
 }
@@ -292,6 +295,66 @@ export default function ProductosPage() {
       await loadProducts();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error actualizando');
+    }
+  };
+
+  const buildProductUpdatePayload = (product: Product, overrides: Partial<Product>) => ({
+    name: product.name,
+    sku: product.sku,
+    price: product.price,
+    cost: product.cost,
+    stock: product.stock,
+    category_id: product.category_id,
+    image_path: product.image_path || '',
+    image_urls: Array.isArray(product.image_urls) ? product.image_urls : [],
+    is_offer: product.is_offer,
+    is_featured: product.is_featured,
+    highlight_new_arrivals: product.highlight_new_arrivals,
+    flash_offer_price: product.flash_offer_price || 0,
+    flash_offer_ends_at: product.flash_offer_ends_at || null,
+    ...overrides,
+  });
+
+  const updateProduct = async (product: Product, overrides: Partial<Product>) => {
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/products/${product.id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildProductUpdatePayload(product, overrides)),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || 'No se pudo actualizar el producto');
+    await loadProducts();
+  };
+
+  const activateFlashOffer = async (product: Product) => {
+    const rawPrice = prompt(`Precio relampago para "${product.name}"`, String(product.flash_offer_price || product.price));
+    if (rawPrice === null) return;
+    const price = Number(rawPrice.replace(',', '.'));
+    if (!Number.isFinite(price) || price <= 0) {
+      alert('Precio invalido');
+      return;
+    }
+    const endsAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    try {
+      await updateProduct(product, {
+        flash_offer_price: price,
+        flash_offer_ends_at: endsAt.toISOString(),
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error activando oferta relampago');
+    }
+  };
+
+  const clearFlashOffer = async (product: Product) => {
+    try {
+      await updateProduct(product, {
+        flash_offer_price: 0,
+        flash_offer_ends_at: null,
+      });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error quitando oferta relampago');
     }
   };
 
@@ -630,6 +693,7 @@ export default function ProductosPage() {
                 <th>Stock</th>
                 <th>Destacado</th>
                 <th>Oferta</th>
+                <th>Relampago</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -683,6 +747,35 @@ export default function ProductosPage() {
                       <span className={product.is_offer ? styles.badge : ''}>
                         {product.is_offer ? 'Si' : 'No'}
                       </span>
+                    </td>
+                    <td>
+                      {product.flash_offer_active ? (
+                        <div className={styles.flashCell}>
+                          <strong>{currencyFormatter.format(Number(product.flash_offer_price || 0))}</strong>
+                          <span>Hasta {product.flash_offer_ends_at ? formatArgentinaDateTime(product.flash_offer_ends_at) : '-'}</span>
+                          <button
+                            type="button"
+                            className={styles.btnSmall}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void clearFlashOffer(product);
+                            }}
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.btnSmall}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void activateFlashOffer(product);
+                          }}
+                        >
+                          3 dias
+                        </button>
+                      )}
                     </td>
                     <td className={styles.actions}>
                       <Link href={`/admin/productos?edit=${product.id}`} className={styles.btnEdit}>

@@ -6,6 +6,7 @@ type CardProps = {
     id: number;
     name: string;
     price: number;
+    originalPrice?: number | null;
     category: string;
     stock?: number;
     badge?: string;
@@ -13,6 +14,7 @@ type CardProps = {
     imageUrls?: string[] | null;
     description?: string | null;
     isFeatured?: boolean;
+    flashOffer?: { price: number; endsAt: string } | null;
   };
   inCart?: number;
   onAdd?: () => void;
@@ -141,7 +143,9 @@ function ProductCard({
 }: CardProps) {
   const stock = Number.isFinite(product.stock) ? Number(product.stock) : 0;
   const isOut = stock <= 0;
-  const badge = isOut ? "Sin stock" : product.badge ?? (product.isFeatured ? "Destacado" : undefined);
+  const badge = isOut
+    ? "Sin stock"
+    : product.badge ?? (product.flashOffer ? "Relampago" : product.isFeatured ? "Destacado" : undefined);
   const canView = Boolean(onView);
   const preferProxyImage =
     typeof window !== "undefined" &&
@@ -361,6 +365,9 @@ function ProductCard({
         {product.description ? (
           <p className="product-description">{product.description}</p>
         ) : null}
+        {product.originalPrice && product.originalPrice > product.price ? (
+          <p className="product-price product-price--before">${product.originalPrice.toLocaleString("es-AR")}</p>
+        ) : null}
         <p className="product-price">${product.price.toLocaleString("es-AR")}</p>
       </div>
       <div className="product-actions">
@@ -396,12 +403,14 @@ const areCardPropsEqual = (prev: CardProps, next: CardProps) => {
     prev.product.id === next.product.id &&
     prev.product.name === next.product.name &&
     prev.product.price === next.product.price &&
+    prev.product.originalPrice === next.product.originalPrice &&
     prev.product.category === next.product.category &&
     prev.product.stock === next.product.stock &&
     prev.product.badge === next.product.badge &&
     prev.product.imageUrl === next.product.imageUrl &&
     prev.product.description === next.product.description &&
     prev.product.isFeatured === next.product.isFeatured &&
+    prev.product.flashOffer?.endsAt === next.product.flashOffer?.endsAt &&
     equalImageUrls(prev.product.imageUrls, next.product.imageUrls)
   );
 };

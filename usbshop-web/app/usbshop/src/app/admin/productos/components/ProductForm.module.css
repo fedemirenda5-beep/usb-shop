@@ -161,6 +161,19 @@
   color: var(--ink);
 }
 
+.flashOfferBox {
+  display: grid;
+  gap: var(--spacing-medium);
+  padding: var(--spacing-medium);
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 247, 237, 0.95), rgba(255, 255, 255, 1));
+}
+
+.flashOfferBox strong {
+  color: #991b1b;
+}
+
 .error {
   padding: var(--spacing-medium);
   background-color: rgba(220, 38, 38, 0.1);

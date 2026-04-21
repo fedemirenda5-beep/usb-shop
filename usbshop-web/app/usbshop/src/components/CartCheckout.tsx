@@ -69,6 +69,7 @@ export default function CartCheckout({
         items: cartItems.map((item) => ({
           product_id: item.product.id,
           quantity: item.qty,
+          unit_price: item.product.price,
         })),
         customer_name: orderName.trim(),
         customer_phone: orderPhone.trim(),

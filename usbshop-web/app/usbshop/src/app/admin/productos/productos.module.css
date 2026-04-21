@@ -337,6 +337,39 @@
   align-items: center;
 }
 
+.flashCell {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+}
+
+.flashCell strong {
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.flashCell span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.btnSmall {
+  border: 0;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.btnSmall:hover {
+  background: #fecaca;
+}
+
 .btnEdit,
 .btnDelete {
   background: #f8fafc;

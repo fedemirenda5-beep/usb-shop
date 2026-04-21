@@ -17,6 +17,8 @@ interface ProductFormData {
   is_featured: boolean;
   is_offer: boolean;
   highlight_new_arrivals: boolean;
+  flash_offer_price?: number | null;
+  flash_offer_ends_at?: string | null;
   image_path: string;
   image_urls?: string[];
 }
@@ -32,6 +34,8 @@ interface ProductFormState {
   is_featured: boolean;
   is_offer: boolean;
   highlight_new_arrivals: boolean;
+  flash_offer_price: string;
+  flash_offer_ends_at: string;
 }
 
 interface CategoryOption {
@@ -59,6 +63,13 @@ const toIntegerString = (value: number) => {
     return '0';
   }
   return String(Math.trunc(value));
+};
+
+const toDateTimeLocalInput = (value?: string | null) => {
+  if (!value) {
+    return '';
+  }
+  return String(value).replace(' ', 'T').slice(0, 16);
 };
 
 const parseDecimal = (value: string) => {
@@ -120,6 +131,8 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     is_featured: false,
     is_offer: false,
     highlight_new_arrivals: false,
+    flash_offer_price: 0,
+    flash_offer_ends_at: null,
     image_path: '',
     image_urls: [],
   };
@@ -134,6 +147,8 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     is_featured: source.is_featured,
     is_offer: source.is_offer,
     highlight_new_arrivals: source.highlight_new_arrivals,
+    flash_offer_price: source.flash_offer_price ? toDecimalString(source.flash_offer_price) : '',
+    flash_offer_ends_at: toDateTimeLocalInput(source.flash_offer_ends_at),
   };
 };
 
@@ -175,7 +190,7 @@ export function ProductForm({
     setFormData((prev) => ({ ...prev, [name]: value } as ProductFormState));
   };
 
-  const handleNumericChange = (name: 'price' | 'cost' | 'stock', rawValue: string) => {
+  const handleNumericChange = (name: 'price' | 'cost' | 'stock' | 'flash_offer_price', rawValue: string) => {
     setFormData((prev) => {
       if (name === 'stock') {
         return {
@@ -189,6 +204,10 @@ export function ProductForm({
         ...prev,
         [name]: nextValue,
       } as ProductFormState;
+
+      if (name === 'flash_offer_price') {
+        return next;
+      }
 
       const price = parseDecimal(name === 'price' ? nextValue : prev.price);
       const cost = parseDecimal(name === 'cost' ? nextValue : prev.cost);
@@ -221,7 +240,7 @@ export function ProductForm({
       handleFieldChange(name as keyof ProductFormState, checked);
       return;
     }
-    if (name === 'price' || name === 'cost' || name === 'stock') {
+    if (name === 'price' || name === 'cost' || name === 'stock' || name === 'flash_offer_price') {
       handleNumericChange(name, value);
       return;
     }
@@ -329,6 +348,7 @@ export function ProductForm({
       const price = parseDecimal(formData.price);
       const cost = parseDecimal(formData.cost);
       const stock = parseInteger(formData.stock);
+      const flashOfferPrice = parseDecimal(formData.flash_offer_price);
 
       if (!formData.name.trim()) {
         throw new Error('Nombre requerido');
@@ -344,6 +364,12 @@ export function ProductForm({
       }
       if (!Number.isFinite(stock) || stock < 0) {
         throw new Error('Stock no puede ser negativo');
+      }
+      if (formData.flash_offer_price.trim() && (!Number.isFinite(flashOfferPrice) || flashOfferPrice <= 0)) {
+        throw new Error('El precio de oferta relampago debe ser mayor a 0');
+      }
+      if (formData.flash_offer_price.trim() && !formData.flash_offer_ends_at.trim()) {
+        throw new Error('Indica hasta cuando dura la oferta relampago');
       }
 
       const uploadedImages: string[] = [];
@@ -366,6 +392,8 @@ export function ProductForm({
         is_featured: formData.is_featured,
         is_offer: formData.is_offer,
         highlight_new_arrivals: formData.highlight_new_arrivals,
+        flash_offer_price: formData.flash_offer_price.trim() ? flashOfferPrice : 0,
+        flash_offer_ends_at: formData.flash_offer_ends_at.trim() || null,
         image_path: finalImages[0] || '',
         image_urls: finalImages.slice(1),
       });
@@ -597,6 +625,52 @@ export function ProductForm({
             />
             <span>Mostrar arriba en Ultimos ingresos</span>
           </label>
+        </div>
+
+        <div className={styles.flashOfferBox}>
+          <div>
+            <strong>Oferta relampago</strong>
+            <p className={styles.help}>Si completas precio y vencimiento, se muestra con contador en la pagina principal.</p>
+          </div>
+          <div className={styles.fieldRow}>
+            <div className={styles.field}>
+              <label htmlFor="flash_offer_price">Precio relampago ($)</label>
+              <input
+                id="flash_offer_price"
+                type="text"
+                inputMode="decimal"
+                name="flash_offer_price"
+                value={formData.flash_offer_price}
+                onChange={handleChange}
+                disabled={loading}
+                className={styles.input}
+                placeholder="Ej: 9999"
+              />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="flash_offer_ends_at">Finaliza</label>
+              <input
+                id="flash_offer_ends_at"
+                type="datetime-local"
+                name="flash_offer_ends_at"
+                value={formData.flash_offer_ends_at}
+                onChange={handleChange}
+                disabled={loading}
+                className={styles.input}
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            className={styles.btnClearImage}
+            onClick={() => {
+              handleFieldChange('flash_offer_price', '');
+              handleFieldChange('flash_offer_ends_at', '');
+            }}
+            disabled={loading}
+          >
+            Quitar oferta relampago
+          </button>
         </div>
 
         <div className={styles.actions}>

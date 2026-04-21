@@ -15,7 +15,7 @@ import smtplib
 import threading
 import unicodedata
 from email.message import EmailMessage
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional, List, Any
@@ -568,6 +568,51 @@ def _pick_price_by_list(row: Any, price_list: int) -> float:
     return base_price
 
 
+def _parse_optional_datetime(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            try:
+                parsed = datetime.strptime(raw[:19], "%Y-%m-%dT%H:%M:%S")
+            except ValueError:
+                return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _flash_offer_is_active(row: Any) -> bool:
+    try:
+        price = float(row["flash_offer_price"] or 0)
+        ends_at = _parse_optional_datetime(row["flash_offer_ends_at"])
+    except Exception:
+        return False
+    return price > 0 and ends_at is not None and ends_at > datetime.utcnow()
+
+
+def _storefront_price(row: Any) -> float:
+    if _flash_offer_is_active(row):
+        return float(row["flash_offer_price"] or 0)
+    return _pick_price(row)
+
+
+def _flash_offer_payload(row: Any) -> Optional[dict[str, Any]]:
+    if not _flash_offer_is_active(row):
+        return None
+    return {
+        "price": float(row["flash_offer_price"] or 0),
+        "endsAt": str(row["flash_offer_ends_at"]),
+    }
+
+
 def _public_image_url(image_path: Optional[str], product_id: Optional[int] = None) -> Optional[str]:
     if not image_path:
         return None
@@ -780,6 +825,25 @@ def _ensure_products_highlight_new_arrivals_column(conn: DBConn) -> None:
         conn.execute("ALTER TABLE products ADD COLUMN highlight_new_arrivals INTEGER DEFAULT 0")
     conn.commit()
     _invalidate_table_cache("products")
+
+
+def _ensure_products_flash_offer_columns(conn: DBConn) -> None:
+    changed = False
+    if not _has_column(conn, "products", "flash_offer_price"):
+        if DB_IS_POSTGRES:
+            conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS flash_offer_price NUMERIC(12, 2) DEFAULT 0")
+        else:
+            conn.execute("ALTER TABLE products ADD COLUMN flash_offer_price REAL DEFAULT 0")
+        changed = True
+    if not _has_column(conn, "products", "flash_offer_ends_at"):
+        if DB_IS_POSTGRES:
+            conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS flash_offer_ends_at TIMESTAMP")
+        else:
+            conn.execute("ALTER TABLE products ADD COLUMN flash_offer_ends_at TEXT")
+        changed = True
+    if changed:
+        conn.commit()
+        _invalidate_table_cache("products")
 
 
 def _ensure_invoice_payment_method_column(conn: DBConn) -> None:
@@ -1722,6 +1786,7 @@ def _reset_sync_sequence(conn: DBConn, table_name: str) -> None:
 class CartItemPayload(BaseModel):
     product_id: int = Field(..., ge=1)
     quantity: int = Field(..., ge=1)
+    unit_price: Optional[float] = None
 
 
 class OrderPayload(BaseModel):
@@ -1950,6 +2015,7 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
         _ensure_product_images_table(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
+        _ensure_products_flash_offer_columns(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -1972,6 +2038,8 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
         select_fields.append("p.created_at" if has_created_at else "NULL AS created_at")
         select_fields.append("p.updated_at" if has_updated_at else "NULL AS updated_at")
         select_fields.append("p.price_list_1" if has_price_list_1 else "NULL AS price_list_1")
+        select_fields.append("p.flash_offer_price")
+        select_fields.append("p.flash_offer_ends_at")
         select_fields.append("p.description" if has_description else "NULL AS description")
         select_fields.append("p.cost")
         select_fields.append("p.is_active" if has_is_active else "NULL AS is_active")
@@ -2027,7 +2095,9 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
             "id": row["id"],
             "name": row["name"],
             "sku": row["sku"],
-            "price": _pick_price(row),
+            "price": _storefront_price(row),
+            "originalPrice": _pick_price(row),
+            "flashOffer": _flash_offer_payload(row),
             "cost": float(row["cost"] or 0),
             "stock": int(row["stock"] or 0),
             "category": row["category"] or "General",
@@ -2070,12 +2140,18 @@ def create_order(payload: OrderPayload) -> dict:
         conn = DBConn(raw, False)
     try:
         _ensure_web_order_tables(conn)
+        _ensure_products_flash_offer_columns(conn)
         total = 0.0
         items: list[tuple[int, int, float]] = []
         items_details: list[dict] = []
         for item in payload.items:
             row = conn.execute(
-                "SELECT id, name, price, price_list_1, price_list_2, stock FROM products WHERE id = ? AND deleted_at IS NULL",
+                """
+                SELECT id, name, price, price_list_1, price_list_2, stock,
+                       flash_offer_price, flash_offer_ends_at
+                FROM products
+                WHERE id = ? AND deleted_at IS NULL
+                """,
                 (int(item.product_id),),
             ).fetchone()
             if row is None:
@@ -2086,7 +2162,8 @@ def create_order(payload: OrderPayload) -> dict:
                     status_code=400,
                     detail=f"Sin stock suficiente para el producto {row['id']}",
                 )
-            unit_price = _pick_price(row)
+            submitted_price = float(item.unit_price or 0)
+            unit_price = submitted_price if submitted_price > 0 else _storefront_price(row)
             total += unit_price * int(item.quantity)
             items.append((int(row["id"]), int(item.quantity), float(unit_price)))
             items_details.append(
@@ -2388,6 +2465,7 @@ def featured_products(limit: int = 6) -> list[dict]:
     try:
         _ensure_product_images_table(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
+        _ensure_products_flash_offer_columns(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -2410,6 +2488,8 @@ def featured_products(limit: int = 6) -> list[dict]:
         select_fields.append("p.created_at" if has_created_at else "NULL AS created_at")
         select_fields.append("p.updated_at" if has_updated_at else "NULL AS updated_at")
         select_fields.append("p.price_list_1" if has_price_list_1 else "NULL AS price_list_1")
+        select_fields.append("p.flash_offer_price")
+        select_fields.append("p.flash_offer_ends_at")
         select_fields.append("p.description" if has_description else "NULL AS description")
         select_fields.append("p.is_active" if has_is_active else "NULL AS is_active")
         select_fields.append("p.is_featured" if featured_enabled else "NULL AS is_featured")
@@ -2465,7 +2545,9 @@ def featured_products(limit: int = 6) -> list[dict]:
             "id": row["id"],
             "name": row["name"],
             "sku": row["sku"],
-            "price": _pick_price(row),
+            "price": _storefront_price(row),
+            "originalPrice": _pick_price(row),
+            "flashOffer": _flash_offer_payload(row),
             "stock": int(row["stock"] or 0),
             "category": row["category"] or "General",
             "created_at": row["created_at"],
@@ -2677,6 +2759,7 @@ def admin_list_products(
             f"""
             SELECT id, name, sku, price, price_list_1, price_list_2, cost, stock, 
                    image_path, category_id, is_active, is_featured, is_offer,
+                   flash_offer_price, flash_offer_ends_at,
                    {"highlight_new_arrivals" if has_highlight_new_arrivals else "NULL AS highlight_new_arrivals"}
             FROM products
             {where_clause}
@@ -2706,6 +2789,9 @@ def admin_list_products(
                 "is_active": bool(row["is_active"]) if has_is_active else True,
                 "is_featured": bool(row["is_featured"]),
                 "is_offer": bool(row["is_offer"]),
+                "flash_offer_price": float(row["flash_offer_price"] or 0),
+                "flash_offer_ends_at": row["flash_offer_ends_at"],
+                "flash_offer_active": _flash_offer_is_active(row),
                 "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
                 if has_highlight_new_arrivals
                 else False,
@@ -2783,6 +2869,13 @@ def admin_create_product(
         if _has_column(conn, "products", "highlight_new_arrivals"):
             columns.append("highlight_new_arrivals")
             values.append(1 if bool(payload.get("highlight_new_arrivals")) else 0)
+        if _has_column(conn, "products", "flash_offer_price"):
+            columns.append("flash_offer_price")
+            values.append(float(payload.get("flash_offer_price") or 0))
+        if _has_column(conn, "products", "flash_offer_ends_at"):
+            columns.append("flash_offer_ends_at")
+            raw_ends_at = str(payload.get("flash_offer_ends_at") or "").strip()
+            values.append(raw_ends_at or None)
 
         placeholders = ", ".join(["?"] * len(columns))
         insert_sql = f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})"
@@ -2810,6 +2903,8 @@ def admin_create_product(
             "is_featured": bool(is_featured),
             "is_offer": bool(is_offer),
             "highlight_new_arrivals": bool(payload.get("highlight_new_arrivals")),
+            "flash_offer_price": float(payload.get("flash_offer_price") or 0),
+            "flash_offer_ends_at": str(payload.get("flash_offer_ends_at") or "").strip() or None,
             "image_urls": image_values,
         }
     finally:
@@ -2910,6 +3005,13 @@ def admin_update_product(
         if "highlight_new_arrivals" in payload and _has_column(conn, "products", "highlight_new_arrivals"):
             updates.append("highlight_new_arrivals = ?")
             params.append(1 if payload["highlight_new_arrivals"] else 0)
+        if "flash_offer_price" in payload and _has_column(conn, "products", "flash_offer_price"):
+            updates.append("flash_offer_price = ?")
+            params.append(float(payload.get("flash_offer_price") or 0))
+        if "flash_offer_ends_at" in payload and _has_column(conn, "products", "flash_offer_ends_at"):
+            raw_ends_at = str(payload.get("flash_offer_ends_at") or "").strip()
+            updates.append("flash_offer_ends_at = ?")
+            params.append(raw_ends_at or None)
 
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
