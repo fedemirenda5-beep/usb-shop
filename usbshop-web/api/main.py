@@ -3250,6 +3250,7 @@ def admin_sellers(
 @app.get("/admin/sellers/monthly-summary")
 def admin_sellers_monthly_summary(
     request: Request,
+    period: Optional[str] = None,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     session_payload = _require_admin(session_token)
@@ -3258,8 +3259,9 @@ def admin_sellers_monthly_summary(
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
-        now_dt = datetime.utcnow()
-        period_key = now_dt.strftime("%Y-%m")
+        period_key = (period or datetime.utcnow().strftime("%Y-%m")).strip()
+        if not re.fullmatch(r"\d{4}-\d{2}", period_key):
+            raise HTTPException(status_code=400, detail="Periodo invalido. Usa YYYY-MM")
         active_sellers = conn.execute(
             """
             SELECT id, name, commission_percent
