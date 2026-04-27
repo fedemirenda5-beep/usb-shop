@@ -272,6 +272,16 @@ export default function ComprobantesPage() {
       <div className={styles.tablePane}>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
+            <colgroup>
+              <col className={styles.colId} />
+              <col className={styles.colType} />
+              <col className={styles.colCustomer} />
+              <col className={styles.colMode} />
+              <col className={styles.colTotal} />
+              <col className={styles.colDate} />
+              <col className={styles.colOrigin} />
+              <col className={styles.colActions} />
+            </colgroup>
             <thead>
               <tr>
                 <th>ID</th>
@@ -297,12 +307,12 @@ export default function ComprobantesPage() {
                     onClick={() => setSelectedId(item.id)}
                   >
                     <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
-                    <td>{item.document_type || '-'}</td>
-                    <td>{item.customer_name}</td>
-                    <td>{item.sale_mode || '-'}</td>
+                    <td className={styles.typeCell}>{item.document_type || '-'}</td>
+                    <td className={styles.customerCell}>{item.customer_name}</td>
+                    <td className={styles.modeCell}>{item.sale_mode || '-'}</td>
                     <td className={styles.total}>{money(item.total)}</td>
-                    <td>{formatDate(item.created_at)}</td>
-                    <td>
+                    <td className={styles.dateCell}>{formatDate(item.created_at)}</td>
+                    <td className={styles.originCell}>
                       {item.web_order_id ? (
                         <span className={styles.originBadge}>Pedido web #{item.web_order_id}</span>
                       ) : (
