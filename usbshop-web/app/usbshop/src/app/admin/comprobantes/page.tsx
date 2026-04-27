@@ -544,7 +544,7 @@ export default function ComprobantesPage() {
                           {detail.items.map((item) => (
                             <tr key={item.id}>
                               <td>{item.quantity}</td>
-                              <td>{item.product_name}</td>
+                              <td className={styles.productDescriptionCell}>{item.product_name}</td>
                               <td>{money(item.unit_price)}</td>
                               <td className={styles.total}>{money(item.line_total)}</td>
                             </tr>

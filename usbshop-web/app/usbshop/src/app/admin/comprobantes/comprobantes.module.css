@@ -84,6 +84,7 @@
 .notesBox { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid #0b0b0b; background: #f0fdfa; }
 .notesBox p { margin: 0; color: #0b0b0b; line-height: 1.45; font-size: 12px; }
 .documentTableWrap { border: 1px solid #0b0b0b; border-radius: 12px; overflow: hidden; background: white; }
+.productDescriptionCell { font-size: 14px; }
 .documentFooter { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(260px, .9fr); gap: 16px; align-items: start; }
 .detailMeta span, .summaryGrid span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
 .detailMeta strong, .summaryGrid strong { color: var(--ink); }
@@ -232,6 +233,7 @@
   .table thead { display: table-header-group; }
   .table tr { page-break-inside: avoid; page-break-after: auto; }
   .table th, .table td { font-size: 9.5px; line-height: 1.15; padding: 3px 5px; }
+  .productDescriptionCell { font-size: 10.5px; }
   .documentFooter { grid-template-columns: minmax(0, 1fr) 210px; gap: 8px; }
   .paymentBlock { gap: 4px; }
   .paymentBlock h3 { font-size: 10px; }
