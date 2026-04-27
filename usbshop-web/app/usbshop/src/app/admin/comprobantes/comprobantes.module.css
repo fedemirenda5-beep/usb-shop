@@ -26,7 +26,8 @@
 .table tbody tr { cursor: pointer; }
 .selectedRow { background: rgba(132, 204, 22, 0.08); }
 .linkButton { border: 0; background: transparent; padding: 0; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
-.rowActions { white-space: nowrap; display: flex; gap: 8px; }
+.rowActions { min-width: 220px; }
+.rowActionsGroup { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; white-space: normal; }
 .total { color: var(--purple); font-weight: 700; }
 .originBadge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(15, 118, 110, 0.12); color: #0f766e; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .originMuted { color: var(--muted); font-size: 12px; white-space: nowrap; }

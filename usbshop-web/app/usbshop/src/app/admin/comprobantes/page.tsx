@@ -310,59 +310,61 @@ export default function ComprobantesPage() {
                       )}
                     </td>
                     <td className={styles.rowActions}>
-                      <button
-                        type="button"
-                        className={styles.secondaryButton}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void openInvoice(item.id);
-                        }}
-                      >
-                        Ver comprobante
-                      </button>
-                      {item.document_type === 'PRESUPUESTO' ? (
+                      <div className={styles.rowActionsGroup}>
                         <button
                           type="button"
-                          className={styles.confirmButton}
+                          className={styles.secondaryButton}
                           onClick={(event) => {
                             event.stopPropagation();
-                            requestConfirmInvoice(item);
+                            void openInvoice(item.id);
                           }}
                         >
-                          Revisar y facturar
+                          Ver comprobante
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className={styles.pdfButton}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void openInvoice(item.id);
-                        }}
-                      >
-                        Vista previa PDF
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.printButton}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void openInvoice(item.id);
-                        }}
-                      >
-                        Vista previa impresion
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.deleteButton}
-                        disabled={deletingId === item.id}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          requestDeleteInvoice(item);
-                        }}
-                      >
-                        {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
-                      </button>
+                        {item.document_type === 'PRESUPUESTO' ? (
+                          <button
+                            type="button"
+                            className={styles.confirmButton}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestConfirmInvoice(item);
+                            }}
+                          >
+                            Revisar y facturar
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          className={styles.pdfButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openInvoice(item.id);
+                          }}
+                        >
+                          Vista previa PDF
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.printButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openInvoice(item.id);
+                          }}
+                        >
+                          Vista previa impresion
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.deleteButton}
+                          disabled={deletingId === item.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            requestDeleteInvoice(item);
+                          }}
+                        >
+                          {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
