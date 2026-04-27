@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
-import { formatArgentinaDateTime } from '@/lib/datetime';
+import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './comprobantes.module.css';
 
 type Invoice = {
@@ -74,6 +74,19 @@ const money = (value: number) =>
 
 const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
+};
+
+const formatListDate = (value?: string | null) => {
+  return formatArgentinaDate(value);
+};
+
+const getSaleModeLabel = (value?: string | null) => {
+  if (!value) return '-';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'cuenta corriente') return 'CC';
+  if (normalized === 'cc') return 'CC';
+  if (normalized === 'contado') return 'Contado';
+  return value;
 };
 
 const getPriceListLabel = (value?: number | null) => {
@@ -309,12 +322,12 @@ export default function ComprobantesPage() {
                     <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
                     <td className={styles.typeCell}>{item.document_type || '-'}</td>
                     <td className={styles.customerCell}>{item.customer_name}</td>
-                    <td className={styles.modeCell}>{item.sale_mode || '-'}</td>
+                    <td className={styles.modeCell}>{getSaleModeLabel(item.sale_mode)}</td>
                     <td className={styles.total}>{money(item.total)}</td>
-                    <td className={styles.dateCell}>{formatDate(item.created_at)}</td>
+                    <td className={styles.dateCell}>{formatListDate(item.created_at)}</td>
                     <td className={styles.originCell}>
                       {item.web_order_id ? (
-                        <span className={styles.originBadge}>Pedido web #{item.web_order_id}</span>
+                        <span className={styles.originBadge}>Web #{item.web_order_id}</span>
                       ) : (
                         <span className={styles.originMuted}>Manual</span>
                       )}
@@ -329,18 +342,18 @@ export default function ComprobantesPage() {
                             void openInvoice(item.id);
                           }}
                         >
-                          Ver comprobante
+                          Ver
                         </button>
                         {item.document_type === 'PRESUPUESTO' ? (
                           <button
                             type="button"
                             className={styles.confirmButton}
-                            onClick={(event) => {
+                          onClick={(event) => {
                               event.stopPropagation();
                               requestConfirmInvoice(item);
                             }}
                           >
-                            Revisar y facturar
+                            Facturar
                           </button>
                         ) : null}
                         <button
@@ -351,7 +364,7 @@ export default function ComprobantesPage() {
                             void openInvoice(item.id);
                           }}
                         >
-                          Vista previa PDF
+                          PDF
                         </button>
                         <button
                           type="button"
@@ -361,7 +374,7 @@ export default function ComprobantesPage() {
                             void openInvoice(item.id);
                           }}
                         >
-                          Vista previa impresion
+                          Impr.
                         </button>
                         <button
                           type="button"
