@@ -210,42 +210,42 @@
   .detailHeader, .printBanner, .detailMeta, .documentFooter, .signatureRow, .documentMeta, .summaryGrid, .desktopPanel, .notesBox { break-inside: avoid; }
   .detailPane, .detailModal { padding: 0; max-height: none; overflow: visible; }
   .desktopAccentBar { height: 2px; margin: 0 0 2px; }
-  .printBanner { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+  .printBanner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 6px 8px; border-radius: 6px; }
   .brandLockup { justify-content: flex-start; gap: 8px; }
-  .logoBox { width: 42px; height: 42px; border-radius: 5px; padding: 3px; }
-  .brandName { font-size: 18px; }
-  .brandMeta { font-size: 10px; }
-  .docKindBadge { padding: 5px 10px; border-radius: 6px; font-size: 12px; letter-spacing: 0.08em; }
-  .desktopPanel { padding: 5px 6px; border-radius: 6px; }
+  .logoBox { width: 48px; height: 48px; border-radius: 5px; padding: 3px; }
+  .brandName { font-size: 20px; }
+  .brandMeta { font-size: 11px; }
+  .docKindBadge { padding: 6px 12px; border-radius: 6px; font-size: 13px; letter-spacing: 0.08em; }
+  .desktopPanel { padding: 7px 8px; border-radius: 6px; }
   .headerSplitPanel { grid-template-columns: minmax(0, 1.1fr) minmax(210px, 0.9fr); border-radius: 4px; }
-  .headerSplitColumn:first-child, .headerSplitColumn + .headerSplitColumn { padding: 5px 8px; }
-  .sectionTitle { font-size: 8px; letter-spacing: 0.08em; margin-bottom: 4px; }
-  .customerBlock { gap: 2px; font-size: 9px; }
-  .customerBlock strong { font-size: 12px; }
-  .customerBlock span { line-height: 1.15; }
-  .metaRow { grid-template-columns: minmax(86px, 0.9fr) minmax(0, 1fr); gap: 8px; padding: 2px 0; font-size: 9px; }
-  .metaRow span { font-size: 8px; letter-spacing: 0.03em; }
-  .metaRow strong { font-size: 9px; }
-  .notesBox { gap: 3px; padding: 5px 7px; border-radius: 6px; }
-  .notesBox p { font-size: 9px; line-height: 1.2; }
+  .headerSplitColumn:first-child, .headerSplitColumn + .headerSplitColumn { padding: 7px 10px; }
+  .sectionTitle { font-size: 9px; letter-spacing: 0.09em; margin-bottom: 5px; }
+  .customerBlock { gap: 3px; font-size: 10.5px; }
+  .customerBlock strong { font-size: 14px; }
+  .customerBlock span { line-height: 1.25; }
+  .metaRow { grid-template-columns: minmax(98px, 0.9fr) minmax(0, 1fr); gap: 10px; padding: 3px 0; font-size: 10px; }
+  .metaRow span { font-size: 9px; letter-spacing: 0.03em; }
+  .metaRow strong { font-size: 10px; }
+  .notesBox { gap: 4px; padding: 7px 8px; border-radius: 6px; }
+  .notesBox p { font-size: 10px; line-height: 1.3; }
   .documentTableWrap { border-radius: 6px; }
   .table { page-break-inside: auto; }
   .table thead { display: table-header-group; }
   .table tr { page-break-inside: avoid; page-break-after: auto; }
-  .table th, .table td { font-size: 9.5px; line-height: 1.15; padding: 3px 5px; }
-  .productDescriptionCell { font-size: 10.5px; }
+  .table th, .table td { font-size: 10.5px; line-height: 1.25; padding: 4px 6px; }
+  .productDescriptionCell { font-size: 11.5px; }
   .documentFooter { grid-template-columns: minmax(0, 1fr) 210px; gap: 8px; }
-  .paymentBlock { gap: 4px; }
-  .paymentBlock h3 { font-size: 10px; }
-  .paymentBlock p { margin: 0; font-size: 9px; }
-  .movementList { gap: 3px; }
-  .movementItem { grid-template-columns: 0.8fr 1fr 0.8fr auto; gap: 5px; padding: 4px 5px; border-radius: 5px; }
-  .movementItem span, .movementItem strong, .movementItem em { font-size: 8.5px; }
-  .totalBox { gap: 4px; padding: 7px; border-radius: 6px; border-width: 1px; }
-  .totalLabel { font-size: 8px; letter-spacing: 0.04em; }
-  .totalValue { font-size: 14px; }
+  .paymentBlock { gap: 5px; }
+  .paymentBlock h3 { font-size: 11px; }
+  .paymentBlock p { margin: 0; font-size: 10px; }
+  .movementList { gap: 4px; }
+  .movementItem { grid-template-columns: 0.8fr 1fr 0.8fr auto; gap: 6px; padding: 5px 6px; border-radius: 5px; }
+  .movementItem span, .movementItem strong, .movementItem em { font-size: 9.5px; }
+  .totalBox { gap: 5px; padding: 8px; border-radius: 6px; border-width: 1px; }
+  .totalLabel { font-size: 9px; letter-spacing: 0.04em; }
+  .totalValue { font-size: 16px; }
   .signatureRow { gap: 12px; padding-top: 6px; }
-  .signatureBox { min-height: 34px; padding-top: 4px; font-size: 9px; }
+  .signatureBox { min-height: 40px; padding-top: 5px; font-size: 10px; }
   .total, .movementItem em { color: #111827; }
   @page { size: A4; margin: 8mm; }
 }
