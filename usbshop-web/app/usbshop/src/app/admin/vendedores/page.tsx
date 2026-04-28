@@ -608,10 +608,10 @@ export default function VendedoresPage() {
                   <span>Comision acumulada</span>
                   <strong>{money(sellerDetail.summary.commission)}</strong>
                 </div>
-                {canViewProfit ? (
+                {canViewProfit && sellerDetail.summary.profit !== null ? (
                   <div className={styles.detailItem}>
                     <span>Ganancia estimada</span>
-                    <strong>{money(sellerDetail.summary.profit || 0)}</strong>
+                    <strong>{money(sellerDetail.summary.profit)}</strong>
                   </div>
                 ) : null}
                 <div className={styles.detailItem}>
@@ -778,9 +778,7 @@ export default function VendedoresPage() {
           <div>
             <h3>Resumen mensual por vendedor</h3>
             <p>
-              {canViewProfit
-                ? `Ventas y ganancia estimada de ${formattedMonthlyPeriod} para los vendedores activos.`
-                : `Ventas y comisiones de ${formattedMonthlyPeriod} para los vendedores activos.`}
+              {`Ventas y comisiones de ${formattedMonthlyPeriod} para los vendedores activos.`}
             </p>
           </div>
         </div>
@@ -806,12 +804,6 @@ export default function VendedoresPage() {
                     <span>Comision</span>
                     <strong>{money(item.commission)}</strong>
                   </div>
-                  {canViewProfit ? (
-                    <div>
-                      <span>Ganancia</span>
-                      <strong>{money(item.profit || 0)}</strong>
-                    </div>
-                  ) : null}
                 </div>
               </article>
             ))}
@@ -909,12 +901,6 @@ export default function VendedoresPage() {
                 <span>Comision acumulada</span>
                 <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
               </div>
-              {canViewProfit ? (
-                <div className={styles.detailItem}>
-                  <span>Ganancia estimada</span>
-                  <strong>{money(selectedSellerSummary?.profit || 0)}</strong>
-                </div>
-              ) : null}
               <div className={styles.detailItem}>
                 <span>Estado</span>
                 <strong>{selectedSeller.is_active ? 'Activo' : 'Inactivo'}</strong>

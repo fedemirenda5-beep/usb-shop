@@ -60,6 +60,21 @@ type SellerMonthlyDetail = {
   items: SellerMonthlyInvoice[];
 };
 
+type InvoiceListItem = {
+  id: number;
+  customer_id?: number | null;
+  customer_name: string;
+  seller_id?: number | null;
+  total: number;
+  created_at: string;
+  document_type?: string | null;
+  sale_mode?: string | null;
+  notes?: string | null;
+  payment_method?: string | null;
+  commission_amount?: number | null;
+  special_discount?: number | null;
+};
+
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
@@ -72,6 +87,24 @@ const formatPercent = (value: number) =>
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 
 const todayMonthInput = () => getArgentinaNowDateInput().slice(0, 7);
+
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    if (
+      normalized === 'failed to fetch' ||
+      normalized === 'fetch failed' ||
+      normalized.includes('networkerror') ||
+      normalized.includes('load failed')
+    ) {
+      return 'No se pudo conectar con el servidor. Revisa la API y volve a intentar.';
+    }
+    return error.message;
+  }
+  return fallback;
+};
 
 const formatPeriodLabel = (period: string) => {
   const [year, month] = String(period || '').split('-');
@@ -95,6 +128,110 @@ export default function VentasPorVendedorPage() {
   const [error, setError] = useState('');
 
   const periodLabel = useMemo(() => formatPeriodLabel(period), [period]);
+
+  const loadAvailableSellers = async () => {
+    const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=150`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    const sellerData = await sellerRes.json().catch(() => null);
+    if (!sellerRes.ok) {
+      throw new Error(sellerData?.detail || 'No se pudieron cargar los vendedores');
+    }
+    return Array.isArray(sellerData) ? (sellerData as Seller[]) : [];
+  };
+
+  const loadInvoiceList = async () => {
+    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    const listData = await listRes.json().catch(() => null);
+    if (!listRes.ok) {
+      throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
+    }
+    return Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
+  };
+
+  const buildSummaryFromInvoices = async (): Promise<SellerMonthlySummary[]> => {
+    const sellers = (await loadAvailableSellers()).filter((seller) => seller.is_active);
+    const invoices = await loadInvoiceList();
+    const summaryMap = new Map<number, SellerMonthlySummary>();
+
+    sellers.forEach((seller) => {
+      summaryMap.set(seller.id, {
+        seller_id: seller.id,
+        name: seller.name,
+        commission_percent: Number(seller.commission_percent || 0),
+        sales: 0,
+        commission: 0,
+        invoice_count: 0,
+      });
+    });
+
+    invoices.forEach((item) => {
+      const sellerId = Number(item.seller_id || 0);
+      const summaryItem = summaryMap.get(sellerId);
+      const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
+      const documentType = String(item.document_type || '').trim().toUpperCase();
+      if (!summaryItem || createdAt !== period || documentType === 'PRESUPUESTO') {
+        return;
+      }
+      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
+      summaryItem.sales = roundMoney(summaryItem.sales + Number(item.total || 0) * sign);
+      summaryItem.commission = roundMoney(summaryItem.commission + Number(item.commission_amount || 0) * sign);
+      summaryItem.invoice_count += 1;
+    });
+
+    return Array.from(summaryMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es-AR'));
+  };
+
+  const buildDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
+    const sellers = await loadAvailableSellers();
+    const selectedSeller = sellers.find((seller) => seller.id === sellerId);
+    if (!selectedSeller) {
+      throw new Error('Vendedor no encontrado');
+    }
+
+    const invoices = await loadInvoiceList();
+    const items = invoices
+      .filter((item) => {
+        const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
+        const documentType = String(item.document_type || '').trim().toUpperCase();
+        return Number(item.seller_id || 0) === sellerId && createdAt === period && documentType !== 'PRESUPUESTO';
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map((item) => {
+        const documentType = String(item.document_type || '').trim().toUpperCase();
+        const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
+        return {
+          invoice_id: item.id,
+          created_at: item.created_at,
+          document_type: item.document_type,
+          sale_mode: item.sale_mode,
+          payment_method: item.payment_method,
+          notes: item.notes,
+          customer_id: item.customer_id,
+          customer_name: item.customer_name || 'Sin cliente',
+          total: roundMoney(Number(item.total || 0) * sign),
+          balance_due: roundMoney(Number(item.total || 0) * sign),
+          special_discount: roundMoney(Number(item.special_discount || 0) * sign),
+          commission: roundMoney(Number(item.commission_amount || 0) * sign),
+          items: [],
+        };
+      });
+
+    return {
+      period,
+      seller: selectedSeller,
+      summary: {
+        sales: roundMoney(items.reduce((sum, item) => sum + Number(item.total || 0), 0)),
+        commission: roundMoney(items.reduce((sum, item) => sum + Number(item.commission || 0), 0)),
+        invoice_count: items.length,
+      },
+      items,
+    };
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -145,11 +282,23 @@ export default function VentasPorVendedorPage() {
           return items[0]?.seller_id ?? null;
         });
       } catch (err) {
-        if (!active) return;
-        setSummary([]);
-        setSelectedSellerId(null);
-        setDetail(null);
-        setError(err instanceof Error ? err.message : 'Error cargando el resumen por vendedor');
+        try {
+          const fallbackItems = await buildSummaryFromInvoices();
+          if (!active) return;
+          setSummary(fallbackItems);
+          setSelectedSellerId((current) => {
+            if (current && fallbackItems.some((item) => item.seller_id === current)) {
+              return current;
+            }
+            return fallbackItems[0]?.seller_id ?? null;
+          });
+        } catch (fallbackErr) {
+          if (!active) return;
+          setSummary([]);
+          setSelectedSellerId(null);
+          setDetail(null);
+          setError(getErrorMessage(fallbackErr, 'Error cargando el resumen por vendedor'));
+        }
       } finally {
         if (active) {
           setLoadingSummary(false);
@@ -188,9 +337,15 @@ export default function VentasPorVendedorPage() {
         if (!active) return;
         setDetail(data);
       } catch (err) {
-        if (!active) return;
-        setDetail(null);
-        setError(err instanceof Error ? err.message : 'Error cargando el detalle del vendedor');
+        try {
+          const fallbackDetail = await buildDetailFromInvoices(selectedSellerId);
+          if (!active) return;
+          setDetail(fallbackDetail);
+        } catch (fallbackErr) {
+          if (!active) return;
+          setDetail(null);
+          setError(getErrorMessage(fallbackErr, 'Error cargando el detalle del vendedor'));
+        }
       } finally {
         if (active) {
           setLoadingDetail(false);
