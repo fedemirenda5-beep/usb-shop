@@ -203,49 +203,49 @@
 @media print {
   .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay { display: none !important; }
   .page, .layout, .detailPane, .detailModal, .printArea { display: block; }
-  .documentShell { display: grid; gap: 6px; width: 100%; max-width: 100%; }
+  .documentShell { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 100%; min-height: calc(297mm - 12mm); box-sizing: border-box; }
   .modalOverlay { position: static; inset: auto; background: white; padding: 0; display: block; }
   .detailPane, .detailModal, .tableWrap, .documentTableWrap, .documentShell { box-shadow: none; border: 0; padding: 0; background: white; }
   .printArea { gap: 0; }
   .detailHeader, .printBanner, .detailMeta, .documentFooter, .signatureRow, .documentMeta, .summaryGrid, .desktopPanel, .notesBox { break-inside: avoid; }
   .detailPane, .detailModal { width: auto !important; max-width: none !important; padding: 0; max-height: none; overflow: visible; }
   .desktopAccentBar { height: 2px; margin: 0 0 2px; }
-  .printBanner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+  .printBanner { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 8px 10px; border-radius: 6px; }
   .brandLockup { justify-content: flex-start; gap: 8px; }
-  .logoBox { width: 48px; height: 48px; border-radius: 5px; padding: 3px; }
-  .brandName { font-size: 20px; }
-  .brandMeta { font-size: 11px; }
-  .docKindBadge { padding: 6px 12px; border-radius: 6px; font-size: 13px; letter-spacing: 0.08em; }
-  .desktopPanel { padding: 7px 8px; border-radius: 6px; }
+  .logoBox { width: 56px; height: 56px; border-radius: 5px; padding: 3px; }
+  .brandName { font-size: 22px; }
+  .brandMeta { font-size: 11.5px; }
+  .docKindBadge { padding: 7px 14px; border-radius: 6px; font-size: 14px; letter-spacing: 0.08em; }
+  .desktopPanel { padding: 9px 10px; border-radius: 6px; }
   .headerSplitPanel { grid-template-columns: minmax(0, 1.1fr) minmax(210px, 0.9fr); border-radius: 4px; }
-  .headerSplitColumn:first-child, .headerSplitColumn + .headerSplitColumn { padding: 7px 10px; }
-  .sectionTitle { font-size: 9px; letter-spacing: 0.09em; margin-bottom: 5px; }
-  .customerBlock { gap: 3px; font-size: 10.5px; }
-  .customerBlock strong { font-size: 14px; }
-  .customerBlock span { line-height: 1.25; }
-  .metaRow { grid-template-columns: minmax(98px, 0.9fr) minmax(0, 1fr); gap: 10px; padding: 3px 0; font-size: 10px; }
-  .metaRow span { font-size: 9px; letter-spacing: 0.03em; }
-  .metaRow strong { font-size: 10px; }
-  .notesBox { gap: 4px; padding: 7px 8px; border-radius: 6px; }
-  .notesBox p { font-size: 10px; line-height: 1.3; }
+  .headerSplitColumn:first-child, .headerSplitColumn + .headerSplitColumn { padding: 9px 11px; }
+  .sectionTitle { font-size: 9.5px; letter-spacing: 0.09em; margin-bottom: 6px; }
+  .customerBlock { gap: 4px; font-size: 11.5px; }
+  .customerBlock strong { font-size: 16px; }
+  .customerBlock span { line-height: 1.3; }
+  .metaRow { grid-template-columns: minmax(110px, 0.9fr) minmax(0, 1fr); gap: 12px; padding: 4px 0; font-size: 10.5px; }
+  .metaRow span { font-size: 9.5px; letter-spacing: 0.03em; }
+  .metaRow strong { font-size: 11px; }
+  .notesBox { gap: 4px; padding: 8px 10px; border-radius: 6px; }
+  .notesBox p { font-size: 10.5px; line-height: 1.35; }
   .documentTableWrap { border-radius: 6px; }
   .table { width: 100%; min-width: 0; table-layout: auto; page-break-inside: auto; }
   .table thead { display: table-header-group; }
   .table tr { page-break-inside: avoid; page-break-after: auto; }
-  .table th, .table td { font-size: 10.5px; line-height: 1.25; padding: 4px 6px; }
-  .productDescriptionCell { font-size: 11.5px; }
-  .documentFooter { grid-template-columns: minmax(0, 1fr) 210px; gap: 8px; }
-  .paymentBlock { gap: 5px; }
-  .paymentBlock h3 { font-size: 11px; }
-  .paymentBlock p { margin: 0; font-size: 10px; }
-  .movementList { gap: 4px; }
-  .movementItem { grid-template-columns: 0.8fr 1fr 0.8fr auto; gap: 6px; padding: 5px 6px; border-radius: 5px; }
-  .movementItem span, .movementItem strong, .movementItem em { font-size: 9.5px; }
-  .totalBox { gap: 5px; padding: 8px; border-radius: 6px; border-width: 1px; }
-  .totalLabel { font-size: 9px; letter-spacing: 0.04em; }
-  .totalValue { font-size: 16px; }
-  .signatureRow { gap: 12px; padding-top: 6px; }
-  .signatureBox { min-height: 40px; padding-top: 5px; font-size: 10px; }
+  .table th, .table td { font-size: 11.5px; line-height: 1.35; padding: 5px 7px; }
+  .productDescriptionCell { font-size: 12px; }
+  .documentFooter { grid-template-columns: minmax(0, 1fr) 230px; gap: 10px; margin-top: auto; }
+  .paymentBlock { gap: 6px; }
+  .paymentBlock h3 { font-size: 12px; }
+  .paymentBlock p { margin: 0; font-size: 10.5px; }
+  .movementList { gap: 5px; }
+  .movementItem { grid-template-columns: 0.8fr 1fr 0.8fr auto; gap: 6px; padding: 6px 7px; border-radius: 5px; }
+  .movementItem span, .movementItem strong, .movementItem em { font-size: 10px; }
+  .totalBox { gap: 6px; padding: 10px; border-radius: 6px; border-width: 1px; }
+  .totalLabel { font-size: 9.5px; letter-spacing: 0.04em; }
+  .totalValue { font-size: 20px; }
+  .signatureRow { gap: 14px; padding-top: 10px; }
+  .signatureBox { min-height: 54px; padding-top: 6px; font-size: 10.5px; }
   .total, .movementItem em { color: #111827; }
-  @page { size: A4; margin: 8mm; }
+  @page { size: A4; margin: 6mm; }
 }

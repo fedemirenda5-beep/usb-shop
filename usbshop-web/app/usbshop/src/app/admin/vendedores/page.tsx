@@ -608,12 +608,6 @@ export default function VendedoresPage() {
                   <span>Comision acumulada</span>
                   <strong>{money(sellerDetail.summary.commission)}</strong>
                 </div>
-                {canViewProfit && sellerDetail.summary.profit !== null ? (
-                  <div className={styles.detailItem}>
-                    <span>Ganancia estimada</span>
-                    <strong>{money(sellerDetail.summary.profit)}</strong>
-                  </div>
-                ) : null}
                 <div className={styles.detailItem}>
                   <span>Ultima actualizacion</span>
                   <strong>{formatDate(sellerDetail.seller.updated_at || sellerDetail.seller.created_at)}</strong>
@@ -901,6 +895,12 @@ export default function VendedoresPage() {
                 <span>Comision acumulada</span>
                 <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
               </div>
+              {canViewProfit && selectedSellerSummary?.profit !== null ? (
+                <div className={styles.detailItem}>
+                  <span>Ganancia estimada</span>
+                  <strong>{money(selectedSellerSummary.profit)}</strong>
+                </div>
+              ) : null}
               <div className={styles.detailItem}>
                 <span>Estado</span>
                 <strong>{selectedSeller.is_active ? 'Activo' : 'Inactivo'}</strong>
