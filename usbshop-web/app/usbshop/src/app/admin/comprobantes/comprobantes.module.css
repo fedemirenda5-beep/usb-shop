@@ -203,12 +203,12 @@
 @media print {
   .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay { display: none !important; }
   .page, .layout, .detailPane, .detailModal, .printArea { display: block; }
-  .documentShell { display: grid; gap: 6px; }
+  .documentShell { display: grid; gap: 6px; width: 100%; max-width: 100%; }
   .modalOverlay { position: static; inset: auto; background: white; padding: 0; display: block; }
   .detailPane, .detailModal, .tableWrap, .documentTableWrap, .documentShell { box-shadow: none; border: 0; padding: 0; background: white; }
   .printArea { gap: 0; }
   .detailHeader, .printBanner, .detailMeta, .documentFooter, .signatureRow, .documentMeta, .summaryGrid, .desktopPanel, .notesBox { break-inside: avoid; }
-  .detailPane, .detailModal { padding: 0; max-height: none; overflow: visible; }
+  .detailPane, .detailModal { width: auto !important; max-width: none !important; padding: 0; max-height: none; overflow: visible; }
   .desktopAccentBar { height: 2px; margin: 0 0 2px; }
   .printBanner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 6px 8px; border-radius: 6px; }
   .brandLockup { justify-content: flex-start; gap: 8px; }
@@ -229,7 +229,7 @@
   .notesBox { gap: 4px; padding: 7px 8px; border-radius: 6px; }
   .notesBox p { font-size: 10px; line-height: 1.3; }
   .documentTableWrap { border-radius: 6px; }
-  .table { page-break-inside: auto; }
+  .table { width: 100%; min-width: 0; table-layout: auto; page-break-inside: auto; }
   .table thead { display: table-header-group; }
   .table tr { page-break-inside: avoid; page-break-after: auto; }
   .table th, .table td { font-size: 10.5px; line-height: 1.25; padding: 4px 6px; }
