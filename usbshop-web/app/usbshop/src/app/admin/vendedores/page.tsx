@@ -138,6 +138,24 @@ const currentPeriodKey = () => {
   return `${year}-${month}`;
 };
 
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    if (
+      normalized === 'failed to fetch' ||
+      normalized === 'fetch failed' ||
+      normalized.includes('networkerror') ||
+      normalized.includes('load failed')
+    ) {
+      return 'No se pudo conectar con el servidor. Revisa la API y volve a intentar.';
+    }
+    return error.message;
+  }
+  return fallback;
+};
+
 export default function VendedoresPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -194,6 +212,70 @@ export default function VendedoresPage() {
       return b.invoice_id - a.invoice_id;
     });
   }, [sellerDetail?.items]);
+
+  const buildMonthlySummaryFromInvoices = async (): Promise<{
+    period: string;
+    items: SellerMonthlySummary[];
+  }> => {
+    const availableSellers =
+      sellers.length > 0
+        ? sellers
+        : await (async () => {
+            const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=150`, {
+              credentials: 'include',
+              cache: 'no-store',
+            });
+            const sellerData = await sellerRes.json().catch(() => null);
+            if (!sellerRes.ok) {
+              throw new Error(sellerData?.detail || 'No se pudieron cargar los vendedores');
+            }
+            return Array.isArray(sellerData) ? (sellerData as Seller[]) : [];
+          })();
+
+    const period = monthlyPeriod || currentPeriodKey();
+    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    const listData = await listRes.json().catch(() => null);
+    if (!listRes.ok) {
+      throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
+    }
+
+    const summaryMap = new Map<number, SellerMonthlySummary>();
+    availableSellers
+      .filter((seller) => seller.is_active)
+      .forEach((seller) => {
+        summaryMap.set(seller.id, {
+          seller_id: seller.id,
+          name: seller.name,
+          commission_percent: Number(seller.commission_percent || 0),
+          sales: 0,
+          profit: null,
+          commission: 0,
+          invoice_count: 0,
+        });
+      });
+
+    (Array.isArray(listData) ? listData : []).forEach((item: InvoiceListItem) => {
+      const sellerId = Number(item.seller_id || 0);
+      const summary = summaryMap.get(sellerId);
+      const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
+      const documentType = String(item.document_type || '').trim().toUpperCase();
+      if (!summary || createdAt !== period || documentType === 'PRESUPUESTO') {
+        return;
+      }
+      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
+      summary.sales = roundMoney(summary.sales + Number(item.total || 0) * sign);
+      summary.commission = roundMoney(summary.commission + Number(item.commission_amount || 0) * sign);
+      summary.invoice_count += 1;
+    });
+
+    return {
+      period,
+      items: Array.from(summaryMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es-AR')),
+    };
+  };
 
   const buildSellerDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
     let selected = sellers.find((seller) => seller.id === sellerId) ?? null;
@@ -290,7 +372,7 @@ export default function VendedoresPage() {
         return data[0]?.id ?? null;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando vendedores');
+      setError(getErrorMessage(err, 'Error cargando vendedores'));
     } finally {
       setLoading(false);
     }
@@ -314,7 +396,13 @@ export default function VendedoresPage() {
       setMonthlySummary(Array.isArray(data.items) ? data.items : []);
       setMonthlyPeriod(typeof data.period === 'string' ? data.period : '');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando resumen mensual');
+      try {
+        const fallbackSummary = await buildMonthlySummaryFromInvoices();
+        setMonthlySummary(fallbackSummary.items);
+        setMonthlyPeriod(fallbackSummary.period);
+      } catch (fallbackErr) {
+        setError(getErrorMessage(fallbackErr, 'Error cargando resumen mensual'));
+      }
     } finally {
       if (!silent) {
         setSummaryLoading(false);
@@ -359,7 +447,7 @@ export default function VendedoresPage() {
         }
       } catch (err) {
         setSellerDetail(null);
-        setError(err instanceof Error ? err.message : 'Error cargando detalle del vendedor');
+        setError(getErrorMessage(err, 'Error cargando detalle del vendedor'));
       } finally {
         setDetailLoading(false);
       }
@@ -455,7 +543,7 @@ export default function VendedoresPage() {
       setSelectedSellerId(data.id);
       setShowSellerForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardando vendedor');
+      setError(getErrorMessage(err, 'Error guardando vendedor'));
     } finally {
       setSaving(false);
     }
