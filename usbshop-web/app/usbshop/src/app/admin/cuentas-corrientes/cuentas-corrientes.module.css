@@ -6,6 +6,7 @@
 .searchBar { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
 .searchBar span, .boardHeader span, .sectionMeta, .statChip span, .formGrid span { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .search { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; }
+.inlineSearch { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; background: white; }
 .toolbarActions { display: flex; gap: 10px; flex-wrap: wrap; }
 .primaryButton, .secondaryButton, .dangerButton, .modeButton { border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-weight: 700; font: inherit; }
 .primaryButton { background: var(--ink); color: white; }
@@ -30,6 +31,7 @@
 .accountHeader { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
 .accountSummary { display: grid; gap: 4px; }
 .accountActions { display: flex; gap: 10px; flex-wrap: wrap; }
+.detailToolbar { display: grid; gap: 10px; }
 .detailGrid { display: grid; grid-template-columns: minmax(0, 1.25fr) 360px; gap: 16px; align-items: start; }
 .mainColumn, .sideColumn { display: grid; gap: 14px; min-width: 0; }
 .sideColumn { position: sticky; top: 16px; }
@@ -45,6 +47,9 @@
 .breakdownRowCompact span { color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .breakdownRowCompact strong { color: var(--ink); font-size: 14px; }
 .table { background: white; }
+.table tbody tr { transition: background-color .16s ease; }
+.table tbody tr:hover { background: rgba(15, 23, 42, 0.03); }
+.movementRowActive { background: linear-gradient(90deg, rgba(15,118,110,.12), rgba(15,118,110,.04)); }
 .debit { color: #b91c1c; font-weight: 700; }
 .credit { color: #0f766e; font-weight: 700; }
 .balanceCell { color: var(--ink); font-weight: 700; }
@@ -58,12 +63,19 @@
 .modeSwitcher { display: flex; gap: 8px; }
 .modeButton { background: white; color: var(--ink); border: 1px solid var(--bg-soft); border-radius: 999px; }
 .modeButtonActive { background: var(--ink); color: white; border-color: var(--ink); }
+.filterPills { display: flex; gap: 8px; flex-wrap: wrap; }
+.filterPill { border: 1px solid var(--bg-soft); background: white; color: var(--muted); border-radius: 999px; padding: 9px 12px; font: inherit; font-weight: 700; cursor: pointer; }
+.filterPillActive { background: var(--ink); color: white; border-color: var(--ink); }
 .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .formGrid label { display: grid; gap: 6px; }
 .formGrid input, .formGrid select { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; background: white; font: inherit; }
 .fullWidth { grid-column: 1 / -1; }
 .emptyPanel, .empty, .error { padding: 14px; border-radius: 12px; }
 .editingNotice { padding: 12px 14px; border-radius: 12px; background: rgba(15,118,110,.08); color: #0f766e; border: 1px solid rgba(15,118,110,.18); font-size: 13px; font-weight: 600; }
+.editingSummary { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(15, 23, 42, 0.08); background: var(--bg); display: grid; gap: 6px; }
+.editingSummary div { display: grid; gap: 4px; }
+.editingSummary span, .editingSummary small { color: var(--muted); font-size: 12px; }
+.editingSummary strong { color: var(--ink); font-size: 14px; }
 .actionsCell { white-space: nowrap; }
 .linkButton { border: 0; background: transparent; color: #0f766e; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
 .mutedText { color: var(--muted); font-size: 12px; }
@@ -109,7 +121,7 @@
 }
 @media (max-width: 860px) {
   .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
-  .toolbarActions, .accountActions, .modeSwitcher, .confirmActions, .formActions { flex-direction: column; }
+  .toolbarActions, .accountActions, .modeSwitcher, .confirmActions, .formActions, .filterPills { flex-direction: column; }
   .modalOverlay { padding: 12px; }
   .confirmModal { padding: 14px; }
 }

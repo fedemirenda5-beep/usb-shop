@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
@@ -101,6 +101,7 @@ export default function CuentasCorrientesPage() {
   const { user } = useAdminSession();
   const detailRef = useRef<HTMLElement | null>(null);
   const movementFormRef = useRef<HTMLFormElement | null>(null);
+  const amountInputRef = useRef<HTMLInputElement | null>(null);
   const [customers, setCustomers] = useState<CustomerOverview[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
@@ -110,6 +111,7 @@ export default function CuentasCorrientesPage() {
   const [error, setError] = useState('');
   const [legacyMode, setLegacyMode] = useState(false);
   const [search, setSearch] = useState('');
+  const [customerFilter, setCustomerFilter] = useState<'all' | 'debt' | 'overdue' | 'credit'>('all');
   const [summary, setSummary] = useState({
     customers: 0,
     debit: 0,
@@ -131,6 +133,8 @@ export default function CuentasCorrientesPage() {
   const [outputRange, setOutputRange] = useState<{ from: string; to: string } | null>(null);
   const [dateRangeDraft, setDateRangeDraft] = useState<{ from: string; to: string }>({ from: '', to: '' });
   const [movementMode, setMovementMode] = useState<'payment' | 'debt'>('payment');
+  const [movementFilter, setMovementFilter] = useState<'all' | 'debit' | 'credit' | 'editable'>('all');
+  const [movementSearch, setMovementSearch] = useState('');
   const [editingMovementId, setEditingMovementId] = useState<number | null>(null);
   const [form, setForm] = useState({
     movement_type: 'CREDIT',
@@ -140,6 +144,8 @@ export default function CuentasCorrientesPage() {
     reference: '',
     invoice_id: '',
   });
+  const deferredSearch = useDeferredValue(search);
+  const deferredMovementSearch = useDeferredValue(movementSearch);
 
   const emptyAging = (): Aging => ({
     current: 0,
@@ -413,15 +419,27 @@ export default function CuentasCorrientesPage() {
   };
 
   const filteredCustomers = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return customers;
-    return customers.filter((customer) =>
-      [customer.name, customer.email || '', customer.phone || '', customer.cuit || '', customer.locality || '']
-        .join(' ')
-        .toLowerCase()
-        .includes(needle)
-    );
-  }, [customers, search]);
+    const needle = deferredSearch.trim().toLowerCase();
+    return customers
+      .filter((customer) => {
+        if (customerFilter === 'debt') return customer.balance > 0;
+        if (customerFilter === 'overdue') return (customer.classification?.overdue || 0) > 0;
+        if (customerFilter === 'credit') return customer.balance < 0;
+        return true;
+      })
+      .filter((customer) => {
+        if (!needle) return true;
+        return [customer.name, customer.email || '', customer.phone || '', customer.cuit || '', customer.locality || '']
+          .join(' ')
+          .toLowerCase()
+          .includes(needle);
+      })
+      .sort((a, b) => {
+        const overdueDiff = (b.classification?.overdue || 0) - (a.classification?.overdue || 0);
+        if (overdueDiff !== 0) return overdueDiff;
+        return Math.abs(b.balance) - Math.abs(a.balance);
+      });
+  }, [customers, customerFilter, deferredSearch]);
 
   const selectedOverview = useMemo(
     () => customers.find((customer) => customer.id === selectedId) || null,
@@ -456,8 +474,34 @@ export default function CuentasCorrientesPage() {
     });
   }, [detail, outputRange]);
 
+  const filteredMovements = useMemo(() => {
+    const needle = deferredMovementSearch.trim().toLowerCase();
+    return visibleMovements.filter((movement) => {
+      if (movementFilter === 'debit' && movement.movement_type !== 'DEBIT') return false;
+      if (movementFilter === 'credit' && movement.movement_type !== 'CREDIT') return false;
+      if (movementFilter === 'editable' && movement.editable === false) return false;
+      if (!needle) return true;
+      return [
+        movement.reference || '',
+        movement.payment_method || '',
+        movement.document_type || '',
+        movement.entry_label || '',
+        movement.status_label || '',
+        movement.invoice_id ? String(movement.invoice_id) : '',
+      ]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle);
+    });
+  }, [deferredMovementSearch, movementFilter, visibleMovements]);
+
+  const editingMovement = useMemo(() => {
+    if (!detail || !editingMovementId) return null;
+    return detail.movements.find((movement) => movement.id === editingMovementId) || null;
+  }, [detail, editingMovementId]);
+
   const visibleMovementSummary = useMemo(() => {
-    return visibleMovements.reduce(
+    return filteredMovements.reduce(
       (acc, movement) => {
         if (movement.movement_type === 'DEBIT') acc.debits += movement.amount;
         if (movement.movement_type === 'CREDIT') acc.credits += movement.amount;
@@ -466,7 +510,7 @@ export default function CuentasCorrientesPage() {
       },
       { debits: 0, credits: 0, movements: 0 }
     );
-  }, [visibleMovements]);
+  }, [filteredMovements]);
 
   const rangeLabel = useMemo(() => {
     if (!outputRange?.from && !outputRange?.to) return 'Historial completo';
@@ -523,6 +567,15 @@ export default function CuentasCorrientesPage() {
       movementFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
+
+  useEffect(() => {
+    if (!editingMovementId) return;
+    const timeout = window.setTimeout(() => {
+      amountInputRef.current?.focus();
+      amountInputRef.current?.select();
+    }, 120);
+    return () => window.clearTimeout(timeout);
+  }, [editingMovementId]);
 
   const movementConceptOptions = useMemo(
     () =>
@@ -663,7 +716,7 @@ export default function CuentasCorrientesPage() {
               </>
             ) : (
               <>
-                <button type="button" className={styles.secondaryButton} onClick={() => setMode('payment')}>
+                <button type="button" className={styles.secondaryButton} onClick={() => openMovementForm('payment')}>
                   Registrar pago
                 </button>
                 <button type="button" className={styles.secondaryButton} onClick={() => openMovementForm('debt')}>
@@ -705,6 +758,47 @@ export default function CuentasCorrientesPage() {
               </div>
             )}
 
+            {!detailOnly ? (
+              <div className={styles.detailToolbar}>
+                <div className={styles.filterPills}>
+                  <button
+                    type="button"
+                    className={`${styles.filterPill} ${movementFilter === 'all' ? styles.filterPillActive : ''}`}
+                    onClick={() => setMovementFilter('all')}
+                  >
+                    Todos ({visibleMovements.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.filterPill} ${movementFilter === 'debit' ? styles.filterPillActive : ''}`}
+                    onClick={() => setMovementFilter('debit')}
+                  >
+                    Deuda
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.filterPill} ${movementFilter === 'credit' ? styles.filterPillActive : ''}`}
+                    onClick={() => setMovementFilter('credit')}
+                  >
+                    Pagos
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.filterPill} ${movementFilter === 'editable' ? styles.filterPillActive : ''}`}
+                    onClick={() => setMovementFilter('editable')}
+                  >
+                    Editables
+                  </button>
+                </div>
+                <input
+                  className={styles.inlineSearch}
+                  placeholder="Filtrar movimientos por detalle, estado o comprobante..."
+                  value={movementSearch}
+                  onChange={(event) => setMovementSearch(event.target.value)}
+                />
+              </div>
+            ) : null}
+
             <div className={styles.tableWrap}>
               <table className={styles.table}>
                 <thead>
@@ -719,11 +813,17 @@ export default function CuentasCorrientesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleMovements.length === 0 ? (
+                  {filteredMovements.length === 0 ? (
                     <tr><td colSpan={detailOnly ? 6 : 7}>Sin movimientos.</td></tr>
                   ) : (
-                    visibleMovements.map((movement) => (
-                      <tr key={movement.id}>
+                    filteredMovements.map((movement) => (
+                      <tr
+                        key={movement.id}
+                        className={movement.id === editingMovementId ? styles.movementRowActive : ''}
+                        onClick={() => {
+                          if (movement.editable !== false && !detailOnly) startEditingMovement(movement);
+                        }}
+                      >
                         <td>{formatDate(movement.created_at)}</td>
                         <td>{movement.entry_label || movement.document_type || (movement.movement_type === 'DEBIT' ? 'Debito' : 'Pago')}</td>
                         <td>
@@ -740,7 +840,10 @@ export default function CuentasCorrientesPage() {
                               <button
                                 type="button"
                                 className={styles.linkButton}
-                                onClick={() => startEditingMovement(movement)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  startEditingMovement(movement);
+                                }}
                               >
                                 Editar
                               </button>
@@ -790,6 +893,20 @@ export default function CuentasCorrientesPage() {
                   </div>
                 ) : null}
 
+                {editingMovement ? (
+                  <div className={styles.editingSummary}>
+                    <div>
+                      <span>Movimiento actual</span>
+                      <strong>
+                        {editingMovement.entry_label || (editingMovement.movement_type === 'DEBIT' ? 'Debito' : 'Pago')} por {money(editingMovement.amount)}
+                      </strong>
+                    </div>
+                    <small>
+                      {formatDate(editingMovement.created_at)} · {editingMovement.reference || editingMovement.payment_method || 'Sin detalle'}
+                    </small>
+                  </div>
+                ) : null}
+
                 <div className={styles.modeSwitcher}>
                   <button
                     type="button"
@@ -826,6 +943,7 @@ export default function CuentasCorrientesPage() {
                   <label>
                     <span>Importe</span>
                     <input
+                      ref={amountInputRef}
                       type="number"
                       min="0"
                       step="0.01"
@@ -946,6 +1064,36 @@ export default function CuentasCorrientesPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+            <div className={styles.filterPills}>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'all' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('all')}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'debt' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('debt')}
+              >
+                Con deuda
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'overdue' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('overdue')}
+              >
+                Vencidos
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'credit' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('credit')}
+              >
+                A favor
+              </button>
+            </div>
             <div className={styles.toolbarActions}>
               <button type="button" className={styles.primaryButton} onClick={() => openMovementForm('payment')}>
                 Registrar pago
@@ -1003,7 +1151,7 @@ export default function CuentasCorrientesPage() {
                 </strong>
               )}
             </div>
-            <div className={styles.boardHint}>Doble click sobre un cliente para abrir su detalle listo para imprimir o exportar.</div>
+            <div className={styles.boardHint}>Click selecciona. Doble click abre el detalle listo para imprimir. La lista prioriza primero saldos vencidos y cuentas con mayor impacto.</div>
             <div className={styles.customerTableWrap}>
               <table className={styles.customerTable}>
                 <thead>
