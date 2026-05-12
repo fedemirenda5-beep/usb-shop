@@ -332,16 +332,26 @@ export default function HomeClient({
   const handleCategorySelect = (category: string | null) => {
     setSelectedCategory(category);
     setSearchQuery("");
-    setCatalogLimit(CATALOG_PAGE_SIZE);
+    setCatalogLimit(category ? Number.MAX_SAFE_INTEGER : CATALOG_PAGE_SIZE);
+    if (category && hasMoreProducts && !isFetchingMore) {
+      void fetchAllProducts();
+    }
     window.requestAnimationFrame(() => {
       const target =
-        document.getElementById("category-strip") ||
         document.getElementById("featured-grid") ||
+        document.getElementById("category-strip") ||
         document.getElementById("catalogo");
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     });
+  };
+
+  const handleReturnHome = () => {
+    setSelectedCategory(null);
+    setSearchQuery("");
+    setCatalogLimit(CATALOG_PAGE_SIZE);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleSearchSubmit = () => {
@@ -1341,9 +1351,9 @@ export default function HomeClient({
               <button
                 type="button"
                 className="button button--ghost"
-                onClick={() => handleCategorySelect(null)}
+                onClick={handleReturnHome}
               >
-                Ver todas
+                Volver al inicio
               </button>
             ) : (
               <button
@@ -1382,8 +1392,8 @@ export default function HomeClient({
                 </div>
               )
             ) : selectedCategory ? (
-              visibleCatalog.length > 0 ? (
-                visibleCatalog.map((product, index) => (
+              filteredCatalog.length > 0 ? (
+                filteredCatalog.map((product, index) => (
                   <ProductCard
                     key={`category-${product.id}`}
                     product={applyBadge(product, "catalog")}
@@ -1431,7 +1441,7 @@ export default function HomeClient({
               </div>
             )}
           </div>
-          {selectedCategory &&
+          {!selectedCategory &&
           (filteredCatalog.length > visibleCatalog.length || hasMoreProducts) ? (
             <div className="section-actions">
               <button
