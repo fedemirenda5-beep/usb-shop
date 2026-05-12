@@ -1802,18 +1802,19 @@ input.button {
   }
 
   .navbar {
-    gap: 10px;
-    padding: 4px 0 14px;
+    gap: 8px;
+    padding: 4px 0 10px;
   }
 
   .navbar-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
-    flex-wrap: nowrap;
   }
 
   .navbar-brand {
-    width: auto;
+    width: 100%;
     min-width: 0;
   }
 
@@ -1856,14 +1857,19 @@ input.button {
     font-size: 17px;
   }
 
+  .logo-text p {
+    display: none;
+  }
+
   .logo-text h1::after {
     width: 42px;
     margin-top: 4px;
   }
 
   .cart-pill {
+    justify-self: end;
     gap: 8px;
-    padding: 8px 12px;
+    padding: 8px 10px;
     font-size: 11px;
     white-space: nowrap;
   }
@@ -1874,7 +1880,7 @@ input.button {
   }
 
   .hero-search--standalone {
-    margin-top: 0;
+    margin-top: 2px;
     padding: 10px 12px;
     border-radius: 20px;
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
