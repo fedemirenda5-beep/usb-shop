@@ -870,7 +870,7 @@ a:focus-visible {
 .product-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .carousel {
@@ -907,7 +907,7 @@ a:focus-visible {
 
 .featured-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -1225,7 +1225,7 @@ a:focus-visible {
 .product-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
   font-size: 11px;
   color: var(--muted);
@@ -1270,6 +1270,10 @@ a:focus-visible {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.product-buttons .button {
+  flex: 1 1 0;
 }
 
 .product-badge {
@@ -1361,7 +1365,8 @@ input.button {
 .cart-summary {
   display: grid;
   gap: 12px;
-  justify-items: center;
+  justify-items: start;
+  text-align: left;
 }
 
 .cart-toggle {
@@ -1787,6 +1792,16 @@ input.button {
   .featured-layout {
     grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.75fr);
     align-items: start;
+  }
+}
+
+@media (max-width: 1100px) and (min-width: 701px) {
+  .product-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .featured-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

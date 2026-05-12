@@ -171,23 +171,22 @@ function ProductCard({
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
-  const displaySrc = React.useMemo(
-    () => {
-      if (!shouldLoadImage || (!imgSrc && !proxySrc)) {
-        return null;
-      }
-      const base = proxySrc ?? (useRawImage ? imgSrc : buildCardImageSrc(imgSrc));
-      return appendRefreshKey(base, imageRefreshKey);
-    },
-    [imageRefreshKey, imgSrc, proxySrc, shouldLoadImage, useRawImage]
-  );
+  const displaySrc = React.useMemo(() => {
+    if (!shouldLoadImage || (!imgSrc && !proxySrc)) {
+      return null;
+    }
+    const base = proxySrc ?? (useRawImage ? imgSrc : buildCardImageSrc(imgSrc));
+    return appendRefreshKey(base, imageRefreshKey);
+  }, [imageRefreshKey, imgSrc, proxySrc, shouldLoadImage, useRawImage]);
   const [imgAttempt, setImgAttempt] = React.useState(0);
   const [imgFailed, setImgFailed] = React.useState(false);
+
   React.useEffect(() => {
     if (imagePriority === "high") {
       setShouldLoadImage(true);
     }
   }, [imagePriority]);
+
   React.useEffect(() => {
     if (shouldLoadImage || imagePriority === "high") {
       return;
@@ -209,14 +208,17 @@ function ProductCard({
     observer.observe(node);
     return () => observer.disconnect();
   }, [imagePriority, shouldLoadImage]);
+
   React.useEffect(() => {
     setImageIndex(0);
   }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
+
   React.useEffect(() => {
     if (imageIndex >= images.length && images.length > 0) {
       setImageIndex(0);
     }
   }, [imageIndex, images]);
+
   React.useEffect(() => {
     setImgSrc(normalizeImageSrc(images[imageIndex]));
     setImgAttempt(0);
@@ -224,6 +226,7 @@ function ProductCard({
     setUseRawImage(!preferProxyImage);
     setProxySrc(preferProxyImage && product.id ? buildProxyImageSrc(product.id, imageIndex) : null);
   }, [imageIndex, images, imageRefreshKey, preferProxyImage, product.id]);
+
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
     if (!activeSrc || imgAttempt >= 1) {
@@ -252,44 +255,38 @@ function ProductCard({
       }
     }, 250 * nextAttempt);
   };
-  const handleOpenImage = () => {
-    if (imgFailed) {
-      return;
-    }
-    const target = images[imageIndex];
-    if (!target) {
-      return;
-    }
-    window.open(target, "_blank", "noopener,noreferrer");
-  };
+
   const handleView = () => {
     if (!onView) {
       return;
     }
     onView();
   };
+
   const handlePrevImage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setImageIndex((prev) => (prev - 1 + images.length) % images.length);
   };
+
   const handleNextImage = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setImageIndex((prev) => (prev + 1) % images.length);
   };
+
   const handleDotClick = (event: React.MouseEvent<HTMLButtonElement>, index: number) => {
     event.preventDefault();
     event.stopPropagation();
     setImageIndex(index);
   };
+
   return (
     <article className={`product-card${isOut ? " is-out" : ""}`} style={style}>
       <div
         ref={mediaRef}
         className={`product-media ${images.length > 0 ? "has-image" : ""}${canView ? " can-view" : ""}`}
         onClick={handleView}
-        onDoubleClick={handleOpenImage}
         onKeyDown={(event) => {
           if (!canView) {
             return;
@@ -301,7 +298,6 @@ function ProductCard({
         }}
         role={canView ? "button" : undefined}
         tabIndex={canView ? 0 : undefined}
-        title={images.length > 0 && !imgFailed ? "Doble click para ver la imagen" : undefined}
         aria-label={canView ? `Ver detalles de ${product.name}` : undefined}
       >
         {displaySrc && !imgFailed ? (
@@ -332,7 +328,7 @@ function ProductCard({
               onClick={handlePrevImage}
               aria-label="Imagen anterior"
             >
-              ‹
+              &#8249;
             </button>
             <button
               type="button"
@@ -340,7 +336,7 @@ function ProductCard({
               onClick={handleNextImage}
               aria-label="Imagen siguiente"
             >
-              ›
+              &#8250;
             </button>
             <div className="product-carousel-dots">
               {images.map((_, index) => (
@@ -358,7 +354,6 @@ function ProductCard({
       </div>
       <div className="product-meta">
         <span>{product.category}</span>
-        <span>ID {product.id}</span>
       </div>
       <div>
         <h3 className="product-title">{product.name}</h3>
@@ -374,17 +369,25 @@ function ProductCard({
         {badge ? <span className="product-badge">{badge}</span> : <span />}
         <div className="product-buttons">
           {onToggleFeatured ? (
-            <button className="button button--ghost button--compact" onClick={onToggleFeatured}>
+            <button type="button" className="button button--ghost button--compact" onClick={onToggleFeatured}>
               {product.isFeatured ? "Quitar top" : "Marcar top"}
             </button>
           ) : null}
-          <button
-            className={`button ${isOut ? "button--ghost" : "button--lime"}`}
-            onClick={onAdd}
-            disabled={isOut}
-          >
-            {isOut ? "Sin stock" : inCart > 0 ? `En carrito x${inCart}` : "Agregar"}
-          </button>
+          {canView ? (
+            <button type="button" className="button button--ghost" onClick={handleView}>
+              Ver detalle
+            </button>
+          ) : null}
+          {onAdd ? (
+            <button
+              type="button"
+              className={`button ${isOut ? "button--ghost" : "button--lime"}`}
+              onClick={onAdd}
+              disabled={isOut}
+            >
+              {isOut ? "Sin stock" : inCart > 0 ? `En carrito x${inCart}` : "Agregar"}
+            </button>
+          ) : null}
         </div>
       </div>
     </article>

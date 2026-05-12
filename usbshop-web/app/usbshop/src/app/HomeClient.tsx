@@ -276,7 +276,6 @@ export default function HomeClient({
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const cartNoticeTimer = useRef<number | null>(null);
   const cartHydrated = useRef(false);
-  const topSalesRef = useRef<HTMLDivElement | null>(null);
   const [orderName, setOrderName] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
@@ -695,6 +694,11 @@ export default function HomeClient({
   const total = cartItems.reduce((sum, item) => sum + item.qty * item.product.price, 0);
   const freeShippingThreshold = 250000;
   const remainingForFreeShipping = Math.max(0, freeShippingThreshold - total);
+
+  useEffect(() => {
+    setIsCartOpen(totalItems > 0);
+  }, [totalItems]);
+
   const orderedCategories = useMemo(() => {
     const source = products.length > 0 ? products : featured;
     const seen = new Set<string>();
@@ -920,16 +924,6 @@ export default function HomeClient({
       .slice(0, 8);
   }, [products, featuredSource, selectedCategory]);
 
-  const topSales = useMemo(() => {
-    const source = products.length > 0 ? products : featuredSource;
-    const recommended = source.filter(
-      (product) => product.isRecommended && (product.stock ?? 0) > 0
-    );
-    if (recommended.length > 0) {
-      return recommended.slice(0, 6);
-    }
-    return source.filter((product) => (product.stock ?? 0) > 0).slice(0, 6);
-  }, [products, featuredSource]);
   const weeklyOffers = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
     const offers = source.filter((product) => product.isOffer && (product.stock ?? 0) > 0);
@@ -950,15 +944,6 @@ export default function HomeClient({
   }, [products, featuredSource, flashNow]);
 
   const flashOfferTimeLeft = getFlashOfferTimeLeft(flashOfferProduct);
-
-  const filteredTopSales = useMemo(() => {
-    return topSales.filter((product) => {
-      if (!matchesSelectedCategory(product)) {
-        return false;
-      }
-      return matchesSearch(product);
-    });
-  }, [topSales, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
 
   const filteredWeeklyOffers = useMemo(() => {
     return weeklyOffers.filter((product) => {
@@ -1142,46 +1127,6 @@ export default function HomeClient({
     setEditMode((value) => !value);
   };
 
-  const getTopSalesStep = () => {
-    const container = topSalesRef.current;
-    if (!container) {
-      return 240;
-    }
-    const card = container.querySelector<HTMLElement>(".product-card");
-    const styles = window.getComputedStyle(container);
-    const gapValue = styles.columnGap || styles.gap || "18px";
-    const gap = Number.parseFloat(gapValue) || 18;
-    return card ? card.offsetWidth + gap : 240;
-  };
-
-  const scrollTopSales = (direction: number) => {
-    const container = topSalesRef.current;
-    if (!container) {
-      return;
-    }
-    const width = getTopSalesStep();
-    container.scrollBy({ left: direction * width, behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    const container = topSalesRef.current;
-    if (!container || topSales.length === 0) {
-      return;
-    }
-    const onFocus = () => {
-      container.classList.add("is-focused");
-    };
-    const onBlur = () => {
-      container.classList.remove("is-focused");
-    };
-    container.addEventListener("focusin", onFocus);
-    container.addEventListener("focusout", onBlur);
-    return () => {
-      container.removeEventListener("focusin", onFocus);
-      container.removeEventListener("focusout", onBlur);
-    };
-  }, [topSales.length]);
-
   const showCategoryStripBeforeProducts = !isMobileLayout || isSearching || Boolean(selectedCategory);
   const categoryStrip = (
     <div className="category-strip category-strip--hero" id="category-strip">
@@ -1329,6 +1274,44 @@ export default function HomeClient({
 
       {!showCategoryStripBeforeProducts ? categoryStrip : null}
 
+      {!isSearching && (
+        <section id="ofertas" className="section">
+        <div className="section-header">
+          <div>
+            <p className="section-kicker">Ofertas</p>
+            <h2 className="section-title">Ofertas para aprovechar ahora</h2>
+          </div>
+          <a className="button button--ghost" href="#catalogo">
+            Ver mas productos
+          </a>
+        </div>
+        <div className="product-grid stagger">
+          {filteredWeeklyOffers.length > 0 ? (
+            filteredWeeklyOffers.map((product, index) => (
+              <ProductCard
+                key={`offer-${product.id}`}
+                product={applyBadge(product, "offer")}
+                imageRefreshKey={imageRefreshKey}
+                imagePriority={index < 2 ? "high" : "auto"}
+                inCart={cart[product.id]?.qty ?? 0}
+                onAdd={() => addItem(product)}
+                onView={() => handleOpenQuickView(product)}
+                style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+              />
+            ))
+          ) : isLoadingProducts ? (
+            skeletonCards.slice(0, 4).map((card) => (
+              <div key={`offer-skeleton-${card}`} className="product-card product-skeleton" />
+            ))
+          ) : (
+            <div className="empty-state empty-state--wide">
+              No hay ofertas disponibles por el momento.
+            </div>
+          )}
+        </div>
+      </section>
+      )}
+
         <section id="destacados" className="section">
           <div className="section-header">
             <div>
@@ -1337,14 +1320,14 @@ export default function HomeClient({
                   ? "Resultados"
                   : selectedCategory
                   ? "Categoria"
-                  : "Destacados"}
+                  : "Explorar"}
               </p>
               <h2 className="section-title">
                 {isSearching
                   ? `${filteredProducts.length} productos encontrados`
                   : selectedCategory
                   ? selectedCategory
-                  : "Productos top del mes"}
+                  : "Productos destacados"}
               </h2>
             </div>
             {isSearching ? (
@@ -1464,7 +1447,7 @@ export default function HomeClient({
 
           <aside className="cart-panel" id="carrito">
             <div className="cart-header">
-              <span>Carrito rapido</span>
+              <span>Tu pedido</span>
               <span className="cart-count">{totalItems}</span>
             </div>
 
@@ -1505,44 +1488,10 @@ export default function HomeClient({
               </div>
             ) : (
               <div className="cart-summary">
-                <div className="empty-state">
-                  <div className="empty-illustration empty-illustration--full" aria-hidden="true">
-                    <svg viewBox="0 0 120 90" role="presentation">
-                      <path
-                        d="M12 14h12l8 44h56l10-30H40"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <circle cx="44" cy="76" r="6" fill="currentColor" />
-                      <circle cx="78" cy="76" r="6" fill="currentColor" />
-                      <path
-                        d="M48 22h42"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="6"
-                        strokeLinecap="round"
-                      />
-                      <rect x="52" y="30" width="12" height="12" rx="3" fill="currentColor" />
-                      <rect x="68" y="30" width="12" height="12" rx="3" fill="currentColor" />
-                      <rect x="60" y="46" width="12" height="12" rx="3" fill="currentColor" />
-                    </svg>
-                  </div>
-                  <div className="empty-title">Carrito con productos</div>
-                  <div className="empty-text">
-                    Tenes {totalItems} {totalItems === 1 ? "producto" : "productos"}{" "}
-                    {totalItems === 1 ? "listo" : "listos"} para pedir.
-                  </div>
+                <div className="empty-title">Revisa tu pedido</div>
+                <div className="empty-text">
+                  Ajusta cantidades y completa tus datos para enviarlo sin vueltas.
                 </div>
-                <button
-                  type="button"
-                  className="button button--ghost cart-toggle"
-                  onClick={() => setIsCartOpen((prev) => !prev)}
-                >
-                  {isCartOpen ? "Ocultar carrito" : "Ver carrito"}
-                </button>
               </div>
             )}
 
@@ -1556,7 +1505,7 @@ export default function HomeClient({
               </div>
             ) : null}
 
-            {cartItems.length > 0 && isCartOpen ? (
+            {cartItems.length > 0 ? (
               <>
                 <div className="cart-list">
                   {cartItems.map((item) => (
@@ -1631,7 +1580,7 @@ export default function HomeClient({
                   onClick={handleCheckout}
                   disabled={orderStatus === "submitting"}
                 >
-                  {orderStatus === "submitting" ? "Enviando..." : "Iniciar pedido"}
+                  {orderStatus === "submitting" ? "Enviando..." : "Enviar pedido"}
                 </button>
               </>
             ) : null}
@@ -1639,106 +1588,12 @@ export default function HomeClient({
         </div>
         </section>
 
-        {!isSearching && (
-          <section id="top-ventas" className="section">
-        <div className="section-header">
-          <div>
-            <p className="section-kicker">Top ventas</p>
-            <h2 className="section-title">Productos recomendados</h2>
-          </div>
-          <div className="carousel-actions">
-            <a className="button button--ghost" href="#catalogo">
-              Ver todo
-            </a>
-            <button
-              type="button"
-              className="button button--ghost button--icon"
-              onClick={() => scrollTopSales(-1)}
-              aria-label="Anterior"
-            >
-              &lt;
-            </button>
-            <button
-              type="button"
-              className="button button--ghost button--icon"
-              onClick={() => scrollTopSales(1)}
-              aria-label="Siguiente"
-            >
-              &gt;
-            </button>
-          </div>
-        </div>
-        <div className="carousel stagger" ref={topSalesRef}>
-          {filteredTopSales.length > 0 ? (
-            filteredTopSales.map((product, index) => (
-              <ProductCard
-                key={`top-${product.id}`}
-                product={applyBadge(product, "top")}
-                imageRefreshKey={imageRefreshKey}
-                imagePriority={index < 2 ? "high" : "auto"}
-                inCart={cart[product.id]?.qty ?? 0}
-                onAdd={() => addItem(product)}
-                onView={() => handleOpenQuickView(product)}
-                style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-              />
-            ))
-          ) : isLoadingProducts ? (
-            skeletonCards.map((card) => (
-              <div key={`top-skeleton-${card}`} className="product-card product-skeleton" />
-            ))
-          ) : (
-            <div className="empty-state empty-state--wide">
-              No hay productos disponibles para mostrar.
-            </div>
-          )}
-        </div>
-      </section>
-      )}
-
-      {!isSearching && (
-        <section id="ofertas" className="section">
-        <div className="section-header">
-          <div>
-            <p className="section-kicker">Ofertas</p>
-            <h2 className="section-title">Ofertas de la semana</h2>
-          </div>
-          <a className="button button--ghost" href="#catalogo">
-            Ver mas
-          </a>
-        </div>
-        <div className="product-grid stagger">
-          {filteredWeeklyOffers.length > 0 ? (
-            filteredWeeklyOffers.map((product, index) => (
-              <ProductCard
-                key={`offer-${product.id}`}
-                product={applyBadge(product, "offer")}
-                imageRefreshKey={imageRefreshKey}
-                imagePriority={index < 2 ? "high" : "auto"}
-                inCart={cart[product.id]?.qty ?? 0}
-                onAdd={() => addItem(product)}
-                onView={() => handleOpenQuickView(product)}
-                style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-              />
-            ))
-          ) : isLoadingProducts ? (
-            skeletonCards.slice(0, 4).map((card) => (
-              <div key={`offer-skeleton-${card}`} className="product-card product-skeleton" />
-            ))
-          ) : (
-            <div className="empty-state empty-state--wide">
-              No hay ofertas disponibles por el momento.
-            </div>
-          )}
-        </div>
-      </section>
-      )}
-
       {!isSearching && !selectedCategory && (
         <section className="section" id="catalogo">
         <div className="section-header">
           <div>
             <p className="section-kicker">Catalogo</p>
-            <h2 className="section-title">Destacados y ofertas</h2>
+            <h2 className="section-title">Mas productos</h2>
             {selectedCategory ? (
               <p className="hero-text">Filtrando por: {selectedCategory}</p>
             ) : null}
@@ -1875,7 +1730,7 @@ export default function HomeClient({
             <div className="modal-content">
               <div className="modal-meta">
                 <span>{quickView.category}</span>
-                <span>ID {quickView.id}</span>
+                <span>{quickView.stock && quickView.stock > 0 ? `Stock: ${quickView.stock}` : "Consultar stock"}</span>
               </div>
               <h3 className="modal-title">{quickView.name}</h3>
               <p className="modal-price">${quickView.price.toLocaleString("es-AR")}</p>
