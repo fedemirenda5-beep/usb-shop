@@ -365,11 +365,12 @@ export default function VendedoresPage() {
         throw new Error(data?.detail || 'No se pudieron cargar los vendedores');
       }
       const data = await res.json();
-      setSellers(data);
+      const nextSellers = Array.isArray(data) ? data : [];
+      setSellers(nextSellers);
       setSelectedSellerId((currentId: number | null) => {
         if (showSellerForm) return currentId;
-        if (currentId && data.some((item: Seller) => item.id === currentId)) return currentId;
-        return data[0]?.id ?? null;
+        if (currentId && nextSellers.some((item: Seller) => item.id === currentId)) return currentId;
+        return nextSellers[0]?.id ?? null;
       });
     } catch (err) {
       setError(getErrorMessage(err, 'Error cargando vendedores'));
@@ -895,7 +896,7 @@ export default function VendedoresPage() {
                 <span>Comision acumulada</span>
                 <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
               </div>
-              {canViewProfit && selectedSellerSummary?.profit !== null ? (
+              {canViewProfit && selectedSellerSummary && selectedSellerSummary.profit !== null ? (
                 <div className={styles.detailItem}>
                   <span>Ganancia estimada</span>
                   <strong>{money(selectedSellerSummary.profit)}</strong>
