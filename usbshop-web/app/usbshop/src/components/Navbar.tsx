@@ -31,24 +31,10 @@ export default function Navbar({
               <h1>
                 <span className="logo-accent">USB</span> Shop
               </h1>
+              <p>Accesorios, audio y tecnologia para tu dia a dia.</p>
             </div>
           </Link>
-          {showTrust ? (
-            <div className="navbar-trust">
-              <div className="trust-item trust-item--compact">
-                <span className="trust-title">Envio rapido</span>
-                <span className="trust-text">Gratis desde $250.000 o 24/48h segun zona.</span>
-              </div>
-              <div className="trust-item trust-item--compact">
-                <span className="trust-title">Pago seguro</span>
-                <span className="trust-text">Transferencia, efectivo o contra entrega.</span>
-              </div>
-              <div className="trust-item trust-item--compact">
-                <span className="trust-title">Stock real</span>
-                <span className="trust-text">Lo que ves, esta disponible para pedir.</span>
-              </div>
-            </div>
-          ) : null}
+          {showTrust ? <div className="navbar-note">Stock real y atencion directa por WhatsApp.</div> : null}
         </div>
         {onCartClick ? (
           <button type="button" className="cart-pill" onClick={onCartClick}>
