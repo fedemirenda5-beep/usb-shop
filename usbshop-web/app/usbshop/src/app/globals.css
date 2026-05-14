@@ -267,7 +267,7 @@ a:focus-visible {
 
 .navbar-brand {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 10px 18px;
 }
@@ -340,13 +340,19 @@ a:focus-visible {
 }
 
 .navbar-note {
-  padding: 8px 12px;
+  flex-basis: 100%;
+  max-width: 420px;
+  margin-left: 72px;
+  padding: 9px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(124, 58, 237, 0.16);
-  background: rgba(240, 244, 248, 0.82);
-  color: var(--muted);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.92));
+  color: #475569;
   font-size: 12px;
-  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: center;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .cart-pill {
@@ -1890,6 +1896,13 @@ input.button {
   .logo-text h1::after {
     width: 42px;
     margin-top: 4px;
+  }
+
+  .navbar-note {
+    max-width: none;
+    margin-left: 0;
+    padding: 8px 12px;
+    font-size: 11px;
   }
 
   .cart-pill {

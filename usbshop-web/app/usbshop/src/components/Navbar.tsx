@@ -34,7 +34,9 @@ export default function Navbar({
               <p>Accesorios, audio y tecnologia para tu dia a dia.</p>
             </div>
           </Link>
-          {showTrust ? <div className="navbar-note">Compra segura y productos con garantia.</div> : null}
+          {showTrust ? (
+            <div className="navbar-note">Compra protegida y productos con garantia oficial.</div>
+          ) : null}
         </div>
         {onCartClick ? (
           <button type="button" className="cart-pill" onClick={onCartClick}>
