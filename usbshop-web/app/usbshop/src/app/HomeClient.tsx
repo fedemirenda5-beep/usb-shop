@@ -1197,23 +1197,6 @@ export default function HomeClient({
           Buscar
         </button>
       </div>
-      <div className="desktop-trust-strip" aria-label="Valores de la tienda">
-        <div className="hero-card">
-          <span className="hero-card-label">01</span>
-          <h4>Garantia</h4>
-          <p>Compra segura con respaldo en cada producto.</p>
-        </div>
-        <div className="hero-card">
-          <span className="hero-card-label">02</span>
-          <h4>Calidad</h4>
-          <p>Productos confiables para vender y usar sin sorpresas.</p>
-        </div>
-        <div className="hero-card">
-          <span className="hero-card-label">03</span>
-          <h4>Confianza</h4>
-          <p>Atencion clara, respuesta agil y seguimiento real.</p>
-        </div>
-      </div>
       {showCategoryStripBeforeProducts ? categoryStrip : null}
 
       {!isSearching && !selectedCategory && flashOfferProduct && flashOfferTimeLeft > 0 ? (

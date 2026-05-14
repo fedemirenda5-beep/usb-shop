@@ -93,6 +93,25 @@ type InvoiceOption = {
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
+const parseArAmount = (raw: string): number => {
+  const value = String(raw || '').trim();
+  if (!value) return 0;
+  const normalized = value.replace(/\s+/g, '');
+
+  if (normalized.includes(',') && normalized.includes('.')) {
+    return Number(normalized.replace(/\./g, '').replace(',', '.'));
+  }
+  if (normalized.includes(',')) {
+    return Number(normalized.replace(/\./g, '').replace(',', '.'));
+  }
+  if (normalized.includes('.')) {
+    const parts = normalized.split('.');
+    const looksLikeThousands = parts.length > 1 && parts.slice(1).every((part) => part.length === 3);
+    return Number(looksLikeThousands ? parts.join('') : normalized);
+  }
+  return Number(normalized);
+};
+
 const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
 };
@@ -372,6 +391,10 @@ export default function CuentasCorrientesPage() {
     try {
       setSaving(true);
       setError('');
+      const parsedAmount = parseArAmount(form.amount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        throw new Error('Ingresa un importe valido. Podes usar 306000, 306.000 o 306,00');
+      }
       await loadRuntimeConfig();
       const endpoint = legacyMode
         ? editingMovementId
@@ -383,13 +406,13 @@ export default function CuentasCorrientesPage() {
       const payload = legacyMode
         ? {
             movement_type: form.movement_type,
-            amount: Number(form.amount || 0),
+            amount: parsedAmount,
             description: form.reference || form.payment_method || null,
           }
         : {
             movement_type: form.movement_type,
             entry_kind: form.entry_kind,
-            amount: Number(form.amount || 0),
+            amount: parsedAmount,
             payment_method: form.payment_method || null,
             reference: form.reference || null,
             invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
@@ -944,12 +967,11 @@ export default function CuentasCorrientesPage() {
                     <span>Importe</span>
                     <input
                       ref={amountInputRef}
-                      type="number"
-                      min="0"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       value={form.amount}
                       onChange={(e) => setForm((current) => ({ ...current, amount: e.target.value }))}
-                      placeholder="0.00"
+                      placeholder="306.000"
                       required
                     />
                   </label>

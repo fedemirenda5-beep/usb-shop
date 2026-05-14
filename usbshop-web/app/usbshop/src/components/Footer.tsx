@@ -15,13 +15,11 @@ export default function Footer() {
         <div className="footer-grid">
           <section className="footer-col" aria-label="USB Shop">
             <div className="footer-brand">
-              <div className="logo-badge footer-logo">
-                <Image src="/logo-small.jpeg" alt="USB Shop" width={44} height={44} />
+              <div className="footer-logo">
+                <Image src="/usbshop-logo.svg" alt="USB Shop" width={148} height={30} />
               </div>
               <div>
-                <div className="footer-brand__title">
-                  <span className="logo-accent">USB</span> Shop
-                </div>
+                <div className="footer-brand__title">USB Shop</div>
                 <div className="footer-brand__tag">Venta mayorista</div>
               </div>
             </div>

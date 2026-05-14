@@ -479,7 +479,7 @@ export default function ComprobantesPage() {
                   <div className={styles.printBanner}>
                     <div className={styles.brandLockup}>
                       <div className={styles.logoBox}>
-                        <img src="/logo-small.jpeg" alt="USB Shop" className={styles.logoImage} />
+                        <img src="/usbshop-logo.svg" alt="USB Shop" className={styles.logoImage} />
                       </div>
                       <div className={styles.brandHead}>
                         <div className={styles.brandName}>USB Shop</div>
