@@ -24,7 +24,7 @@ export default function Navbar({
       <div className="navbar-top">
         <div className="navbar-brand">
           <Link href="/" className="logo">
-            <img src="/usbshop-logo.svg" alt="USB Shop" className="logo-wordmark" />
+            <img src="/usbshop-logo.jpeg" alt="USB Shop" className="logo-wordmark" />
           </Link>
           {showTrust ? <div className="navbar-note">Compra segura y productos con garantia.</div> : null}
         </div>

@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "USB Shop",
   description: "Catalogo y ventas online integradas con ControlStock",
   icons: {
-    icon: "/usbshop-logo.svg",
+    icon: "/usbshop-logo.jpeg",
   },
 };
 

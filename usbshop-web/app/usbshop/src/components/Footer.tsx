@@ -16,7 +16,7 @@ export default function Footer() {
           <section className="footer-col" aria-label="USB Shop">
             <div className="footer-brand">
               <div className="footer-logo">
-                <Image src="/usbshop-logo.svg" alt="USB Shop" width={148} height={30} />
+                <Image src="/usbshop-logo.jpeg" alt="USB Shop" width={74} height={74} />
               </div>
               <div>
                 <div className="footer-brand__title">USB Shop</div>
