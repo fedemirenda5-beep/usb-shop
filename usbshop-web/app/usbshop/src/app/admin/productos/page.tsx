@@ -429,7 +429,7 @@ export default function ProductosPage() {
       ? `Lista de ${label} con imagenes`
       : `Lista de ${label}`;
     const fileName = `usbshop-${slugifyFilePart(label)}${includeImages ? '-con-imagenes' : ''}.html`;
-    const embeddedLogoUrl = await fetchImageAsDataUrl(`${window.location.origin}/usbshop-logo.jpeg`);
+    const embeddedLogoUrl = await fetchImageAsDataUrl(`${window.location.origin}/logo-small.jpeg`);
 
     const rowParts = await Promise.all(
       exportItems.map(async (product) => {

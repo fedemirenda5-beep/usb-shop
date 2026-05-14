@@ -278,11 +278,65 @@ a:focus-visible {
   gap: 16px;
 }
 
-.logo-wordmark {
-  width: clamp(156px, 23vw, 228px);
-  height: auto;
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.logo-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: #0b0b12;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 30px rgba(124, 58, 237, 0.35);
+  border: 2px solid rgba(132, 204, 22, 0.35);
+  overflow: hidden;
+}
+
+.logo-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.logo-text h1 {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #0f172a 0%, #1f2937 45%, var(--lime) 100%);
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 0 6px 18px rgba(15, 23, 42, 0.25);
+  line-height: 1;
+}
+
+.logo-text p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.logo-accent {
+  color: var(--lime);
+  text-shadow: 0 0 16px rgba(132, 204, 22, 0.55);
+}
+
+.logo-text h1::after {
+  content: "";
   display: block;
-  filter: drop-shadow(0 8px 20px rgba(15, 23, 42, 0.16));
+  width: 52px;
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--lime), rgba(132, 204, 22, 0.25));
 }
 
 .navbar-note {
@@ -1819,8 +1873,23 @@ input.button {
     min-width: 0;
   }
 
-  .logo-wordmark {
-    width: min(180px, 52vw);
+  .logo-badge {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+  }
+
+  .logo-text h1 {
+    font-size: 17px;
+  }
+
+  .logo-text p {
+    display: none;
+  }
+
+  .logo-text h1::after {
+    width: 42px;
+    margin-top: 4px;
   }
 
   .cart-pill {

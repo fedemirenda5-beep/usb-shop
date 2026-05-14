@@ -48,7 +48,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <div className={styles.sidebarHeader}>
           <Link href="/admin" className={styles.brandBlock}>
             <div className={styles.brandLogoFrame}>
-              <img src="/usbshop-logo.jpeg" alt="USB Shop" className={styles.brandLogo} />
+              <img src="/logo-small.jpeg" alt="USB Shop" className={styles.brandLogo} />
             </div>
             <div className={styles.brandCopy}>
               <strong>USB Shop</strong>
