@@ -660,6 +660,11 @@ a:focus-visible {
   z-index: 1;
 }
 
+.desktop-trust-strip {
+  display: grid;
+  gap: 14px;
+}
+
 .hero-card {
   padding: 18px 18px 20px;
   border-radius: 22px;
@@ -1801,6 +1806,12 @@ input.button {
     align-items: start;
   }
 
+  .desktop-trust-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 4px;
+  }
+
   .hero-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
@@ -1823,6 +1834,10 @@ input.button {
 }
 
 @media (max-width: 700px) {
+  .desktop-trust-strip {
+    display: none;
+  }
+
   .page {
     padding: 12px 12px 120px;
   }
