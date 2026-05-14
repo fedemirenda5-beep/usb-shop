@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import styles from './ProductForm.module.css';
@@ -173,16 +173,21 @@ export function ProductForm({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const previewUrlsRef = useRef<Array<string | null>>([]);
+
+  useEffect(() => {
+    previewUrlsRef.current = localPreviewUrls;
+  }, [localPreviewUrls]);
 
   useEffect(() => {
     return () => {
-      for (const url of localPreviewUrls) {
+      for (const url of previewUrlsRef.current) {
         if (url) {
           URL.revokeObjectURL(url);
         }
       }
     };
-  }, [localPreviewUrls]);
+  }, []);
 
   const isUploadingAnyImage = uploadingSlots.some(Boolean);
 

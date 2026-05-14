@@ -44,34 +44,38 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     return runtimeConfigPromise;
   }
   runtimeConfigPromise = (async () => {
+    let shouldMarkLoaded = false;
     try {
       const host = window.location.hostname;
       const response = await fetch("/usbshop-config.json", { cache: "no-store" });
       if (!response.ok) {
+        shouldMarkLoaded = true;
         return null;
       }
       const data = (await response.json()) as { apiBaseUrl?: string; orderSecret?: string };
       if (!data || typeof data.apiBaseUrl !== "string") {
+        shouldMarkLoaded = true;
         return null;
       }
       const apiBaseUrl = data.apiBaseUrl.trim();
       if (!apiBaseUrl) {
+        shouldMarkLoaded = true;
         return null;
       }
       if ((host === "localhost" || host === "127.0.0.1") && /^https?:\/\//i.test(apiBaseUrl)) {
-        runtimeConfigLoaded = true;
+        shouldMarkLoaded = true;
         return runtimeApiBaseUrl;
       }
       setRuntimeApiBaseUrl(apiBaseUrl);
       if (typeof data.orderSecret === "string") {
         setRuntimeOrderSecret(data.orderSecret);
       }
-      runtimeConfigLoaded = true;
+      shouldMarkLoaded = true;
       return apiBaseUrl;
     } catch {
-      runtimeConfigLoaded = false;
       return null;
     } finally {
+      runtimeConfigLoaded = shouldMarkLoaded;
       runtimeConfigPromise = null;
     }
   })();
@@ -181,13 +185,17 @@ export function resolveImageUrls(
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers || {});
+  const hasBody = init?.body !== undefined && init.body !== null;
+  const isFormData =
+    typeof FormData !== "undefined" && hasBody && init?.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
+    headers,
   });
   if (!response.ok) {
     throw new Error("API request failed");

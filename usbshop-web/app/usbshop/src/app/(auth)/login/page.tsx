@@ -15,7 +15,7 @@ export default function LoginPage() {
   // Redirigir si ya está autenticado
   useEffect(() => {
     if (isAuthenticated && user) {
-      router.push('/admin');
+      router.replace('/admin');
     }
   }, [isAuthenticated, user, router]);
 
@@ -30,9 +30,7 @@ export default function LoginPage() {
 
     const success = await login(username, password);
     if (success) {
-      router.push('/admin');
-    } else {
-      setLocalError(error || 'Error en el login');
+      router.replace('/admin');
     }
   };
 

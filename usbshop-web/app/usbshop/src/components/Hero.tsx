@@ -24,24 +24,21 @@ export default function Hero({
     event.preventDefault();
     onSearchSubmit?.();
   };
+
   return (
     <div className="hero-block">
       <section className="hero">
         <div className="hero-content">
           <p className="hero-kicker">Stock listo para hoy</p>
-          <h1 className="hero-title">Tecnología que se vende rápido, con precios y stock en tiempo real.</h1>
-          <div className="hero-banner">
-            Top ventas y novedades listas para entregar.
-          </div>
-          <p className="hero-tagline">
-            Compra simple, entrega rápida y atención directa.
-          </p>
+          <h1 className="hero-title">Tecnologia que se vende rapido, con precios y stock en tiempo real.</h1>
+          <div className="hero-banner">Top ventas y novedades listas para entregar.</div>
+          <p className="hero-tagline">Compra simple, entrega rapida y atencion directa.</p>
           <div className="hero-actions">
             <Link href="#novedades" className="button button--lime">
               Ver novedades
             </Link>
             <Link href="#catalogo" className="button button--ghost">
-              Ver catálogo completo
+              Ver catalogo completo
             </Link>
             <a
               className="button button--whatsapp"
@@ -53,18 +50,21 @@ export default function Hero({
             </a>
           </div>
         </div>
-          <div className="hero-grid">
+        <div className="hero-grid">
           <div className="hero-card">
-            <h4>Socios de tu operación</h4>
-            <p>Optimizamos tu abastecimiento con procesos claros y tiempos predecibles.</p>
+            <span className="hero-card-label">01</span>
+            <h4>Garantia</h4>
+            <p>Productos respaldados y compra segura para vender con tranquilidad.</p>
           </div>
           <div className="hero-card">
-            <h4>Servicio profesional</h4>
-            <p>Atención dedicada, respaldo técnico y seguimiento en cada pedido.</p>
+            <span className="hero-card-label">02</span>
+            <h4>Calidad</h4>
+            <p>Seleccion confiable, buen rendimiento y presentacion a la altura de tu negocio.</p>
           </div>
           <div className="hero-card">
-            <h4>Confianza y transparencia</h4>
-            <p>Información clara, stock real y una experiencia de compra consistente.</p>
+            <span className="hero-card-label">03</span>
+            <h4>Confianza</h4>
+            <p>Relacion comercial clara, respuesta agil y acompanamiento en cada pedido.</p>
           </div>
         </div>
       </section>
@@ -101,7 +101,7 @@ export default function Hero({
       <div className="hero-search hero-search--standalone hero-search--sticky">
         <input
           type="search"
-          placeholder="Buscar productos por nombre o categoría..."
+          placeholder="Buscar productos por nombre o categoria..."
           aria-label="Buscar productos"
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}

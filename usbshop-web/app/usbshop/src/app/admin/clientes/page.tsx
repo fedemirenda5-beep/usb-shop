@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
@@ -476,9 +477,9 @@ export default function ClientesPage() {
                       </div>
                       <div className={styles.documentCardRight}>
                         <em>{formatCurrency(document.total)}</em>
-                        <a href="/admin/comprobantes" className={styles.secondaryButton}>
+                        <Link href="/admin/comprobantes" className={styles.secondaryButton}>
                           Ver en comprobantes
-                        </a>
+                        </Link>
                       </div>
                     </div>
                   ))

@@ -20,7 +20,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [user, isLoading, router]);
 
@@ -60,12 +60,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             onClick={() => setSidebarOpen(false)}
             aria-label="Cerrar sidebar"
           >
-            ×
+            x
           </button>
         </div>
 
         <nav className={styles.sidebarNav}>
-          <Link href="/admin" className={`${styles.navItem} ${pathname === '/admin' ? styles.navItemActive : ''}`}>Dashboard</Link>
+          <Link
+            href="/admin"
+            className={`${styles.navItem} ${pathname === '/admin' ? styles.navItemActive : ''}`}
+          >
+            Dashboard
+          </Link>
           {NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id)).map((module) => (
             <Link
               key={module.id}
@@ -95,15 +100,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Abrir menu"
           >
-            ☰
+            Menu
           </button>
           <div className={styles.navbarTitle}>
             <strong>USB Shop</strong>
-            <span>Gestión central del negocio</span>
+            <span>Gestion central del negocio</span>
           </div>
           <div className={styles.navbarRight}>
             <div className={styles.userBadge}>
-              <span className={styles.userLabel}>Sesión</span>
+              <span className={styles.userLabel}>Sesion</span>
               <strong className={styles.user}>{user?.username}</strong>
             </div>
           </div>

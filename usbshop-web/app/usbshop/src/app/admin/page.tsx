@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDate } from '@/lib/datetime';
@@ -176,7 +177,7 @@ export default function AdminDashboard() {
 
       <div className={styles.statsGrid}>
         {visibleSections.map((section) => (
-          <a key={section.href} href={section.href} className={styles.statCard}>
+          <Link key={section.href} href={section.href} className={styles.statCard}>
             <div className={styles.statContent}>
               <span className={styles.statEyebrow}>Panel</span>
               <h3>{section.title}</h3>
@@ -184,7 +185,7 @@ export default function AdminDashboard() {
               <span className={styles.statLabel}>{section.label}</span>
             </div>
             <span className={styles.statAction}>Abrir</span>
-          </a>
+          </Link>
         ))}
       </div>
 
@@ -192,7 +193,7 @@ export default function AdminDashboard() {
         <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Mayores saldos pendientes</h2>
-            <a href="/admin/cuentas-corrientes">Ver cuentas corrientes</a>
+            <Link href="/admin/cuentas-corrientes">Ver cuentas corrientes</Link>
           </div>
           <div className={styles.list}>
             {topDebtors.length === 0 ? (
@@ -211,9 +212,9 @@ export default function AdminDashboard() {
         <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Alertas de stock</h2>
-            <a href={canAccessAdminModule(user?.role, 'balances') ? '/admin/balances' : '/admin/productos'}>
+            <Link href={canAccessAdminModule(user?.role, 'balances') ? '/admin/balances' : '/admin/productos'}>
               {canAccessAdminModule(user?.role, 'balances') ? 'Ver balances' : 'Ver productos'}
-            </a>
+            </Link>
           </div>
           <div className={styles.list}>
             {lowStock.length === 0 ? (

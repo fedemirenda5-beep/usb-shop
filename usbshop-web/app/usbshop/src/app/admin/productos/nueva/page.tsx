@@ -7,6 +7,22 @@ import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { canViewProfitMetrics } from '../../adminPermissions';
 import { ProductForm } from '../components/ProductForm';
 
+type ProductPayload = {
+  name: string;
+  sku: string;
+  price: number;
+  cost: number;
+  stock: number;
+  category_id?: number | null;
+  is_featured: boolean;
+  is_offer: boolean;
+  highlight_new_arrivals: boolean;
+  flash_offer_price?: number | null;
+  flash_offer_ends_at?: string | null;
+  image_path: string;
+  image_urls: string[];
+};
+
 export default function NuevaProductoPage() {
   const router = useRouter();
   const { user } = useAdminSession();
@@ -25,7 +41,7 @@ export default function NuevaProductoPage() {
     void loadCategories();
   }, []);
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: ProductPayload) => {
     await loadRuntimeConfig();
     let res: Response;
     try {
@@ -48,7 +64,7 @@ export default function NuevaProductoPage() {
     }
 
     // Redirect after success
-    router.push('/admin/productos');
+    router.replace('/admin/productos');
   };
 
   return (

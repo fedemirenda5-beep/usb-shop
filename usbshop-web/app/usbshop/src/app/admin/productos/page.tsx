@@ -116,6 +116,11 @@ const downloadTextFile = (content: string, fileName: string, mimeType: string) =
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+const getProductPrimaryImageUrl = (product: Product, baseUrl: string) =>
+  resolveImageUrl(product.imageUrl, baseUrl) ||
+  resolveImageUrl(product.image_path, baseUrl) ||
+  resolveImageUrl(Array.isArray(product.image_urls) ? product.image_urls[0] : null, baseUrl);
+
 export default function ProductosPage() {
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
@@ -428,10 +433,7 @@ export default function ProductosPage() {
 
     const rowParts = await Promise.all(
       exportItems.map(async (product) => {
-        const resolvedImageUrl =
-          resolveImageUrl(product.imageUrl, baseUrl) ||
-          resolveImageUrl(product.image_path, baseUrl) ||
-          resolveImageUrl(Array.isArray(product.image_urls) ? product.image_urls[0] : null, baseUrl);
+        const resolvedImageUrl = getProductPrimaryImageUrl(product, baseUrl);
         const embeddedImageUrl =
           includeImages && resolvedImageUrl ? await fetchImageAsDataUrl(resolvedImageUrl) : null;
         const finalImageUrl = embeddedImageUrl || resolvedImageUrl;
@@ -564,7 +566,10 @@ export default function ProductosPage() {
 
     const previewBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const previewUrl = URL.createObjectURL(previewBlob);
-    window.location.href = previewUrl;
+    const previewWindow = window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    if (!previewWindow) {
+      window.location.assign(previewUrl);
+    }
     window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000);
   };
 
@@ -699,7 +704,7 @@ export default function ProductosPage() {
             </thead>
             <tbody>
               {visibleProducts.map((product) => {
-                const productImageUrl = resolveImageUrl(product.imageUrl, baseUrl);
+                const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const margin = calculateMargin(product.cost, product.price);
                 return (
                   <tr
