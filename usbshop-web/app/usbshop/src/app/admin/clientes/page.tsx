@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './clientes.module.css';
@@ -89,6 +89,7 @@ const formatDate = (value?: string | null) => {
 };
 
 export default function ClientesPage() {
+  const detailRequestRef = useRef(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
@@ -100,7 +101,7 @@ export default function ClientesPage() {
   const [error, setError] = useState('');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(emptyCustomerForm);
 
-  const loadCustomers = async (query = '') => {
+  const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
       setLoading(true);
       const params = new URLSearchParams({ limit: '150' });
@@ -108,6 +109,7 @@ export default function ClientesPage() {
       await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?${params}`, {
         credentials: 'include',
+        signal,
       });
       if (!res.ok) throw new Error('No se pudieron cargar los clientes');
       const data = await res.json();
@@ -117,20 +119,27 @@ export default function ClientesPage() {
         setSelectedCustomerId(data[0]?.id ?? null);
       }
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : 'Error cargando clientes');
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadCustomerDetail = async (customerId: number) => {
+  const loadCustomerDetail = async (customerId: number, signal?: AbortSignal) => {
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
     try {
       await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${customerId}`, {
         credentials: 'include',
+        signal,
       });
       if (!res.ok) throw new Error('No se pudo cargar el cliente');
       const customerData = await res.json();
+      if (signal?.aborted || requestId !== detailRequestRef.current) return;
       setSelectedCustomer(customerData);
       setCustomerForm({
         name: customerData.name || '',
@@ -144,20 +153,27 @@ export default function ClientesPage() {
       });
       setShowCustomerForm(false);
     } catch (err) {
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : 'Error cargando el detalle');
     }
   };
 
   useEffect(() => {
+    const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
-      void loadCustomers(search);
+      void loadCustomers(search, controller.signal);
     }, 250);
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
   }, [search]);
 
   useEffect(() => {
     if (selectedCustomerId) {
-      void loadCustomerDetail(selectedCustomerId);
+      const controller = new AbortController();
+      void loadCustomerDetail(selectedCustomerId, controller.signal);
+      return () => controller.abort();
     } else {
       setSelectedCustomer(null);
       setCustomerForm(emptyCustomerForm());

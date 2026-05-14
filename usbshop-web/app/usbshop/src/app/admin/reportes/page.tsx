@@ -100,12 +100,9 @@ export default function ReportesPage() {
   useEffect(() => {
     let active = true;
 
-    const load = async () => {
+    const loadOverview = async () => {
       try {
-        if (active) {
-          setLoadingDaily(true);
-          setError('');
-        }
+        setError('');
         await loadRuntimeConfig();
         const overviewRes = await fetch(`${getApiBaseUrl()}/admin/reports/overview`, {
           credentials: 'include',
@@ -113,14 +110,6 @@ export default function ReportesPage() {
         });
         if (!overviewRes.ok) throw new Error('No se pudieron cargar los reportes');
         const data = await overviewRes.json();
-        const fallbackDate = toDateInput(data?.summary?.latest_invoice_at) || todayInput();
-        const resolvedDailyDate = dailyDate || fallbackDate;
-        const dailyRes = await fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${resolvedDailyDate}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        if (!dailyRes.ok) throw new Error('No se pudieron cargar los reportes');
-        const dailyData = await dailyRes.json();
         if (!active) return;
         setSummary(data.summary);
         setMonthly(data.monthly_sales || []);
@@ -130,13 +119,44 @@ export default function ReportesPage() {
         setDebtors(data.top_debtors || []);
         setLowStock(data.low_stock || []);
         setYearProjection(data.year_projection || null);
-        setDailyReport(dailyData || null);
-        if (!dailyDate && resolvedDailyDate) {
-          setDailyDate(resolvedDailyDate);
-        }
+        const fallbackDate = toDateInput(data?.summary?.latest_invoice_at) || todayInput();
+        setDailyDate((current) => current || fallbackDate);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Error cargando reportes');
+      }
+    };
+
+    void loadOverview();
+
+    return () => {
+      active = false;
+    };
+  }, [refreshTick]);
+
+  useEffect(() => {
+    if (!dailyDate) return;
+
+    let active = true;
+
+    const loadDailyReport = async () => {
+      try {
+        if (active) {
+          setLoadingDaily(true);
+          setError('');
+        }
+        await loadRuntimeConfig();
+        const dailyRes = await fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!dailyRes.ok) throw new Error('No se pudo cargar el reporte diario');
+        const dailyData = await dailyRes.json();
+        if (!active) return;
+        setDailyReport(dailyData || null);
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : 'Error cargando reporte diario');
       } finally {
         if (active) {
           setLoadingDaily(false);
@@ -144,7 +164,7 @@ export default function ReportesPage() {
       }
     };
 
-    load();
+    void loadDailyReport();
 
     return () => {
       active = false;
