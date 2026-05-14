@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   description: "Catalogo y ventas online integradas con ControlStock",
   icons: {
     icon: "/logo-small.jpeg",
+    shortcut: "/logo-small.jpeg",
   },
 };
 
