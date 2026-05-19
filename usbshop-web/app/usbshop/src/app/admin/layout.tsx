@@ -35,6 +35,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
   }, [pathname, router, user]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (window.innerWidth <= 768) {
+      setSidebarOpen(false);
+    }
+  }, [pathname]);
+
   if (isLoading) {
     return (
       <div className={styles.loading}>
@@ -53,6 +62,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className={styles.adminContainer}>
+      <button
+        type="button"
+        className={`${styles.sidebarBackdrop} ${sidebarOpen ? styles.sidebarBackdropVisible : ''}`}
+        onClick={() => setSidebarOpen(false)}
+        aria-label="Cerrar menu"
+      />
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.open : ''}`}>
         <div className={styles.sidebarHeader}>
           <Link href="/admin" className={styles.brandBlock}>
@@ -77,6 +92,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <Link
             href="/admin"
             className={`${styles.navItem} ${pathname === '/admin' ? styles.navItemActive : ''}`}
+            onClick={() => {
+              if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+                setSidebarOpen(false);
+              }
+            }}
           >
             Dashboard
           </Link>
@@ -85,6 +105,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               key={module.id}
               href={module.href}
               className={`${styles.navItem} ${pathname === module.href ? styles.navItemActive : ''}`}
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+                  setSidebarOpen(false);
+                }
+              }}
             >
               {module.navLabel}
             </Link>
