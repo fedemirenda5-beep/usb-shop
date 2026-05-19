@@ -51,7 +51,16 @@
   display: grid;
 }
 
+.periodField {
+  display: grid;
+  gap: 6px;
+  min-width: 170px;
+  color: #334155;
+  font-weight: 600;
+}
+
 .searchBar input,
+.periodField input,
 .formGrid input {
   width: 100%;
   border: 1px solid #d7dee7;

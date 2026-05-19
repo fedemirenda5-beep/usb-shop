@@ -4,7 +4,6 @@ export type AdminModuleId =
   | 'pedidos'
   | 'clientes'
   | 'vendedores'
-  | 'ventas-vendedores'
   | 'gastos'
   | 'generar-comprobante'
   | 'comprobantes'
@@ -54,14 +53,7 @@ export const ADMIN_MODULES: AdminModule[] = [
     title: 'Vendedores',
     href: '/admin/vendedores',
     navLabel: 'Vendedores',
-    dashboardLabel: 'Padron comercial y comisiones',
-  },
-  {
-    id: 'ventas-vendedores',
-    title: 'Ventas por vendedor',
-    href: '/admin/ventas-vendedores',
-    navLabel: 'Ventas por vendedor',
-    dashboardLabel: 'Reporte mensual comercial por vendedor',
+    dashboardLabel: 'Padron comercial, ventas, comisiones y ganancia',
   },
   {
     id: 'gastos',

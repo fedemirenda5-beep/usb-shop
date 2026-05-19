@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
-import { ARGENTINA_TZ, formatArgentinaDateTime } from '@/lib/datetime';
+import { ARGENTINA_TZ, formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { canViewProfitMetrics } from '../adminPermissions';
 import styles from './vendedores.module.css';
@@ -131,12 +131,7 @@ const money = (value: number) =>
 
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 
-const currentPeriodKey = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-};
+const currentPeriodKey = () => getArgentinaNowDateInput().slice(0, 7);
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -163,7 +158,7 @@ export default function VendedoresPage() {
   const canViewProfit = canViewProfitMetrics(user?.role);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<SellerMonthlySummary[]>([]);
-  const [monthlyPeriod, setMonthlyPeriod] = useState('');
+  const [monthlyPeriod, setMonthlyPeriod] = useState(searchParams.get('period') || currentPeriodKey());
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -385,7 +380,11 @@ export default function VendedoresPage() {
         setSummaryLoading(true);
       }
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary`, {
+      const params = new URLSearchParams();
+      if (monthlyPeriod) {
+        params.set('period', monthlyPeriod);
+      }
+      const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary?${params.toString()}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -420,7 +419,27 @@ export default function VendedoresPage() {
 
   useEffect(() => {
     void loadMonthlySummary();
-  }, []);
+  }, [monthlyPeriod]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (monthlyPeriod) {
+      params.set('period', monthlyPeriod);
+    } else {
+      params.delete('period');
+    }
+    const detailSellerParam = Number(searchParams.get('seller') || 0) || null;
+    if (detailSellerParam) {
+      params.set('seller', String(detailSellerParam));
+    } else {
+      params.delete('seller');
+    }
+    const nextQuery = params.toString();
+    const currentQuery = searchParams.toString();
+    if (nextQuery !== currentQuery) {
+      router.replace(nextQuery ? `/admin/vendedores?${nextQuery}` : '/admin/vendedores');
+    }
+  }, [monthlyPeriod, router, searchParams]);
 
   useEffect(() => {
     if (!detailSellerId) {
@@ -433,7 +452,11 @@ export default function VendedoresPage() {
         setError('');
         await loadRuntimeConfig();
         try {
-          const res = await fetch(`${getApiBaseUrl()}/admin/sellers/${detailSellerId}/monthly-detail`, {
+          const detailParams = new URLSearchParams();
+          if (monthlyPeriod) {
+            detailParams.set('period', monthlyPeriod);
+          }
+          const res = await fetch(`${getApiBaseUrl()}/admin/sellers/${detailSellerId}/monthly-detail?${detailParams.toString()}`, {
             credentials: 'include',
             cache: 'no-store',
           });
@@ -454,7 +477,7 @@ export default function VendedoresPage() {
       }
     };
     void loadSellerDetail();
-  }, [detailSellerId]);
+  }, [detailSellerId, monthlyPeriod]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -551,11 +574,21 @@ export default function VendedoresPage() {
   };
 
   const openSellerMonthlyDetail = (sellerId: number) => {
-    router.push(`/admin/vendedores?seller=${sellerId}`);
+    const params = new URLSearchParams();
+    if (monthlyPeriod) {
+      params.set('period', monthlyPeriod);
+    }
+    params.set('seller', String(sellerId));
+    router.push(`/admin/vendedores?${params.toString()}`);
   };
 
   const closeSellerMonthlyDetail = () => {
-    router.push('/admin/vendedores');
+    const params = new URLSearchParams();
+    if (monthlyPeriod) {
+      params.set('period', monthlyPeriod);
+    }
+    const nextQuery = params.toString();
+    router.push(nextQuery ? `/admin/vendedores?${nextQuery}` : '/admin/vendedores');
   };
 
   if (detailSellerId) {
@@ -564,9 +597,17 @@ export default function VendedoresPage() {
         <section className={styles.header}>
           <div>
             <h1>Detalle mensual del vendedor</h1>
-            <p>Ventas del mes, cliente asociado y acceso a cada comprobante.</p>
+            <p>Ventas, comisiones y ganancia estimada del periodo con acceso a cada comprobante.</p>
           </div>
           <div className={styles.headerActions}>
+            <label className={styles.periodField}>
+              <span>Periodo</span>
+              <input
+                type="month"
+                value={monthlyPeriod}
+                onChange={(e) => setMonthlyPeriod(e.target.value)}
+              />
+            </label>
             <button type="button" className={styles.secondaryButton} onClick={closeSellerMonthlyDetail}>
               Volver a vendedores
             </button>
@@ -609,6 +650,12 @@ export default function VendedoresPage() {
                   <span>Comision acumulada</span>
                   <strong>{money(sellerDetail.summary.commission)}</strong>
                 </div>
+                {canViewProfit && sellerDetail.summary.profit !== null ? (
+                  <div className={styles.detailItem}>
+                    <span>Ganancia empresa</span>
+                    <strong>{money(sellerDetail.summary.profit)}</strong>
+                  </div>
+                ) : null}
                 <div className={styles.detailItem}>
                   <span>Ultima actualizacion</span>
                   <strong>{formatDate(sellerDetail.seller.updated_at || sellerDetail.seller.created_at)}</strong>
@@ -677,9 +724,17 @@ export default function VendedoresPage() {
       <div className={styles.header}>
         <div>
           <h1>Vendedores</h1>
-          <p>Alta y mantenimiento de vendedores con comision asignada.</p>
+          <p>Padron comercial unificado con ventas, comisiones y ganancia por vendedor.</p>
         </div>
         <div className={styles.headerActions}>
+          <label className={styles.periodField}>
+            <span>Periodo</span>
+            <input
+              type="month"
+              value={monthlyPeriod}
+              onChange={(e) => setMonthlyPeriod(e.target.value)}
+            />
+          </label>
           <button type="button" className={styles.primaryButton} onClick={resetForNewSeller}>
             + Nuevo vendedor
           </button>
@@ -699,9 +754,9 @@ export default function VendedoresPage() {
 
       <div className={styles.tablePanel}>
         <div className={styles.tableMeta}>
-          <span>{sellers.length} vendedores{search ? ` para "${search}"` : ''}</span>
+          <span>{sellers.length} vendedores{search ? ` para "${search}"` : ''} en {formattedMonthlyPeriod}</span>
         </div>
-        <div className={styles.boardHint}>Doble click sobre un vendedor para abrir el detalle de sus ventas del mes.</div>
+        <div className={styles.boardHint}>Doble click sobre un vendedor para abrir el detalle mensual del periodo seleccionado.</div>
         <div className={styles.tableWrap}>
           {loading ? (
             <div className={styles.empty}>Cargando vendedores...</div>
@@ -715,6 +770,7 @@ export default function VendedoresPage() {
                   <th>Vendedor</th>
                   <th>Comision</th>
                   <th>Venta mes</th>
+                  {canViewProfit ? <th>Ganancia empresa</th> : null}
                   <th>Comprobantes</th>
                   <th>Estado</th>
                   <th>Actualizado</th>
@@ -740,6 +796,7 @@ export default function VendedoresPage() {
                       </td>
                       <td>{formatPercent(seller.commission_percent)}</td>
                       <td>{money(sellerSummary?.sales || 0)}</td>
+                      {canViewProfit ? <td>{money(sellerSummary?.profit || 0)}</td> : null}
                       <td>{sellerSummary?.invoice_count || 0}</td>
                       <td>
                         <span className={seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
@@ -773,7 +830,7 @@ export default function VendedoresPage() {
           <div>
             <h3>Resumen mensual por vendedor</h3>
             <p>
-              {`Ventas y comisiones de ${formattedMonthlyPeriod} para los vendedores activos.`}
+              {`Ventas, comisiones y rentabilidad de ${formattedMonthlyPeriod} para los vendedores activos.`}
             </p>
           </div>
         </div>
@@ -799,6 +856,12 @@ export default function VendedoresPage() {
                     <span>Comision</span>
                     <strong>{money(item.commission)}</strong>
                   </div>
+                  {canViewProfit && item.profit !== null ? (
+                    <div>
+                      <span>Ganancia empresa</span>
+                      <strong>{money(item.profit)}</strong>
+                    </div>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -898,7 +961,7 @@ export default function VendedoresPage() {
               </div>
               {canViewProfit && selectedSellerSummary && selectedSellerSummary.profit !== null ? (
                 <div className={styles.detailItem}>
-                  <span>Ganancia estimada</span>
+                  <span>Ganancia empresa</span>
                   <strong>{money(selectedSellerSummary.profit)}</strong>
                 </div>
               ) : null}
