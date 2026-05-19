@@ -111,6 +111,7 @@ type InvoiceDetailResponse = {
     quantity: number;
     unit_price: number;
     line_total: number;
+    cost_total?: number | null;
   }>;
 };
 
@@ -134,6 +135,8 @@ const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 const currentPeriodKey = () => getArgentinaNowDateInput().slice(0, 7);
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const lineMargin = (lineTotal: number, costTotal: number) => Math.max(0, Number(lineTotal || 0) - Number(costTotal || 0));
 
 const getErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error) {
@@ -266,6 +269,44 @@ export default function VendedoresPage() {
       summary.invoice_count += 1;
     });
 
+    const filteredInvoices = (Array.isArray(listData) ? listData : []).filter((item: InvoiceListItem) => {
+      const sellerId = Number(item.seller_id || 0);
+      const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
+      const documentType = String(item.document_type || '').trim().toUpperCase();
+      return sellerId > 0 && createdAt === period && documentType !== 'PRESUPUESTO';
+    });
+
+    const detailResponses = await Promise.all(
+      filteredInvoices.map(async (item: InvoiceListItem) => {
+        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${item.id}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.detail || `No se pudo cargar el comprobante ${item.id}`);
+        }
+        return { item, data: data as InvoiceDetailResponse };
+      })
+    );
+
+    detailResponses.forEach(({ item, data }) => {
+      const sellerId = Number(item.seller_id || 0);
+      const summary = summaryMap.get(sellerId);
+      if (!summary) {
+        return;
+      }
+      const documentType = String(item.document_type || '').trim().toUpperCase();
+      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
+      const itemsProfit = data.items.reduce(
+        (sum, detailItem) => sum + lineMargin(Number(detailItem.line_total || 0), Number(detailItem.cost_total || 0)),
+        0
+      );
+      summary.profit = roundMoney(
+        Number(summary.profit || 0) + (itemsProfit * sign) - (Number(item.special_discount || 0) * sign)
+      );
+    });
+
     return {
       period,
       items: Array.from(summaryMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es-AR')),
@@ -315,30 +356,60 @@ export default function VendedoresPage() {
         return left - right;
       });
 
-    const items = filteredInvoices.map((item: InvoiceListItem) => ({
-      invoice_id: item.id,
-      created_at: item.created_at,
-      document_type: item.document_type,
-      sale_mode: item.sale_mode,
-      payment_method: item.payment_method,
-      notes: item.notes,
-      customer_id: item.customer_id,
-      customer_name: item.customer_name || 'Sin cliente',
-      total: Number(item.total || 0),
-      balance_due: Number(item.total || 0),
-      special_discount: Number(item.special_discount || 0),
-      commission: Number(item.commission_amount || 0),
-      profit: null,
-      items: [],
-    }));
+    const detailResponses = await Promise.all(
+      filteredInvoices.map(async (item: InvoiceListItem) => {
+        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${item.id}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(data?.detail || `No se pudo cargar el comprobante ${item.id}`);
+        }
+        return { item, data: data as InvoiceDetailResponse };
+      })
+    );
+
+    const items = detailResponses.map(({ item, data }) => {
+      const documentType = String(item.document_type || '').trim().toUpperCase();
+      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
+      const detailedItems = data.items.map((detailItem) => ({
+        product_id: detailItem.product_id,
+        product_name: detailItem.product_name,
+        quantity: Number(detailItem.quantity || 0),
+        unit_price: roundMoney(Number(detailItem.unit_price || 0) * sign),
+        line_total: roundMoney(Number(detailItem.line_total || 0) * sign),
+        cost_total: roundMoney(Number(detailItem.cost_total || 0) * sign),
+      }));
+      const itemsProfit = data.items.reduce(
+        (sum, detailItem) => sum + lineMargin(Number(detailItem.line_total || 0), Number(detailItem.cost_total || 0)),
+        0
+      );
+      return {
+        invoice_id: item.id,
+        created_at: item.created_at,
+        document_type: item.document_type,
+        sale_mode: item.sale_mode,
+        payment_method: item.payment_method,
+        notes: item.notes,
+        customer_id: item.customer_id,
+        customer_name: item.customer_name || 'Sin cliente',
+        total: roundMoney(Number(item.total || 0) * sign),
+        balance_due: roundMoney(Number(data.summary?.balance_due ?? item.total ?? 0) * sign),
+        special_discount: roundMoney(Number(item.special_discount || 0) * sign),
+        commission: roundMoney(Number(item.commission_amount || 0) * sign),
+        profit: roundMoney((itemsProfit * sign) - (Number(item.special_discount || 0) * sign)),
+        items: detailedItems,
+      };
+    });
 
     return {
       period,
       seller: selected,
       summary: {
-        sales: items.reduce((sum, item) => sum + Number(item.total || 0), 0),
-        commission: items.reduce((sum, item) => sum + Number(item.commission || 0), 0),
-        profit: null,
+        sales: roundMoney(items.reduce((sum, item) => sum + Number(item.total || 0), 0)),
+        commission: roundMoney(items.reduce((sum, item) => sum + Number(item.commission || 0), 0)),
+        profit: roundMoney(items.reduce((sum, item) => sum + Number(item.profit || 0), 0)),
         invoice_count: items.length,
       },
       items,

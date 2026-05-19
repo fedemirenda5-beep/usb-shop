@@ -1208,6 +1208,14 @@ def _balance_is_zero(balance: float, tolerance: float = 0.009) -> bool:
     return abs(float(balance)) <= tolerance
 
 
+def _can_view_profit_metrics(role: Any) -> bool:
+    return str(role or "").strip().lower() != ROLE_STAFF
+
+
+def _line_margin_value(quantity: float, unit_price: float, cost: float) -> float:
+    return float(quantity or 0) * max(0.0, float(unit_price or 0) - float(cost or 0))
+
+
 def _next_document_number(conn: DBConn, document_kind: str) -> str:
     prefix = {
         "RECIBO_X": "RX",
@@ -3258,6 +3266,7 @@ def admin_sellers_monthly_summary(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
         period_key = (period or datetime.utcnow().strftime("%Y-%m")).strip()
         if not re.fullmatch(r"\d{4}-\d{2}", period_key):
@@ -3334,10 +3343,9 @@ def admin_sellers_monthly_summary(
                     continue
                 sign = invoice_sign_map.get(invoice_id, 1.0)
                 quantity = float(row["quantity"] or 0)
-                revenue = quantity * float(row["unit_price"] or 0)
-                cost_total = quantity * float(row["cost"] or 0)
+                margin_value = _line_margin_value(quantity, float(row["unit_price"] or 0), float(row["cost"] or 0))
                 summary_map[seller_id]["profit"] = round(
-                    summary_map[seller_id]["profit"] + ((revenue - cost_total) * sign), 2
+                    summary_map[seller_id]["profit"] + (margin_value * sign), 2
                 )
             for invoice_id, discount in invoice_discount_map.items():
                 if discount <= 0:
@@ -3361,7 +3369,7 @@ def admin_sellers_monthly_summary(
                         "sales": round(float(payload["sales"] or 0), 2),
                         "profit": (
                             round(float(payload["profit"] or 0), 2)
-                            if str(session_payload.get("role") or "").strip().lower() == ROLE_ADMIN
+                            if _can_view_profit_metrics(session_payload.get("role"))
                             else None
                         ),
                         "commission": round(float(payload["commission"] or 0), 2),
@@ -3388,6 +3396,7 @@ def admin_seller_monthly_detail(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
         seller = conn.execute(
             """
@@ -3504,7 +3513,7 @@ def admin_seller_monthly_detail(
                 cost = float(row["cost"] or 0)
                 revenue = quantity * unit_price
                 cost_total = quantity * cost
-                margin = round((revenue - cost_total) * sign, 2)
+                margin = round(_line_margin_value(quantity, unit_price, cost) * sign, 2)
                 detail["profit"] = round(float(detail["profit"] or 0) + margin, 2)
                 detail["items"].append(
                     {
@@ -3538,7 +3547,7 @@ def admin_seller_monthly_detail(
                 "commission": round(float(totals["commission"] or 0), 2),
                 "profit": (
                     round(float(totals["profit"] or 0), 2)
-                    if str(session_payload.get("role") or "").strip().lower() == ROLE_ADMIN
+                    if _can_view_profit_metrics(session_payload.get("role"))
                     else None
                 ),
                 "invoice_count": int(totals["invoice_count"] or 0),
@@ -3548,7 +3557,7 @@ def admin_seller_monthly_detail(
                     **item,
                     "profit": (
                         round(float(item["profit"] or 0), 2)
-                        if str(session_payload.get("role") or "").strip().lower() == ROLE_ADMIN
+                        if _can_view_profit_metrics(session_payload.get("role"))
                         else None
                     ),
                 }
@@ -4694,7 +4703,7 @@ def admin_invoice_detail(
             raise HTTPException(status_code=404, detail="Comprobante no encontrado")
         items = conn.execute(
             """
-            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.image_path
+            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.image_path, p.cost
             FROM invoice_items ii
             LEFT JOIN products p ON p.id = ii.product_id
             WHERE ii.invoice_id = ?
@@ -4726,6 +4735,7 @@ def admin_invoice_detail(
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "line_total": line_total,
+                    "cost_total": round(quantity * float(row["cost"] or 0), 2),
                     "image_path": row["image_path"],
                 }
             )
