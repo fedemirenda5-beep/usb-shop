@@ -1276,12 +1276,18 @@ def _argentina_now() -> datetime:
     return datetime.now(ARGENTINA_TZ)
 
 
+def _is_date_only_value(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value.strip()))
+
+
 def _argentina_date_for_filter(value: Any) -> Optional[datetime.date]:
     parsed = _safe_parse_datetime(value)
     if parsed is None:
         return None
-    if parsed.tzinfo is None:
+    if _is_date_only_value(value):
         return parsed.date()
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc).astimezone(ARGENTINA_TZ).date()
     return parsed.astimezone(ARGENTINA_TZ).date()
 
 
@@ -1289,8 +1295,10 @@ def _argentina_datetime(value: Any) -> Optional[datetime]:
     parsed = _safe_parse_datetime(value)
     if parsed is None:
         return None
-    if parsed.tzinfo is None:
+    if _is_date_only_value(value):
         return parsed
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc).astimezone(ARGENTINA_TZ)
     return parsed.astimezone(ARGENTINA_TZ)
 
 
@@ -1299,6 +1307,25 @@ def _argentina_month_bucket(value: Any) -> Optional[str]:
     if parsed is None:
         return None
     return parsed.strftime("%Y-%m")
+
+
+def _matches_argentina_date_range(value: Any, start_date: Optional[str], end_date: Optional[str]) -> bool:
+    created_date = _argentina_date_for_filter(value)
+    if created_date is None:
+        return False
+    if start_date:
+        try:
+            if created_date < datetime.strptime(start_date, "%Y-%m-%d").date():
+                return False
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Fecha inicial invalida. Usa YYYY-MM-DD.") from exc
+    if end_date:
+        try:
+            if created_date > datetime.strptime(end_date, "%Y-%m-%d").date():
+                return False
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Fecha final invalida. Usa YYYY-MM-DD.") from exc
+    return True
 
 
 def _customer_current_balance_from_rows(rows: list[Any]) -> float:
@@ -1383,7 +1410,7 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
             "remaining": amount,
             "applied": 0.0,
             "created_at": created_at,
-            "due_date": due_at or ((created_at or datetime.utcnow()) + timedelta(days=terms_days)),
+            "due_date": due_at or ((_argentina_datetime(row["created_at"] if isinstance(row, dict) else row["created_at"]) or _argentina_now()) + timedelta(days=terms_days)),
             "reference": row["reference"] if isinstance(row, dict) else row["reference"],
             "invoice_id": row["invoice_id"] if isinstance(row, dict) else row["invoice_id"],
             "entry_kind": entry_kind,
@@ -1393,7 +1420,7 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
         else:
             credits.append({**payload, "entry_kind": entry_kind})
 
-    debits.sort(key=lambda item: (item["due_date"] or datetime.utcnow(), item["id"]))
+    debits.sort(key=lambda item: (item["due_date"] or _argentina_now(), item["id"]))
     for credit in credits:
         remaining_credit = float(credit["amount"] or 0)
         for debit in debits:
@@ -1407,7 +1434,7 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
             debit["applied"] = round(float(debit["applied"] or 0) + consumed, 2)
             remaining_credit = round(remaining_credit - consumed, 2)
 
-    today = datetime.utcnow().date()
+    today = _argentina_now().date()
     buckets = {"current": 0.0, "d1_30": 0.0, "d31_60": 0.0, "d61_90": 0.0, "d90_plus": 0.0}
     classification = {
         "pending": 0.0,
@@ -3288,7 +3315,7 @@ def admin_sellers_monthly_summary(
         _ensure_invoice_special_discount_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
-        period_key = (period or datetime.utcnow().strftime("%Y-%m")).strip()
+        period_key = (period or _argentina_now().strftime("%Y-%m")).strip()
         if not re.fullmatch(r"\d{4}-\d{2}", period_key):
             raise HTTPException(status_code=400, detail="Periodo invalido. Usa YYYY-MM")
         active_sellers = conn.execute(
@@ -3324,8 +3351,8 @@ def admin_sellers_monthly_summary(
         invoice_sign_map: dict[int, float] = {}
         invoice_discount_map: dict[int, float] = {}
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
-            if created is None or created.strftime("%Y-%m") != period_key:
+            created_bucket = _argentina_month_bucket(row["created_at"])
+            if created_bucket != period_key:
                 continue
             seller_id = int(row["seller_id"] or 0)
             if seller_id <= 0 or seller_id not in summary_map:
@@ -3429,7 +3456,7 @@ def admin_seller_monthly_detail(
         if seller is None:
             raise HTTPException(status_code=404, detail="Vendedor no encontrado")
 
-        period_key = (period or datetime.utcnow().strftime("%Y-%m")).strip()
+        period_key = (period or _argentina_now().strftime("%Y-%m")).strip()
         if not re.fullmatch(r"\d{4}-\d{2}", period_key):
             raise HTTPException(status_code=400, detail="Periodo invalido. Usa YYYY-MM")
 
@@ -3458,8 +3485,8 @@ def admin_seller_monthly_detail(
         }
 
         for row in invoices:
-            created = _safe_parse_datetime(row["created_at"])
-            if created is None or created.strftime("%Y-%m") != period_key:
+            created_bucket = _argentina_month_bucket(row["created_at"])
+            if created_bucket != period_key:
                 continue
             document_type = str(row["document_type"] or "").strip().upper()
             if document_type == "PRESUPUESTO":
@@ -6534,29 +6561,15 @@ def admin_list_sales(
         if not has_sales_table:
             return []
         
-        conditions = []
-        params: list = []
-        
-        if start_date:
-            conditions.append("DATE(created_at) >= ?")
-            params.append(start_date)
-        if end_date:
-            conditions.append("DATE(created_at) <= ?")
-            params.append(end_date)
-        
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        
         rows = conn.execute(
-            f"""
+            """
             SELECT id, total, notes, created_at
             FROM sales
-            {where_clause}
             ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
         ).fetchall()
-        
+        filtered_rows = [row for row in rows if _matches_argentina_date_range(row["created_at"], start_date, end_date)]
+
         return [
             {
                 "id": int(row["id"]),
@@ -6564,7 +6577,7 @@ def admin_list_sales(
                 "notes": row["notes"],
                 "created_at": row["created_at"],
             }
-            for row in rows
+            for row in filtered_rows[offset : offset + limit]
         ]
     finally:
         conn.close()
@@ -6644,29 +6657,15 @@ def admin_list_purchases(
         if not has_purchases_table:
             return []
         
-        conditions = []
-        params: list = []
-        
-        if start_date:
-            conditions.append("DATE(created_at) >= ?")
-            params.append(start_date)
-        if end_date:
-            conditions.append("DATE(created_at) <= ?")
-            params.append(end_date)
-        
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        
         rows = conn.execute(
-            f"""
+            """
             SELECT id, supplier, total, notes, created_at
             FROM purchases
-            {where_clause}
             ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
         ).fetchall()
-        
+        filtered_rows = [row for row in rows if _matches_argentina_date_range(row["created_at"], start_date, end_date)]
+
         return [
             {
                 "id": int(row["id"]),
@@ -6675,7 +6674,7 @@ def admin_list_purchases(
                 "notes": row["notes"],
                 "created_at": row["created_at"],
             }
-            for row in rows
+            for row in filtered_rows[offset : offset + limit]
         ]
     finally:
         conn.close()
@@ -6938,29 +6937,15 @@ def admin_list_expenses(
         if not has_expenses_table:
             return []
         
-        conditions = []
-        params: list = []
-        
-        if start_date:
-            conditions.append("DATE(created_at) >= ?")
-            params.append(start_date)
-        if end_date:
-            conditions.append("DATE(created_at) <= ?")
-            params.append(end_date)
-        
-        where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
-        
         rows = conn.execute(
-            f"""
+            """
             SELECT id, category, amount, description, created_at
             FROM expenses
-            {where_clause}
             ORDER BY created_at DESC
-            LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
         ).fetchall()
-        
+        filtered_rows = [row for row in rows if _matches_argentina_date_range(row["created_at"], start_date, end_date)]
+
         return [
             {
                 "id": int(row["id"]),
@@ -6969,7 +6954,7 @@ def admin_list_expenses(
                 "description": row["description"],
                 "created_at": row["created_at"],
             }
-            for row in rows
+            for row in filtered_rows[offset : offset + limit]
         ]
     finally:
         conn.close()
