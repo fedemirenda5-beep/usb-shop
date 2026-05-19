@@ -13,16 +13,17 @@ interface AdminLayoutProps {
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-  const { user, logout, isLoading } = useAdminSession();
+  const { user, logout, isLoading, error, refreshSession } = useAdminSession();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (!isLoading && !user) {
-      router.replace('/login');
+      const targetPath = pathname?.startsWith('/admin') ? pathname : '/admin';
+      router.replace(`/login?from=${encodeURIComponent(targetPath)}`);
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, pathname, router]);
 
   useEffect(() => {
     if (!user) return;
@@ -34,10 +35,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
   }, [pathname, router, user]);
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
       <div className={styles.loading}>
         <p>Cargando...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className={styles.loading}>
+        <p>{error || 'Redirigiendo al login...'}</p>
       </div>
     );
   }
@@ -107,6 +116,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <span>Gestion central del negocio</span>
           </div>
           <div className={styles.navbarRight}>
+            {error ? (
+              <button type="button" className={styles.hamburger} onClick={() => void refreshSession()}>
+                Reintentar sesion
+              </button>
+            ) : null}
             <div className={styles.userBadge}>
               <span className={styles.userLabel}>Sesion</span>
               <strong className={styles.user}>{user?.username}</strong>

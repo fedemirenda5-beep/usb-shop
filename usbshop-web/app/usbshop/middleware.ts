@@ -4,7 +4,7 @@ const SESSION_COOKIE = 'usbshop_session';
 const PROTECTED_ROUTES = ['/admin'];
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
 
   // Verificar si la ruta está protegida
   const isProtectedRoute = PROTECTED_ROUTES.some(route => 
@@ -18,7 +18,7 @@ export function middleware(request: NextRequest) {
     if (!sessionCookie) {
       // Redirigir a login con return URL
       const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('from', pathname);
+      loginUrl.searchParams.set('from', `${pathname}${search}`);
       return NextResponse.redirect(loginUrl);
     }
   }
@@ -27,15 +27,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - api routes (backend)
-     */
-    '/((?!_next/static|_next/image|favicon.ico|api).*)',
-  ],
+  matcher: ['/admin/:path*'],
 };
 

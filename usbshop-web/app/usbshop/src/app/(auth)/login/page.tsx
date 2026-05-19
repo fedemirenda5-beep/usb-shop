@@ -11,13 +11,25 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
+  const [targetPath, setTargetPath] = useState('/admin');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const from = params.get('from');
+    if (from && from.startsWith('/admin') && !from.startsWith('//')) {
+      setTargetPath(from);
+    }
+  }, []);
 
   // Redirigir si ya está autenticado
   useEffect(() => {
     if (isAuthenticated && user) {
-      router.replace('/admin');
+      router.replace(targetPath);
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, router, targetPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +42,7 @@ export default function LoginPage() {
 
     const success = await login(username, password);
     if (success) {
-      router.replace('/admin');
+      router.replace(targetPath);
     }
   };
 
