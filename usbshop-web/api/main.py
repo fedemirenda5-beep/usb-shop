@@ -8,6 +8,7 @@ import json
 import logging
 import mimetypes
 import os
+import re
 import sqlite3
 import ssl
 import time
@@ -470,6 +471,18 @@ def _verify_session(token: str) -> Optional[dict]:
     return payload
 
 
+def _session_cookie_options(request: Optional[Request]) -> dict[str, Any]:
+    host = str((request.headers.get("host") if request else "") or "").lower()
+    forwarded_proto = str((request.headers.get("x-forwarded-proto") if request else "") or "").lower()
+    scheme = str((request.url.scheme if request else "") or "").lower()
+    is_local_host = host.startswith("localhost") or host.startswith("127.0.0.1")
+    secure = not is_local_host and (forwarded_proto == "https" or scheme == "https")
+    return {
+        "secure": secure,
+        "samesite": "none" if secure else "lax",
+    }
+
+
 def _require_roles(session_token: Optional[str], allowed_roles: set[str]) -> dict:
     payload = _verify_session(session_token or "")
     if not payload or str(payload.get("role") or "").strip().lower() not in allowed_roles:
@@ -1734,6 +1747,7 @@ def _ensure_sellers_table(conn: DBConn) -> None:
                 )
                 """
             )
+        _invalidate_table_cache("sellers")
     required_columns = (
         ("name", "TEXT", "TEXT"),
         ("commission_percent", "REAL NOT NULL DEFAULT 0", "NUMERIC(6, 2) NOT NULL DEFAULT 0"),
@@ -2635,13 +2649,14 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     }
     token = _sign_session(payload_data)
     if response is not None:
+        cookie_options = _session_cookie_options(request)
         response.set_cookie(
             key=SESSION_COOKIE,
             value=token,
             max_age=SESSION_TTL_SECONDS,
             httponly=True,
-            secure=True,
-            samesite="none",
+            secure=bool(cookie_options["secure"]),
+            samesite=str(cookie_options["samesite"]),
         )
     return {"username": row["username"], "role": row["role"]}
 
@@ -2649,7 +2664,12 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
     if response is not None:
-        response.delete_cookie(SESSION_COOKIE)
+        cookie_options = _session_cookie_options(request)
+        response.delete_cookie(
+            SESSION_COOKIE,
+            secure=bool(cookie_options["secure"]),
+            samesite=str(cookie_options["samesite"]),
+        )
     return {"status": "ok"}
 
 
