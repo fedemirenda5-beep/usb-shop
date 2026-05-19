@@ -132,8 +132,6 @@ const money = (value: number) =>
 
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 
-const currentPeriodKey = () => getArgentinaNowDateInput().slice(0, 7);
-
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 const lineMargin = (lineTotal: number, costTotal: number) => Math.max(0, Number(lineTotal || 0) - Number(costTotal || 0));
@@ -157,11 +155,12 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export default function VendedoresPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const hasExplicitPeriod = Boolean(searchParams.get('period'));
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<SellerMonthlySummary[]>([]);
-  const [monthlyPeriod, setMonthlyPeriod] = useState(searchParams.get('period') || currentPeriodKey());
+  const [monthlyPeriod, setMonthlyPeriod] = useState(searchParams.get('period') || '');
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -181,7 +180,7 @@ export default function VendedoresPage() {
   );
   const selectedSellerSummary = selectedSeller ? monthlySummaryMap.get(selectedSeller.id) ?? null : null;
   const formattedMonthlyPeriod = useMemo(() => {
-    if (!monthlyPeriod) return 'este mes';
+    if (!monthlyPeriod) return 'ultimo periodo con ventas';
     const [year, month] = monthlyPeriod.split('-');
     const parsed = new Date(Number(year), Number(month) - 1, 1);
     return Number.isNaN(parsed.getTime())
@@ -230,7 +229,6 @@ export default function VendedoresPage() {
             return Array.isArray(sellerData) ? (sellerData as Seller[]) : [];
           })();
 
-    const period = monthlyPeriod || currentPeriodKey();
     const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
       credentials: 'include',
       cache: 'no-store',
@@ -239,6 +237,17 @@ export default function VendedoresPage() {
     if (!listRes.ok) {
       throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
     }
+    const invoices = Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
+    const detectedPeriod =
+      monthlyPeriod ||
+      invoices
+        .filter((item) => Number(item.seller_id || 0) > 0 && String(item.document_type || '').trim().toUpperCase() !== 'PRESUPUESTO')
+        .map((item) => (typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : ''))
+        .filter((value) => /^\d{4}-\d{2}$/.test(value))
+        .sort()
+        .at(-1) ||
+      getArgentinaNowDateInput().slice(0, 7);
+    const period = detectedPeriod;
 
     const summaryMap = new Map<number, SellerMonthlySummary>();
     availableSellers
@@ -255,7 +264,7 @@ export default function VendedoresPage() {
         });
       });
 
-    (Array.isArray(listData) ? listData : []).forEach((item: InvoiceListItem) => {
+    invoices.forEach((item: InvoiceListItem) => {
       const sellerId = Number(item.seller_id || 0);
       const summary = summaryMap.get(sellerId);
       const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
@@ -269,7 +278,7 @@ export default function VendedoresPage() {
       summary.invoice_count += 1;
     });
 
-    const filteredInvoices = (Array.isArray(listData) ? listData : []).filter((item: InvoiceListItem) => {
+    const filteredInvoices = invoices.filter((item: InvoiceListItem) => {
       const sellerId = Number(item.seller_id || 0);
       const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
       const documentType = String(item.document_type || '').trim().toUpperCase();
@@ -330,7 +339,6 @@ export default function VendedoresPage() {
       throw new Error('Vendedor no encontrado');
     }
 
-    const period = monthlyPeriod || currentPeriodKey();
     const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
       credentials: 'include',
       cache: 'no-store',
@@ -339,8 +347,18 @@ export default function VendedoresPage() {
     if (!listRes.ok) {
       throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes del vendedor');
     }
+    const invoices = Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
+    const period =
+      monthlyPeriod ||
+      invoices
+        .filter((item) => Number(item.seller_id || 0) === sellerId && String(item.document_type || '').trim().toUpperCase() !== 'PRESUPUESTO')
+        .map((item) => (typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : ''))
+        .filter((value) => /^\d{4}-\d{2}$/.test(value))
+        .sort()
+        .at(-1) ||
+      getArgentinaNowDateInput().slice(0, 7);
 
-    const filteredInvoices = (Array.isArray(listData) ? listData : [])
+    const filteredInvoices = invoices
       .filter((item: InvoiceListItem) => {
         const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
         const documentType = String(item.document_type || '').trim().toUpperCase();
@@ -451,9 +469,27 @@ export default function VendedoresPage() {
         setSummaryLoading(true);
       }
       await loadRuntimeConfig();
+      let requestedPeriod = monthlyPeriod;
+      if (!requestedPeriod && !hasExplicitPeriod) {
+        const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const listData = await listRes.json().catch(() => null);
+        if (!listRes.ok) {
+          throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
+        }
+        requestedPeriod =
+          (Array.isArray(listData) ? (listData as InvoiceListItem[]) : [])
+            .filter((item) => Number(item.seller_id || 0) > 0 && String(item.document_type || '').trim().toUpperCase() !== 'PRESUPUESTO')
+            .map((item) => (typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : ''))
+            .filter((value) => /^\d{4}-\d{2}$/.test(value))
+            .sort()
+            .at(-1) || '';
+      }
       const params = new URLSearchParams();
-      if (monthlyPeriod) {
-        params.set('period', monthlyPeriod);
+      if (requestedPeriod) {
+        params.set('period', requestedPeriod);
       }
       const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary?${params.toString()}`, {
         credentials: 'include',
