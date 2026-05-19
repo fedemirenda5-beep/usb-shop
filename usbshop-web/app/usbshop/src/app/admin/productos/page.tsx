@@ -127,6 +127,10 @@ export default function ProductosPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams?.get('edit');
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+  const [detailOnly, setDetailOnly] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -142,6 +146,17 @@ export default function ProductosPage() {
   const [categoryDraft, setCategoryDraft] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryError, setCategoryError] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const media = window.matchMedia('(max-width: 768px)');
+    const sync = () => setIsMobileLayout(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
 
   const loadProducts = async () => {
     try {
@@ -207,6 +222,12 @@ export default function ProductosPage() {
     }
   }, [editId, products]);
 
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setDetailOnly(false);
+    }
+  }, [isMobileLayout]);
+
   const filteredProducts = useMemo(() => {
     const tokens = buildSearchTokens(search);
     return products.filter((product) => {
@@ -244,11 +265,26 @@ export default function ProductosPage() {
     () => new Map(categories.map((category) => [category.id, category.name])),
     [categories]
   );
+  const selectedProduct = useMemo(() => {
+    if (editProduct) return editProduct;
+    return null;
+  }, [editProduct]);
 
   const openEditor = (productId: number) => {
     router.push(`/admin/productos?edit=${productId}`);
     const product = products.find((item) => item.id === productId) || null;
     setEditProduct(product);
+  };
+
+  const openProductDetail = (productId: number) => {
+    const product = products.find((item) => item.id === productId) || null;
+    setEditProduct(product);
+    setDetailOnly(true);
+  };
+
+  const closeProductDetail = () => {
+    setDetailOnly(false);
+    setEditProduct(null);
   };
 
   const handleDelete = async (product: Product) => {
@@ -669,6 +705,57 @@ export default function ProductosPage() {
         </label>
       </div>
 
+      {!detailOnly ? (
+        <section className={styles.mobilePicker}>
+          <div className={styles.mobilePickerHeader}>
+            <div>
+              <h2>Productos disponibles</h2>
+              <p>Busca un producto y toca una tarjeta para ver el detalle completo.</p>
+            </div>
+            <strong>{filteredProducts.length}</strong>
+          </div>
+          <div className={styles.mobileCardList}>
+            {loading ? (
+              <div className={styles.loading}>Cargando...</div>
+            ) : filteredProducts.length === 0 ? (
+              <div className={styles.empty}>
+                <p>No hay productos para ese filtro</p>
+              </div>
+            ) : (
+              filteredProducts.map((product) => {
+                const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className={styles.mobileCard}
+                    onClick={() => openProductDetail(product.id)}
+                  >
+                    <div className={styles.mobileCardTop}>
+                      {productImageUrl ? (
+                        <img src={productImageUrl} alt={product.name} className={styles.productThumb} />
+                      ) : (
+                        <span className={styles.noImage}>Sin imagen</span>
+                      )}
+                      <div className={styles.mobileCardCopy}>
+                        <strong>{product.name}</strong>
+                        <span>SKU {product.sku || '-'}</span>
+                        <span>{product.category || categoryMap.get(product.category_id || 0) || 'Sin rubro'}</span>
+                      </div>
+                    </div>
+                    <div className={styles.mobileCardMeta}>
+                      <span>{currencyFormatter.format(product.price || 0)}</span>
+                      <span>Stock {product.stock}</span>
+                      <span>{product.is_featured ? 'Destacado' : 'Comun'}</span>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </section>
+      ) : null}
+
       <div className={styles.pagination}>
         <span>
           {filteredProducts.length} productos{search ? ` para "${search}"` : ''} |
@@ -676,7 +763,7 @@ export default function ProductosPage() {
         </span>
       </div>
 
-      <div className={styles.tableWrapper}>
+      {!isMobileLayout || !detailOnly ? <div className={styles.tableWrapper}>
         {loading ? (
           <div className={styles.loading}>Cargando...</div>
         ) : visibleProducts.length === 0 ? (
@@ -802,7 +889,51 @@ export default function ProductosPage() {
             </tbody>
           </table>
         )}
-      </div>
+      </div> : null}
+
+      {isMobileLayout && detailOnly && selectedProduct ? (
+        <section className={styles.mobileDetail}>
+          <div className={styles.mobileDetailHeader}>
+            <button type="button" className={styles.btnSecondary} onClick={closeProductDetail}>
+              Volver
+            </button>
+            <button type="button" className={styles.btnEdit} onClick={() => openEditor(selectedProduct.id)}>
+              Editar
+            </button>
+          </div>
+          <div className={styles.mobileDetailCard}>
+            {getProductPrimaryImageUrl(selectedProduct, baseUrl) ? (
+              <img
+                src={getProductPrimaryImageUrl(selectedProduct, baseUrl) || ''}
+                alt={selectedProduct.name}
+                className={styles.mobileDetailImage}
+              />
+            ) : null}
+            <h2>{selectedProduct.name}</h2>
+            <div className={styles.mobileDetailGrid}>
+              <div><span>SKU</span><strong>{selectedProduct.sku || '-'}</strong></div>
+              <div><span>Rubro</span><strong>{selectedProduct.category || categoryMap.get(selectedProduct.category_id || 0) || 'Sin rubro'}</strong></div>
+              <div><span>Precio</span><strong>{currencyFormatter.format(selectedProduct.price || 0)}</strong></div>
+              <div><span>Costo</span><strong>{currencyFormatter.format(selectedProduct.cost || 0)}</strong></div>
+              <div><span>Stock</span><strong>{selectedProduct.stock}</strong></div>
+              <div><span>Estado</span><strong>{selectedProduct.is_active ? 'Activo' : 'Inactivo'}</strong></div>
+              <div><span>Destacado</span><strong>{selectedProduct.is_featured ? 'Si' : 'No'}</strong></div>
+              <div><span>Oferta</span><strong>{selectedProduct.is_offer ? 'Si' : 'No'}</strong></div>
+              {canViewProfit ? (
+                <div><span>Margen</span><strong>{calculateMargin(selectedProduct.cost, selectedProduct.price)?.toFixed(1) || '0'}%</strong></div>
+              ) : null}
+            </div>
+            <div className={styles.mobileDetailActions}>
+              <button type="button" className={styles.btnSecondary} onClick={() => void toggleFeatured(selectedProduct)}>
+                {selectedProduct.is_featured ? 'Quitar destacado' : 'Marcar destacado'}
+              </button>
+              <button type="button" className={styles.btnDelete} onClick={() => void handleDelete(selectedProduct)}>
+                {selectedProduct.stock <= 0 ? 'Eliminar agotado' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {filteredProducts.length > 0 ? (
         <div className={styles.pagination}>

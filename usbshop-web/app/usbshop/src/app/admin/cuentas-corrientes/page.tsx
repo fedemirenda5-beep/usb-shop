@@ -121,6 +121,9 @@ export default function CuentasCorrientesPage() {
   const detailRef = useRef<HTMLElement | null>(null);
   const movementFormRef = useRef<HTMLFormElement | null>(null);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 860 : false
+  );
   const [customers, setCustomers] = useState<CustomerOverview[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
@@ -165,6 +168,17 @@ export default function CuentasCorrientesPage() {
   });
   const deferredSearch = useDeferredValue(search);
   const deferredMovementSearch = useDeferredValue(movementSearch);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const media = window.matchMedia('(max-width: 860px)');
+    const sync = () => setIsMobileLayout(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
 
   const emptyAging = (): Aging => ({
     current: 0,
@@ -305,7 +319,9 @@ export default function CuentasCorrientesPage() {
           adjustments: 0,
         }
       );
-      if ((data.customers || []).length > 0) setSelectedId((current) => current ?? data.customers[0].id);
+      if (!isMobileLayout && (data.customers || []).length > 0) {
+        setSelectedId((current) => current ?? data.customers[0].id);
+      }
       return;
     }
     if (res.status !== 404) {
@@ -318,7 +334,9 @@ export default function CuentasCorrientesPage() {
     setLegacyMode(true);
     setCustomers(data.customers);
     setSummary(data.summary);
-    if (data.customers.length > 0) setSelectedId((current) => current ?? data.customers[0].id);
+    if (!isMobileLayout && data.customers.length > 0) {
+      setSelectedId((current) => current ?? data.customers[0].id);
+    }
   }
 
   async function loadDetail(customerId: number) {
@@ -384,6 +402,14 @@ export default function CuentasCorrientesPage() {
     };
     void loadSelectedCustomer();
   }, [selectedId]);
+
+  useEffect(() => {
+    if (isMobileLayout) return;
+    if (!selectedId && customers.length > 0) {
+      setSelectedId(customers[0].id);
+    }
+    setDetailOnly(false);
+  }, [customers, isMobileLayout, selectedId]);
 
   const submitMovement = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1076,6 +1102,87 @@ export default function CuentasCorrientesPage() {
 
       {!detailOnly ? (
         <>
+          <section className={styles.mobilePicker}>
+            <div className={styles.mobilePickerHeader}>
+              <div>
+                <h2>Cuentas disponibles</h2>
+                <p>Busca un cliente y toca una cuenta para ver el detalle completo.</p>
+              </div>
+              <strong>{filteredCustomers.length}</strong>
+            </div>
+
+            <div className={styles.searchBar}>
+              <span>Buscar</span>
+              <input
+                className={styles.search}
+                placeholder="Nombre, CUIT, telefono o localidad..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className={styles.filterPills}>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'all' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('all')}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'debt' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('debt')}
+              >
+                Con deuda
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'overdue' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('overdue')}
+              >
+                Vencidos
+              </button>
+              <button
+                type="button"
+                className={`${styles.filterPill} ${customerFilter === 'credit' ? styles.filterPillActive : ''}`}
+                onClick={() => setCustomerFilter('credit')}
+              >
+                A favor
+              </button>
+            </div>
+
+            <div className={styles.mobileCustomerList}>
+              {loading ? (
+                <div className={styles.emptyPanel}>Cargando cuentas...</div>
+              ) : filteredCustomers.length === 0 ? (
+                <div className={styles.emptyPanel}>No hay cuentas que coincidan con la busqueda.</div>
+              ) : (
+                filteredCustomers.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    className={styles.mobileCustomerCard}
+                    onClick={() => openCustomerDetail(customer.id)}
+                  >
+                    <div className={styles.mobileCustomerTop}>
+                      <strong>{customer.name}</strong>
+                      <span>{customer.balance >= 0 ? `Debe ${money(customer.balance)}` : `Haber ${money(Math.abs(customer.balance))}`}</span>
+                    </div>
+                    <div className={styles.mobileCustomerMeta}>
+                      <span>{customer.email || customer.phone || customer.cuit || 'Sin dato de contacto'}</span>
+                      <span>
+                        Pend.: {money(customer.classification?.pending || Math.max(0, customer.balance))} · Venc.:{' '}
+                        {money(customer.classification?.overdue || 0)}
+                      </span>
+                      <span>{customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : 'Sin movimientos recientes'}</span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
+
           <section className={styles.desktopToolbar}>
             <div className={styles.searchBar}>
               <span>Buscar</span>
@@ -1220,9 +1327,11 @@ export default function CuentasCorrientesPage() {
         </>
       ) : null}
 
-      <section className={styles.content} ref={detailRef}>
-        {renderDetailContent()}
-      </section>
+      {!isMobileLayout || detailOnly ? (
+        <section className={styles.content} ref={detailRef}>
+          {renderDetailContent()}
+        </section>
+      ) : null}
 
       {showDeleteModal && selectedOverview ? (
         <div className={styles.modalOverlay} onClick={() => !deleting && setShowDeleteModal(false)}>

@@ -4,6 +4,127 @@
   gap: 24px;
 }
 
+.mobilePicker,
+.mobileDetail {
+  display: none;
+}
+
+.mobilePickerHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.mobilePickerHeader h2,
+.mobileDetailCard h2 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.mobilePickerHeader p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mobilePickerHeader strong {
+  font-size: 24px;
+  color: var(--ink);
+}
+
+.mobileCardList {
+  display: grid;
+  gap: 10px;
+}
+
+.mobileCard {
+  width: 100%;
+  border: 1px solid var(--bg-soft);
+  border-radius: 14px;
+  background: white;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobileCardTop {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.mobileCardCopy {
+  display: grid;
+  gap: 4px;
+}
+
+.mobileCardCopy strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.mobileCardCopy span,
+.mobileCardMeta span,
+.mobileDetailGrid span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mobileCardMeta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mobileDetailHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mobileDetailCard {
+  background: white;
+  border: 1px solid var(--bg-soft);
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.mobileDetailImage {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--bg-soft);
+}
+
+.mobileDetailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mobileDetailGrid div {
+  display: grid;
+  gap: 4px;
+}
+
+.mobileDetailGrid strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.mobileDetailActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -461,6 +582,12 @@
     flex-direction: column;
   }
 
+  .mobilePicker,
+  .mobileDetail {
+    display: grid;
+    gap: 12px;
+  }
+
   .headerActions {
     width: 100%;
     justify-content: stretch;
@@ -479,6 +606,11 @@
     width: 100%;
   }
 
+  .tableWrapper,
+  .pagination {
+    display: none;
+  }
+
   .table {
     font-size: 12px;
   }
@@ -490,6 +622,15 @@
 
   .name {
     max-width: 120px;
+  }
+
+  .mobileDetailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .mobileDetailActions,
+  .mobileDetailHeader {
+    flex-direction: column;
   }
 }
 

@@ -2,6 +2,18 @@
 .header h1 { margin: 0; color: var(--ink); }
 .header p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .desktopToolbar, .customerBoard, .content { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; box-shadow: 0 4px 16px var(--shadow); }
+.mobilePicker { display: none; background: white; border: 1px solid var(--bg-soft); border-radius: 14px; box-shadow: 0 4px 16px var(--shadow); padding: 14px; gap: 12px; }
+.mobilePickerHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.mobilePickerHeader h2 { margin: 0; color: var(--ink); font-size: 18px; }
+.mobilePickerHeader p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.mobilePickerHeader strong { color: var(--ink); font-size: 24px; line-height: 1; }
+.mobileCustomerList { display: grid; gap: 10px; }
+.mobileCustomerCard { width: 100%; border: 1px solid var(--bg-soft); background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); border-radius: 14px; padding: 14px; text-align: left; display: grid; gap: 10px; cursor: pointer; }
+.mobileCustomerTop { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.mobileCustomerTop strong { color: var(--ink); font-size: 15px; }
+.mobileCustomerTop span { color: #b91c1c; font-size: 13px; font-weight: 700; text-align: right; }
+.mobileCustomerMeta { display: grid; gap: 4px; }
+.mobileCustomerMeta span { color: var(--muted); font-size: 12px; }
 .desktopToolbar { padding: 14px; display: grid; gap: 12px; }
 .searchBar { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
 .searchBar span, .boardHeader span, .sectionMeta, .statChip span, .formGrid span { color: var(--muted); font-size: 12px; text-transform: uppercase; }
@@ -95,6 +107,7 @@
 .confirmWarning { border-radius: 12px; padding: 12px; background: rgba(185, 28, 28, 0.08); color: #991b1b; border: 1px solid rgba(185, 28, 28, 0.16); font-size: 13px; }
 .confirmActions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .pageDetailOnly .header,
+.pageDetailOnly .mobilePicker,
 .pageDetailOnly .desktopToolbar,
 .pageDetailOnly .customerBoard { display: none; }
 @media print {
@@ -120,6 +133,8 @@
   .printSummaryBar { flex-direction: column; align-items: flex-start; }
 }
 @media (max-width: 860px) {
+  .mobilePicker { display: grid; }
+  .desktopToolbar, .customerBoard { display: none; }
   .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .toolbarActions, .accountActions, .modeSwitcher, .confirmActions, .formActions, .filterPills { flex-direction: column; }
   .modalOverlay { padding: 12px; }
