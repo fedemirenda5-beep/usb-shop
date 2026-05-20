@@ -474,13 +474,19 @@ def _verify_session(token: str) -> Optional[dict]:
 
 def _session_cookie_options(request: Optional[Request]) -> dict[str, Any]:
     host = str((request.headers.get("host") if request else "") or "").lower()
+    host_without_port = host.split(":", 1)[0]
     forwarded_proto = str((request.headers.get("x-forwarded-proto") if request else "") or "").lower()
     scheme = str((request.url.scheme if request else "") or "").lower()
-    is_local_host = host.startswith("localhost") or host.startswith("127.0.0.1")
+    is_local_host = host_without_port.startswith("localhost") or host_without_port.startswith("127.0.0.1")
     secure = not is_local_host and (forwarded_proto == "https" or scheme == "https")
+    domain = None
+    if host_without_port == "api.usbshop.com.ar" or host_without_port.endswith(".usbshop.com.ar"):
+        domain = "usbshop.com.ar"
     return {
         "secure": secure,
         "samesite": "none" if secure else "lax",
+        "domain": domain,
+        "path": "/",
     }
 
 
@@ -2919,6 +2925,8 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
             httponly=True,
             secure=bool(cookie_options["secure"]),
             samesite=str(cookie_options["samesite"]),
+            domain=cookie_options["domain"],
+            path=str(cookie_options["path"]),
         )
     return {"username": row["username"], "role": row["role"]}
 
@@ -2931,6 +2939,8 @@ def auth_logout(response: Response, request: Request) -> dict:
             SESSION_COOKIE,
             secure=bool(cookie_options["secure"]),
             samesite=str(cookie_options["samesite"]),
+            domain=cookie_options["domain"],
+            path=str(cookie_options["path"]),
         )
     return {"status": "ok"}
 
