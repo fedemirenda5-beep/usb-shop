@@ -70,6 +70,8 @@
 .formActions { display: flex; gap: 10px; flex-wrap: wrap; }
 .invoiceList { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow: auto; }
 .invoiceItem { display: flex; justify-content: space-between; gap: 10px; padding: 10px; border-radius: 12px; background: var(--bg); border: 1px solid var(--bg-soft); }
+.invoiceMeta { display: grid; gap: 4px; }
+.invoiceActions { display: flex; gap: 12px; flex-wrap: wrap; }
 .invoiceAmounts { display: grid; justify-items: end; gap: 4px; }
 .invoiceAmounts em { font-style: normal; font-weight: 700; color: var(--purple); }
 .modeSwitcher { display: flex; gap: 8px; }

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './comprobantes.module.css';
 
@@ -209,17 +209,6 @@ export default function ComprobantesPage() {
     void openInvoice(invoiceId, 'view');
   }, [searchParams]);
 
-  useEffect(() => {
-    if (!pendingOutput || pendingOutput === 'view' || !detail || detailLoading) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      window.print();
-      setPendingOutput(null);
-    }, 180);
-    return () => window.clearTimeout(timer);
-  }, [pendingOutput, detail, detailLoading]);
-
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return items;
@@ -265,16 +254,6 @@ export default function ComprobantesPage() {
     } finally {
       setDeletingId(null);
     }
-  };
-
-  const printDocument = () => {
-    setPendingOutput(null);
-    window.print();
-  };
-
-  const exportPdf = () => {
-    setPendingOutput(null);
-    window.print();
   };
 
   return (
@@ -389,7 +368,7 @@ export default function ComprobantesPage() {
                           className={styles.pdfButton}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void openInvoice(item.id, 'pdf');
+                            window.open(`/admin/comprobantes/imprimir?invoice=${item.id}`, '_blank', 'noopener,noreferrer');
                           }}
                         >
                           PDF
@@ -399,7 +378,7 @@ export default function ComprobantesPage() {
                           className={styles.printButton}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void openInvoice(item.id, 'print');
+                            window.open(`/admin/comprobantes/imprimir?invoice=${item.id}`, '_blank', 'noopener,noreferrer');
                           }}
                         >
                           Impr.
@@ -435,10 +414,24 @@ export default function ComprobantesPage() {
         >
           <aside className={styles.detailModal} onClick={(event) => event.stopPropagation()}>
             <div className={styles.detailToolbar}>
-              <button type="button" className={styles.pdfButton} onClick={exportPdf}>
+              <button
+                type="button"
+                className={styles.pdfButton}
+                onClick={() => {
+                  if (!detail?.invoice.id) return;
+                  window.open(`/admin/comprobantes/imprimir?invoice=${detail.invoice.id}`, '_blank', 'noopener,noreferrer');
+                }}
+              >
                 Exportar PDF
               </button>
-              <button type="button" className={styles.printButton} onClick={printDocument}>
+              <button
+                type="button"
+                className={styles.printButton}
+                onClick={() => {
+                  if (!detail?.invoice.id) return;
+                  window.open(`/admin/comprobantes/imprimir?invoice=${detail.invoice.id}`, '_blank', 'noopener,noreferrer');
+                }}
+              >
                 Imprimir
               </button>
               <button
@@ -585,18 +578,7 @@ export default function ComprobantesPage() {
                           {detail.items.map((item) => (
                             <tr key={item.id}>
                               <td>{item.quantity}</td>
-                              <td className={styles.productDescriptionCell}>
-                                <div className={styles.productDetailCell}>
-                                  {resolveImageUrl(item.image_path, getApiBaseUrl()) ? (
-                                    <img
-                                      src={resolveImageUrl(item.image_path, getApiBaseUrl()) || ''}
-                                      alt={item.product_name}
-                                      className={styles.productDetailImage}
-                                    />
-                                  ) : null}
-                                  <span>{item.product_name}</span>
-                                </div>
-                              </td>
+                              <td className={styles.productDescriptionCell}>{item.product_name}</td>
                               <td>{money(item.unit_price)}</td>
                               <td className={styles.total}>{money(item.line_total)}</td>
                             </tr>

@@ -7,6 +7,10 @@
 .layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(360px, 0.9fr); gap: 18px; align-items: start; }
 .tablePane, .detailPane { min-width: 0; }
 .detailPane { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; padding: 16px; box-shadow: 0 4px 16px var(--shadow); }
+.pagePrintMode .header,
+.pagePrintMode .tablePane { display: none; }
+.printScreen { display: grid; gap: 12px; }
+.printScreenToolbar { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .modalOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; padding: 24px; z-index: 220; }
 .detailModal { width: min(1180px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: white; border: 1px solid var(--bg-soft); border-radius: 18px; padding: 16px; box-shadow: 0 20px 48px rgba(15, 23, 42, 0.2); }
 .confirmOverlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.58); display: grid; place-items: center; padding: 24px; z-index: 240; }
@@ -204,7 +208,7 @@
   .confirmActions { flex-direction: column; }
 }
 @media print {
-  .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay { display: none !important; }
+  .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay, .printScreenToolbar { display: none !important; }
   .page, .layout, .detailPane, .detailModal, .printArea { display: block; }
   .page { width: 100%; margin: 0; padding: 0; }
   .documentShell { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 100%; min-height: calc(297mm - 5mm); box-sizing: border-box; }

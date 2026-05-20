@@ -1086,9 +1086,20 @@ export default function CuentasCorrientesPage() {
                 ) : (
                   invoices.map((invoice) => (
                     <article key={invoice.id} className={styles.invoiceItem}>
-                      <div>
+                      <div className={styles.invoiceMeta}>
                         <strong>#{invoice.id} - {invoice.document_type || 'Comprobante'}</strong>
                         <span>{formatDate(invoice.created_at)}</span>
+                        <div className={styles.invoiceActions}>
+                          <Link href={`/admin/comprobantes?invoice=${invoice.id}`} className={styles.linkButton}>
+                            Ver
+                          </Link>
+                          <Link href={`/admin/comprobantes/imprimir?invoice=${invoice.id}`} className={styles.linkButton}>
+                            Imprimir
+                          </Link>
+                          <Link href={`/admin/comprobantes/imprimir?invoice=${invoice.id}`} className={styles.linkButton}>
+                            PDF
+                          </Link>
+                        </div>
                       </div>
                       <div className={styles.invoiceAmounts}>
                         <em>{money(invoice.total)}</em>
