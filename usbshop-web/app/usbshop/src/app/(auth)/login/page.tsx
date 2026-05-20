@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import styles from './login.module.css';
 
 export default function LoginPage() {
@@ -13,7 +12,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
   const [targetPath, setTargetPath] = useState('/admin');
-  const [apiBaseUrl, setApiBaseUrl] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -24,17 +22,6 @@ export default function LoginPage() {
     if (from && from.startsWith('/admin') && !from.startsWith('//')) {
       setTargetPath(from);
     }
-  }, []);
-
-  useEffect(() => {
-    const syncApiBaseUrl = async () => {
-      try {
-        await loadRuntimeConfig();
-      } finally {
-        setApiBaseUrl(getApiBaseUrl());
-      }
-    };
-    void syncApiBaseUrl();
   }, []);
 
   useEffect(() => {
@@ -63,7 +50,7 @@ export default function LoginPage() {
       <div className={styles.card}>
         <div className={styles.header}>
           <h1>Admin - USB Shop</h1>
-          <p>Ingresa tus credenciales para continuar</p>
+          <p>Ingresa con tu usuario y contrasena para abrir el panel.</p>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
@@ -104,13 +91,6 @@ export default function LoginPage() {
 
         <div className={styles.footer}>
           <p>Sistema administrador - USB Shop</p>
-          <div className={styles.debugBox}>
-            <p><strong>API:</strong> {apiBaseUrl || 'cargando...'}</p>
-            <p><strong>Sesion verificada:</strong> {isVerified ? 'si' : 'no'}</p>
-            <p><strong>Autenticado:</strong> {isAuthenticated ? 'si' : 'no'}</p>
-            <p><strong>Destino:</strong> {targetPath}</p>
-            <p><strong>Error:</strong> {localError || error || 'sin error'}</p>
-          </div>
         </div>
       </div>
     </div>

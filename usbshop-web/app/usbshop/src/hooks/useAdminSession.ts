@@ -16,11 +16,8 @@ type SessionSnapshot = {
   isVerified: boolean;
 };
 
-const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const CONFIG_TIMEOUT_MS = 5000;
 const SESSION_REQUEST_TIMEOUT_MS = 10000;
-
-const isBrowser = typeof window !== 'undefined';
 
 const emptySnapshot = (): SessionSnapshot => ({
   user: null,
@@ -28,53 +25,6 @@ const emptySnapshot = (): SessionSnapshot => ({
   error: null,
   isVerified: false,
 });
-
-const restoreSnapshot = (): SessionSnapshot => {
-  if (!isBrowser) {
-    return emptySnapshot();
-  }
-  try {
-    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (!raw) {
-      return emptySnapshot();
-    }
-    const parsed = JSON.parse(raw) as { user?: AdminUser | null } | null;
-    const user =
-      parsed?.user &&
-      typeof parsed.user.username === 'string' &&
-      typeof parsed.user.role === 'string'
-        ? parsed.user
-        : null;
-    return {
-      user,
-      isLoading: user ? false : true,
-      error: null,
-      isVerified: false,
-    };
-  } catch {
-    return emptySnapshot();
-  }
-};
-
-const persistSnapshot = (snapshot: SessionSnapshot) => {
-  if (!isBrowser) {
-    return;
-  }
-  try {
-    if (!snapshot.user) {
-      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-      return;
-    }
-    window.sessionStorage.setItem(
-      SESSION_STORAGE_KEY,
-      JSON.stringify({
-        user: snapshot.user,
-      })
-    );
-  } catch {
-    return;
-  }
-};
 
 const getFriendlySessionError = (err: unknown, fallback: string) => {
   if (!(err instanceof Error)) {
@@ -127,7 +77,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
   }
 };
 
-let sessionSnapshot: SessionSnapshot = restoreSnapshot();
+let sessionSnapshot: SessionSnapshot = emptySnapshot();
 let sessionRequest: Promise<AdminUser | null> | null = null;
 const listeners = new Set<(snapshot: SessionSnapshot) => void>();
 
@@ -137,7 +87,6 @@ const emitSnapshot = () => {
 
 const updateSnapshot = (next: Partial<SessionSnapshot>) => {
   sessionSnapshot = { ...sessionSnapshot, ...next };
-  persistSnapshot(sessionSnapshot);
   emitSnapshot();
 };
 
@@ -239,7 +188,6 @@ export function useAdminSession() {
       console.error('Error during logout:', err);
     } finally {
       sessionSnapshot = { user: null, isLoading: false, error: null, isVerified: true };
-      persistSnapshot(sessionSnapshot);
       emitSnapshot();
       router.push('/login');
     }
