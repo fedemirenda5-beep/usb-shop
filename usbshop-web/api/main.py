@@ -4415,27 +4415,45 @@ def admin_cc_overview(
             ORDER BY LOWER(TRIM(name)) ASC
             """
         ).fetchall()
-        movement_rows = conn.execute(
+        aggregate_rows = conn.execute(
             """
-            SELECT am.id, am.customer_id, am.amount, am.movement_type, am.entry_kind, am.reference,
-                   am.invoice_id, am.created_at, am.payment_method, i.due_date, i.document_type
+            SELECT
+                am.customer_id,
+                SUM(CASE WHEN UPPER(COALESCE(am.movement_type, '')) = 'DEBIT' THEN COALESCE(am.amount, 0) ELSE 0 END) AS debit,
+                SUM(CASE WHEN UPPER(COALESCE(am.movement_type, '')) = 'CREDIT' THEN COALESCE(am.amount, 0) ELSE 0 END) AS credit,
+                SUM(CASE WHEN UPPER(COALESCE(am.movement_type, '')) = 'CREDIT' AND UPPER(COALESCE(am.entry_kind, '')) = 'PAYMENT' THEN COALESCE(am.amount, 0) ELSE 0 END) AS payments,
+                SUM(CASE WHEN UPPER(COALESCE(am.movement_type, '')) = 'CREDIT' AND UPPER(COALESCE(am.entry_kind, '')) = 'CREDIT_NOTE' THEN COALESCE(am.amount, 0) ELSE 0 END) AS credit_notes,
+                SUM(CASE WHEN UPPER(COALESCE(am.movement_type, '')) = 'CREDIT' AND UPPER(COALESCE(am.entry_kind, '')) = 'WRITEOFF' THEN COALESCE(am.amount, 0) ELSE 0 END) AS writeoffs,
+                SUM(CASE WHEN UPPER(COALESCE(am.entry_kind, '')) = 'ADJUSTMENT' THEN
+                    CASE WHEN UPPER(COALESCE(am.movement_type, '')) = 'DEBIT' THEN COALESCE(am.amount, 0) ELSE -COALESCE(am.amount, 0) END
+                ELSE 0 END) AS adjustments,
+                SUM(CASE WHEN UPPER(COALESCE(am.entry_kind, '')) = 'OPENING_BALANCE' THEN COALESCE(am.amount, 0) ELSE 0 END) AS opening_balance,
+                MAX(am.created_at) AS last_movement
             FROM account_movements am
-            LEFT JOIN invoices i ON i.id = am.invoice_id
             WHERE am.customer_id IS NOT NULL
             """
             + _active_account_movements_clause(conn, "am")
             + """
-            ORDER BY am.created_at ASC, am.id ASC
+            GROUP BY am.customer_id
             """
         ).fetchall()
-        movements_by_customer: dict[int, list[Any]] = {}
-        for row in movement_rows:
+        aggregates_by_customer: dict[int, dict[str, Any]] = {}
+        for row in aggregate_rows:
             raw_customer_id = row["customer_id"] if isinstance(row, dict) else row[1]
             try:
                 customer_id = int(raw_customer_id)
             except (TypeError, ValueError):
                 continue
-            movements_by_customer.setdefault(customer_id, []).append(row)
+            aggregates_by_customer[customer_id] = {
+                "debit": _safe_finite_float(row["debit"]),
+                "credit": _safe_finite_float(row["credit"]),
+                "payments": _safe_finite_float(row["payments"]),
+                "credit_notes": _safe_finite_float(row["credit_notes"]),
+                "writeoffs": _safe_finite_float(row["writeoffs"]),
+                "adjustments": _safe_finite_float(row["adjustments"]),
+                "opening_balance": _safe_finite_float(row["opening_balance"]),
+                "last_movement": _safe_text(row["last_movement"]),
+            }
         customers: list[dict[str, Any]] = []
         total_debit = 0.0
         total_credit = 0.0
@@ -4448,26 +4466,37 @@ def admin_cc_overview(
         total_adjustments = 0.0
         for row in customer_rows:
             customer_id = int(row["id"])
-            customer_movements = movements_by_customer.get(customer_id, [])
-            if not customer_movements and str(row["sale_mode"] or "").strip().upper() != "CUENTA_CORRIENTE":
+            aggregate = aggregates_by_customer.get(customer_id)
+            if aggregate is None and str(row["sale_mode"] or "").strip().upper() != "CUENTA_CORRIENTE":
                 continue
-            debit = sum(
-                _safe_finite_float(item["amount"])
-                for item in customer_movements
-                if str(item["movement_type"] or "").upper() == "DEBIT"
-            )
-            credit = sum(
-                _safe_finite_float(item["amount"])
-                for item in customer_movements
-                if str(item["movement_type"] or "").upper() == "CREDIT"
-            )
+            debit = _safe_finite_float(aggregate["debit"] if aggregate else 0)
+            credit = _safe_finite_float(aggregate["credit"] if aggregate else 0)
             balance = round(debit - credit, 2)
             if not math.isfinite(balance):
                 continue
             if _balance_is_zero(balance):
                 continue
-            aging = _aging_from_movements(customer_movements)
-            classification = aging.get("classification", {})
+            pending = max(balance, 0.0)
+            classification = {
+                "pending": round(pending, 2),
+                "overdue": 0.0,
+                "collected": round(_safe_finite_float(aggregate["payments"] if aggregate else 0), 2),
+                "payments": round(_safe_finite_float(aggregate["payments"] if aggregate else 0), 2),
+                "credit_notes": round(_safe_finite_float(aggregate["credit_notes"] if aggregate else 0), 2),
+                "writeoffs": round(_safe_finite_float(aggregate["writeoffs"] if aggregate else 0), 2),
+                "adjustments": round(_safe_finite_float(aggregate["adjustments"] if aggregate else 0), 2),
+                "opening_balance": round(_safe_finite_float(aggregate["opening_balance"] if aggregate else 0), 2),
+            }
+            aging = {
+                "current": round(pending, 2),
+                "d1_30": 0.0,
+                "d31_60": 0.0,
+                "d61_90": 0.0,
+                "d90_plus": 0.0,
+                "total": round(pending, 2),
+                "classification": classification,
+                "open_items": [],
+            }
             total_debit += debit
             total_credit += credit
             total_balance += balance
@@ -4477,7 +4506,6 @@ def admin_cc_overview(
             total_credit_notes += _safe_finite_float(classification.get("credit_notes"))
             total_writeoffs += _safe_finite_float(classification.get("writeoffs"))
             total_adjustments += _safe_finite_float(classification.get("adjustments"))
-            last_movement = customer_movements[-1]["created_at"] if customer_movements else None
             customers.append(
                 {
                     "id": customer_id,
@@ -4494,7 +4522,7 @@ def admin_cc_overview(
                     "balance": balance,
                     "aging": aging,
                     "classification": classification,
-                    "last_movement": _safe_text(last_movement),
+                    "last_movement": aggregate["last_movement"] if aggregate else None,
                 }
             )
         customers.sort(key=lambda item: ((item["name"] or "").lower(), item["id"]))
