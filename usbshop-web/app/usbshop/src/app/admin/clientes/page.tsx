@@ -493,7 +493,7 @@ export default function ClientesPage() {
                       </div>
                       <div className={styles.documentCardRight}>
                         <em>{formatCurrency(document.total)}</em>
-                        <Link href="/admin/comprobantes" className={styles.secondaryButton}>
+                        <Link href={`/admin/comprobantes?invoice=${document.id}`} className={styles.secondaryButton}>
                           Ver en comprobantes
                         </Link>
                       </div>
