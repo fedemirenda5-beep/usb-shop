@@ -203,7 +203,8 @@
 @media print {
   .header, .tablePane, .printButton, .pdfButton, .createPanel, .detailToolbar, .detailInlineActions, .confirmOverlay { display: none !important; }
   .page, .layout, .detailPane, .detailModal, .printArea { display: block; }
-  .documentShell { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 100%; min-height: calc(297mm - 12mm); box-sizing: border-box; }
+  .page { width: 100%; margin: 0; padding: 0; }
+  .documentShell { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 100%; min-height: calc(297mm - 5mm); box-sizing: border-box; }
   .modalOverlay { position: static; inset: auto; background: white; padding: 0; display: block; }
   .detailPane, .detailModal, .tableWrap, .documentTableWrap, .documentShell { box-shadow: none; border: 0; padding: 0; background: white; }
   .printArea { gap: 0; }
@@ -247,5 +248,5 @@
   .signatureRow { gap: 14px; padding-top: 10px; }
   .signatureBox { min-height: 54px; padding-top: 6px; font-size: 10.5px; }
   .total, .movementItem em { color: #111827; }
-  @page { size: A4; margin: 6mm; }
+  @page { size: A4; margin: 2.5mm; }
 }
