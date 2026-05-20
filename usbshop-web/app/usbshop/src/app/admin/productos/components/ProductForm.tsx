@@ -114,8 +114,8 @@ const dedupeImageValues = (values: string[]) => {
 
 const buildInitialImages = (initialData?: ProductFormData & { id?: number }) => {
   const entries = dedupeImageValues([
-    ...(Array.isArray(initialData?.image_urls) ? initialData.image_urls : []),
     initialData?.image_path || '',
+    ...(Array.isArray(initialData?.image_urls) ? initialData.image_urls : []),
   ]);
   return Array.from({ length: MAX_PRODUCT_IMAGES }, (_, index) => entries[index] || '');
 };

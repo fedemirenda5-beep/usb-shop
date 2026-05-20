@@ -5524,6 +5524,9 @@ def admin_cc_create_movement(
             SELECT amount, movement_type
             FROM account_movements
             WHERE customer_id = ?
+            """
+            + _active_account_movements_clause(conn)
+            + """
             ORDER BY created_at ASC, id ASC
             """,
             (customer_id,),
@@ -5619,6 +5622,9 @@ def admin_cc_update_movement(
             SELECT amount, movement_type
             FROM account_movements
             WHERE customer_id = ?
+            """
+            + _active_account_movements_clause(conn)
+            + """
             ORDER BY created_at ASC, id ASC
             """,
             (customer_id,),
@@ -5675,6 +5681,10 @@ def admin_reports_overview(
             """
             SELECT customer_id, amount, movement_type, created_at
             FROM account_movements
+            WHERE 1 = 1
+            """
+            + _active_account_movements_clause(conn)
+            + """
             ORDER BY created_at ASC, id ASC
             """
         ).fetchall()
