@@ -1,11 +1,42 @@
+const isPrivateIpv4Host = (host: string) => {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return false;
+  }
+  const octets = host.split(".").map((part) => Number(part));
+  if (octets.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+    return false;
+  }
+  return (
+    octets[0] === 10 ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168)
+  );
+};
+
+const isLocalLikeHost = (host: string) =>
+  host === "localhost" ||
+  host === "127.0.0.1" ||
+  host === "::1" ||
+  isPrivateIpv4Host(host);
+
+const getLocalApiBaseUrl = (host: string) => {
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+  }
+  return `http://${host}:8000`;
+};
+
 const DEFAULT_API_BASE_URL = (() => {
+  if (process.env.NEXT_PUBLIC_API_BASE_URL?.trim()) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL.trim();
+  }
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    if (isLocalLikeHost(host)) {
+      return getLocalApiBaseUrl(host);
     }
-    if (host && host !== "localhost" && host !== "127.0.0.1") {
-      return "https://usbshop-api.onrender.com";
+    if (host) {
+      return "https://api.usbshop.com.ar";
     }
   }
   return process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
@@ -15,6 +46,9 @@ let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
 let runtimeConfigLoaded = false;
 let runtimeConfigPromise: Promise<string | null> | null = null;
+
+const getRuntimeConfigUrl = (): string =>
+  typeof window !== "undefined" ? `${window.location.origin}/usbshop-config.json` : "/usbshop-config.json";
 
 export const getApiBaseUrl = () => runtimeApiBaseUrl;
 export const getOrderSecret = () => runtimeOrderSecret;
@@ -40,6 +74,12 @@ export async function loadRuntimeConfig(): Promise<string | null> {
   if (runtimeConfigLoaded || typeof window === "undefined") {
     return null;
   }
+  if (process.env.NEXT_PUBLIC_API_BASE_URL?.trim()) {
+    const envBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL.trim();
+    setRuntimeApiBaseUrl(envBaseUrl);
+    runtimeConfigLoaded = true;
+    return envBaseUrl;
+  }
   if (runtimeConfigPromise) {
     return runtimeConfigPromise;
   }
@@ -47,7 +87,8 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     let shouldMarkLoaded = false;
     try {
       const host = window.location.hostname;
-      const response = await fetch("/usbshop-config.json", { cache: "no-store" });
+      const configUrl = getRuntimeConfigUrl();
+      const response = await fetch(configUrl, { cache: "no-store" });
       if (!response.ok) {
         shouldMarkLoaded = true;
         return null;
@@ -62,7 +103,7 @@ export async function loadRuntimeConfig(): Promise<string | null> {
         shouldMarkLoaded = true;
         return null;
       }
-      if ((host === "localhost" || host === "127.0.0.1") && /^https?:\/\//i.test(apiBaseUrl)) {
+      if (isLocalLikeHost(host) && /^https?:\/\//i.test(apiBaseUrl)) {
         shouldMarkLoaded = true;
         return runtimeApiBaseUrl;
       }
@@ -192,13 +233,19 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   if (hasBody && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    credentials: "include",
-    headers,
-  });
-  if (!response.ok) {
-    throw new Error("API request failed");
+  const url = `${getApiBaseUrl()}${path}`;
+  try {
+    const response = await fetch(url, {
+      ...init,
+      credentials: "include",
+      headers,
+    });
+    if (!response.ok) {
+      throw new Error(`API request failed (${response.status} ${response.statusText}) ${url}`);
+    }
+    return (await response.json()) as T;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`API request failed: ${url} -> ${message}`);
   }
-  return (await response.json()) as T;
 }

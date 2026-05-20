@@ -116,6 +116,22 @@ const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
 };
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    if (
+      normalized === 'failed to fetch' ||
+      normalized === 'fetch failed' ||
+      normalized.includes('networkerror') ||
+      normalized.includes('load failed')
+    ) {
+      return 'No se pudo conectar con el servidor. Revisa la API y volve a intentar.';
+    }
+    return error.message;
+  }
+  return fallback;
+};
+
 export default function CuentasCorrientesPage() {
   const { user } = useAdminSession();
   const detailRef = useRef<HTMLElement | null>(null);
@@ -382,7 +398,7 @@ export default function CuentasCorrientesPage() {
       try {
         await loadOverview();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando cuentas corrientes');
+        setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
       } finally {
         setLoading(false);
       }
@@ -397,7 +413,7 @@ export default function CuentasCorrientesPage() {
       try {
         await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando el detalle');
+        setError(getErrorMessage(err, 'Error cargando el detalle'));
       }
     };
     void loadSelectedCustomer();
@@ -461,7 +477,7 @@ export default function CuentasCorrientesPage() {
         entry_kind: movementMode === 'payment' ? 'PAYMENT' : 'ADJUSTMENT',
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardando movimiento');
+      setError(getErrorMessage(err, 'Error guardando movimiento'));
     } finally {
       setSaving(false);
     }
@@ -652,7 +668,7 @@ export default function CuentasCorrientesPage() {
         await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando cuentas corrientes');
+      setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
     }
   };
 
@@ -688,7 +704,7 @@ export default function CuentasCorrientesPage() {
       setShowDateRangeModal(false);
       window.setTimeout(() => window.print(), 180);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo preparar la exportación');
+      setError(getErrorMessage(err, 'No se pudo preparar la exportación'));
     }
   };
 
@@ -715,7 +731,7 @@ export default function CuentasCorrientesPage() {
       setSelectedId(null);
       await loadOverview();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error eliminando cuenta');
+      setError(getErrorMessage(err, 'Error eliminando cuenta'));
     } finally {
       setDeleting(false);
     }
