@@ -1303,6 +1303,18 @@ def _safe_finite_float(value: Any, default: float = 0.0) -> float:
     return parsed
 
 
+def _safe_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        text = str(value)
+    except Exception:
+        return None
+    if not text:
+        return text
+    return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+
+
 def _can_view_profit_metrics(role: Any) -> bool:
     return str(role or "").strip().lower() != ROLE_STAFF
 
@@ -4469,20 +4481,20 @@ def admin_cc_overview(
             customers.append(
                 {
                     "id": customer_id,
-                    "name": row["name"],
-                    "email": row["email"],
-                    "phone": row["phone"],
-                    "sale_mode": row["sale_mode"],
-                    "locality": row["locality"],
-                    "address": row["address"],
-                    "tax_condition": row["tax_condition"],
-                    "cuit": row["cuit"],
+                    "name": _safe_text(row["name"]) or "Sin nombre",
+                    "email": _safe_text(row["email"]),
+                    "phone": _safe_text(row["phone"]),
+                    "sale_mode": _safe_text(row["sale_mode"]),
+                    "locality": _safe_text(row["locality"]),
+                    "address": _safe_text(row["address"]),
+                    "tax_condition": _safe_text(row["tax_condition"]),
+                    "cuit": _safe_text(row["cuit"]),
                     "debit": round(debit, 2),
                     "credit": round(credit, 2),
                     "balance": balance,
                     "aging": aging,
                     "classification": classification,
-                    "last_movement": last_movement,
+                    "last_movement": _safe_text(last_movement),
                 }
             )
         customers.sort(key=lambda item: ((item["name"] or "").lower(), item["id"]))
@@ -4575,15 +4587,15 @@ def admin_cc_customer_detail(
                     "entry_label": _movement_entry_label(entry_kind),
                     "amount": amount,
                     "signed_amount": signed,
-                    "reference": row["reference"],
+                    "reference": _safe_text(row["reference"]),
                     "invoice_id": row["invoice_id"],
-                    "created_at": row["created_at"],
-                    "payment_method": row["payment_method"],
-                    "document_type": row["document_type"],
+                    "created_at": _safe_text(row["created_at"]),
+                    "payment_method": _safe_text(row["payment_method"]),
+                    "document_type": _safe_text(row["document_type"]),
                     "invoice_total": _safe_finite_float(row["total"]) if row["total"] is not None else None,
-                    "due_date": row["due_date"],
+                    "due_date": _safe_text(row["due_date"]),
                     "remaining_amount": remaining,
-                    "status_label": status_label,
+                    "status_label": _safe_text(status_label),
                     "running_balance": running_balance,
                     "editable": not (int(row["invoice_id"] or 0) > 0 and (movement_type == "DEBIT" or entry_kind == "SALE")),
                 }
@@ -4591,14 +4603,14 @@ def admin_cc_customer_detail(
         return {
             "customer": {
                 "id": int(customer["id"]),
-                "name": customer["name"],
-                "email": customer["email"],
-                "phone": customer["phone"],
-                "sale_mode": customer["sale_mode"],
-                "locality": customer["locality"],
-                "address": customer["address"],
-                "tax_condition": customer["tax_condition"],
-                "cuit": customer["cuit"],
+                "name": _safe_text(customer["name"]) or "Sin nombre",
+                "email": _safe_text(customer["email"]),
+                "phone": _safe_text(customer["phone"]),
+                "sale_mode": _safe_text(customer["sale_mode"]),
+                "locality": _safe_text(customer["locality"]),
+                "address": _safe_text(customer["address"]),
+                "tax_condition": _safe_text(customer["tax_condition"]),
+                "cuit": _safe_text(customer["cuit"]),
             },
             "balance": _customer_current_balance_from_rows(movements),
             "aging": aging,
