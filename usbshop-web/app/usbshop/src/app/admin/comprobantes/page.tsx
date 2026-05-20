@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './comprobantes.module.css';
 
@@ -585,7 +585,18 @@ export default function ComprobantesPage() {
                           {detail.items.map((item) => (
                             <tr key={item.id}>
                               <td>{item.quantity}</td>
-                              <td className={styles.productDescriptionCell}>{item.product_name}</td>
+                              <td className={styles.productDescriptionCell}>
+                                <div className={styles.productDetailCell}>
+                                  {resolveImageUrl(item.image_path, getApiBaseUrl()) ? (
+                                    <img
+                                      src={resolveImageUrl(item.image_path, getApiBaseUrl()) || ''}
+                                      alt={item.product_name}
+                                      className={styles.productDetailImage}
+                                    />
+                                  ) : null}
+                                  <span>{item.product_name}</span>
+                                </div>
+                              </td>
                               <td>{money(item.unit_price)}</td>
                               <td className={styles.total}>{money(item.line_total)}</td>
                             </tr>
