@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './comprobantes.module.css';
 
@@ -49,7 +50,6 @@ type InvoiceDetail = {
     quantity: number;
     unit_price: number;
     line_total: number;
-    image_path?: string | null;
   }>;
   payments: Array<{
     id: number;
@@ -106,7 +106,6 @@ export default function ComprobantesPage() {
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
   const [detailOnly, setDetailOnly] = useState(false);
-  const [pendingOutput, setPendingOutput] = useState<'view' | 'print' | 'pdf' | null>(null);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
@@ -159,7 +158,6 @@ export default function ComprobantesPage() {
       if (detailRequestRef.current !== requestId) return null;
       setDetailError(err instanceof Error ? err.message : 'Error cargando detalle');
       setDetail(null);
-      setPendingOutput(null);
       return null;
     } finally {
       if (detailRequestRef.current === requestId) {
@@ -168,12 +166,11 @@ export default function ComprobantesPage() {
     }
   }
 
-  async function openInvoice(invoiceId: number, output: 'view' | 'print' | 'pdf' = 'view') {
+  async function openInvoice(invoiceId: number, _output: 'view' | 'print' | 'pdf' = 'view') {
     setSelectedId(invoiceId);
     setDetail(null);
     setDetailError('');
     setDetailOnly(true);
-    setPendingOutput(output);
     const payload = await loadDetail(invoiceId);
     return payload;
   }
@@ -228,6 +225,15 @@ export default function ComprobantesPage() {
   const openBudgetForInvoice = (invoice: Invoice) => {
     setPendingConfirmInvoice(null);
     router.push(`/admin/generar-comprobante?budget_invoice_id=${invoice.id}`);
+  };
+
+  const printInvoice = async (invoiceId: number) => {
+    try {
+      setError('');
+      await openAdminInvoicePrint(invoiceId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo preparar la impresion');
+    }
   };
 
   const deleteInvoice = async (invoice: Invoice) => {
@@ -363,22 +369,22 @@ export default function ComprobantesPage() {
                             Facturar
                           </button>
                         ) : null}
-                        <button
+                            <button
                           type="button"
                           className={styles.pdfButton}
-                          onClick={(event) => {
+                          onClick={async (event) => {
                             event.stopPropagation();
-                            window.open(`/admin/comprobantes/imprimir?invoice=${item.id}`, '_blank', 'noopener,noreferrer');
+                            await printInvoice(item.id);
                           }}
                         >
                           PDF
                         </button>
-                        <button
+                          <button
                           type="button"
                           className={styles.printButton}
-                          onClick={(event) => {
+                          onClick={async (event) => {
                             event.stopPropagation();
-                            window.open(`/admin/comprobantes/imprimir?invoice=${item.id}`, '_blank', 'noopener,noreferrer');
+                            await printInvoice(item.id);
                           }}
                         >
                           Impr.
@@ -408,7 +414,6 @@ export default function ComprobantesPage() {
         <div
           className={styles.modalOverlay}
           onClick={() => {
-            setPendingOutput(null);
             setDetailOnly(false);
           }}
         >
@@ -417,9 +422,9 @@ export default function ComprobantesPage() {
               <button
                 type="button"
                 className={styles.pdfButton}
-                onClick={() => {
+                onClick={async () => {
                   if (!detail?.invoice.id) return;
-                  window.open(`/admin/comprobantes/imprimir?invoice=${detail.invoice.id}`, '_blank', 'noopener,noreferrer');
+                  await printInvoice(detail.invoice.id);
                 }}
               >
                 Exportar PDF
@@ -427,9 +432,9 @@ export default function ComprobantesPage() {
               <button
                 type="button"
                 className={styles.printButton}
-                onClick={() => {
+                onClick={async () => {
                   if (!detail?.invoice.id) return;
-                  window.open(`/admin/comprobantes/imprimir?invoice=${detail.invoice.id}`, '_blank', 'noopener,noreferrer');
+                  await printInvoice(detail.invoice.id);
                 }}
               >
                 Imprimir
@@ -438,7 +443,6 @@ export default function ComprobantesPage() {
                 type="button"
                 className={styles.secondaryButton}
                 onClick={() => {
-                  setPendingOutput(null);
                   setDetailOnly(false);
                 }}
               >

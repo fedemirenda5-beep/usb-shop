@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import styles from './cuentas-corrientes.module.css';
@@ -510,6 +511,15 @@ export default function CuentasCorrientesPage() {
     () => customers.find((customer) => customer.id === selectedId) || null,
     [customers, selectedId]
   );
+
+  const printInvoice = async (invoiceId: number) => {
+    try {
+      setError('');
+      await openAdminInvoicePrint(invoiceId);
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudo preparar la impresion'));
+    }
+  };
 
   const movementSummary = useMemo(() => {
     if (!detail) return { debits: 0, credits: 0, movements: 0 };
@@ -1093,12 +1103,20 @@ export default function CuentasCorrientesPage() {
                           <Link href={`/admin/comprobantes?invoice=${invoice.id}`} className={styles.linkButton}>
                             Ver
                           </Link>
-                          <Link href={`/admin/comprobantes/imprimir?invoice=${invoice.id}`} className={styles.linkButton}>
+                          <button
+                            type="button"
+                            className={styles.linkButton}
+                            onClick={() => void printInvoice(invoice.id)}
+                          >
                             Imprimir
-                          </Link>
-                          <Link href={`/admin/comprobantes/imprimir?invoice=${invoice.id}`} className={styles.linkButton}>
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.linkButton}
+                            onClick={() => void printInvoice(invoice.id)}
+                          >
                             PDF
-                          </Link>
+                          </button>
                         </div>
                       </div>
                       <div className={styles.invoiceAmounts}>
