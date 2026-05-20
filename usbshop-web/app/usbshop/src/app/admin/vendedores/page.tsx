@@ -1082,7 +1082,14 @@ export default function VendedoresPage() {
               </div>
             </div>
             <div className={styles.inlineActions}>
-              <Link href={`/admin/vendedores?seller=${selectedSeller.id}`} className={styles.primaryButton}>
+              <Link
+                href={
+                  monthlyPeriod
+                    ? `/admin/vendedores?period=${encodeURIComponent(monthlyPeriod)}&seller=${selectedSeller.id}`
+                    : `/admin/vendedores?seller=${selectedSeller.id}`
+                }
+                className={styles.primaryButton}
+              >
                 Ver ventas del mes
               </Link>
             </div>

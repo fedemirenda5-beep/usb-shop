@@ -12,6 +12,17 @@ interface AdminLayoutProps {
   children: React.ReactNode;
 }
 
+const getCurrentModule = (pathname: string | null) => {
+  if (!pathname || !pathname.startsWith('/admin')) {
+    return null;
+  }
+  return (
+    [...NAV_MODULES]
+      .sort((left, right) => right.href.length - left.href.length)
+      .find((module) => pathname === module.href || pathname.startsWith(`${module.href}/`)) || null
+  );
+};
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const { user, logout, isLoading, error, refreshSession } = useAdminSession();
   const router = useRouter();
@@ -32,9 +43,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   useEffect(() => {
     if (!user) return;
-    const restricted = NAV_MODULES.find(
-      (module) => module.href === pathname && !canAccessAdminModule(user.role, module.id)
-    );
+    const currentModule = getCurrentModule(pathname);
+    const restricted =
+      currentModule && !canAccessAdminModule(user.role, currentModule.id)
+        ? currentModule
+        : null;
     if (restricted) {
       router.replace('/admin');
     }
@@ -109,7 +122,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <Link
               key={module.id}
               href={module.href}
-              className={`${styles.navItem} ${pathname === module.href ? styles.navItemActive : ''}`}
+              className={`${styles.navItem} ${
+                pathname === module.href || pathname?.startsWith(`${module.href}/`) ? styles.navItemActive : ''
+              }`}
               onClick={() => {
                 if (typeof window !== 'undefined' && window.innerWidth <= 768) {
                   setSidebarOpen(false);
