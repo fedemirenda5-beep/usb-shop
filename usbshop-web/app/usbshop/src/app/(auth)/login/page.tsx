@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import styles from './login.module.css';
 
 export default function LoginPage() {
@@ -12,6 +13,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
   const [targetPath, setTargetPath] = useState('/admin');
+  const [apiBaseUrl, setApiBaseUrl] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -24,7 +26,17 @@ export default function LoginPage() {
     }
   }, []);
 
-  // Redirigir si ya está autenticado
+  useEffect(() => {
+    const syncApiBaseUrl = async () => {
+      try {
+        await loadRuntimeConfig();
+      } finally {
+        setApiBaseUrl(getApiBaseUrl());
+      }
+    };
+    void syncApiBaseUrl();
+  }, []);
+
   useEffect(() => {
     if (isVerified && isAuthenticated && user) {
       router.replace(targetPath);
@@ -36,7 +48,7 @@ export default function LoginPage() {
     setLocalError('');
 
     if (!username.trim() || !password.trim()) {
-      setLocalError('Usuario y contraseña requeridos');
+      setLocalError('Usuario y contrasena requeridos');
       return;
     }
 
@@ -70,36 +82,35 @@ export default function LoginPage() {
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="password">Contraseña</label>
+            <label htmlFor="password">Contrasena</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Tu contraseña"
+              placeholder="Tu contrasena"
               disabled={isLoading}
               autoComplete="current-password"
               className={styles.input}
             />
           </div>
 
-          {(localError || error) && (
-            <div className={styles.error}>
-              {localError || error}
-            </div>
-          )}
+          {(localError || error) && <div className={styles.error}>{localError || error}</div>}
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className={styles.button}
-          >
+          <button type="submit" disabled={isLoading} className={styles.button}>
             {isLoading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
 
         <div className={styles.footer}>
           <p>Sistema administrador - USB Shop</p>
+          <div className={styles.debugBox}>
+            <p><strong>API:</strong> {apiBaseUrl || 'cargando...'}</p>
+            <p><strong>Sesion verificada:</strong> {isVerified ? 'si' : 'no'}</p>
+            <p><strong>Autenticado:</strong> {isAuthenticated ? 'si' : 'no'}</p>
+            <p><strong>Destino:</strong> {targetPath}</p>
+            <p><strong>Error:</strong> {localError || error || 'sin error'}</p>
+          </div>
         </div>
       </div>
     </div>

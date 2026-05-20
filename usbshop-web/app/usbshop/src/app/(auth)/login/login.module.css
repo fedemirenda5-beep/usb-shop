@@ -130,6 +130,23 @@
   border-top: 1px solid var(--bg-soft);
 }
 
+.debugBox {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--bg-soft);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.debugBox p {
+  margin: 0;
+}
+
 @media (max-width: 640px) {
   .card {
     padding: 24px 20px;
