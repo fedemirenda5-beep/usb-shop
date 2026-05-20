@@ -1746,6 +1746,17 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
     conn.commit()
 
 
+def _active_account_movements_clause(conn: DBConn, alias: str = "account_movements") -> str:
+    clauses: list[str] = []
+    if _has_column(conn, "account_movements", "is_deleted"):
+        clauses.append(f"COALESCE({alias}.is_deleted, 0) = 0")
+    if _has_column(conn, "account_movements", "deleted_at"):
+        clauses.append(f"{alias}.deleted_at IS NULL")
+    if not clauses:
+        return ""
+    return " AND " + " AND ".join(clauses)
+
+
 def _ensure_sellers_table(conn: DBConn) -> None:
     if not _has_table(conn, "sellers"):
         if DB_IS_POSTGRES:
@@ -4186,12 +4197,20 @@ def admin_cc_overview(
                    am.invoice_id, am.created_at, am.payment_method, i.due_date, i.document_type
             FROM account_movements am
             LEFT JOIN invoices i ON i.id = am.invoice_id
+            WHERE am.customer_id IS NOT NULL
+            """
+            + _active_account_movements_clause(conn, "am")
+            + """
             ORDER BY am.created_at ASC, am.id ASC
             """
         ).fetchall()
         movements_by_customer: dict[int, list[Any]] = {}
         for row in movement_rows:
-            customer_id = int(row["customer_id"] if isinstance(row, dict) else row[1])
+            raw_customer_id = row["customer_id"] if isinstance(row, dict) else row[1]
+            try:
+                customer_id = int(raw_customer_id)
+            except (TypeError, ValueError):
+                continue
             movements_by_customer.setdefault(customer_id, []).append(row)
         customers: list[dict[str, Any]] = []
         total_debit = 0.0
@@ -4299,6 +4318,9 @@ def admin_cc_customer_detail(
             FROM account_movements am
             LEFT JOIN invoices i ON i.id = am.invoice_id
             WHERE am.customer_id = ?
+            """
+            + _active_account_movements_clause(conn, "am")
+            + """
             ORDER BY am.created_at ASC, am.id ASC
             """,
             (customer_id,),
