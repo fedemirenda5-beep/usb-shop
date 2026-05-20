@@ -6,9 +6,10 @@ import hmac
 import io
 import json
 import logging
+import math
 import mimetypes
 import os
-import re
+import re
 import sqlite3
 import ssl
 import time
@@ -393,7 +394,7 @@ def _allowed_origin_regex() -> str:
     raw = os.getenv("USB_ALLOWED_ORIGIN_REGEX", "").strip()
     if raw:
         return raw
-    return r"^https://([a-z0-9-]+\.)*usbshop\.com\.ar$"
+    return r"^https://([a-z0-9-]+\.)*usbshop\.com\.ar$|^http://(localhost|127\.0\.0\.1)(:\d+)?$|^http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$|^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$|^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$"
 
 
 _load_env_file()
@@ -471,18 +472,18 @@ def _verify_session(token: str) -> Optional[dict]:
     return payload
 
 
-def _session_cookie_options(request: Optional[Request]) -> dict[str, Any]:
-    host = str((request.headers.get("host") if request else "") or "").lower()
-    forwarded_proto = str((request.headers.get("x-forwarded-proto") if request else "") or "").lower()
-    scheme = str((request.url.scheme if request else "") or "").lower()
-    is_local_host = host.startswith("localhost") or host.startswith("127.0.0.1")
-    secure = not is_local_host and (forwarded_proto == "https" or scheme == "https")
-    return {
-        "secure": secure,
-        "samesite": "none" if secure else "lax",
-    }
-
-
+def _session_cookie_options(request: Optional[Request]) -> dict[str, Any]:
+    host = str((request.headers.get("host") if request else "") or "").lower()
+    forwarded_proto = str((request.headers.get("x-forwarded-proto") if request else "") or "").lower()
+    scheme = str((request.url.scheme if request else "") or "").lower()
+    is_local_host = host.startswith("localhost") or host.startswith("127.0.0.1")
+    secure = not is_local_host and (forwarded_proto == "https" or scheme == "https")
+    return {
+        "secure": secure,
+        "samesite": "none" if secure else "lax",
+    }
+
+
 def _require_roles(session_token: Optional[str], allowed_roles: set[str]) -> dict:
     payload = _verify_session(session_token or "")
     if not payload or str(payload.get("role") or "").strip().lower() not in allowed_roles:
@@ -1160,7 +1161,13 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
             document_type TEXT,
             document_number TEXT,
             due_date TEXT,
+            invoice_id INTEGER,
+            reference TEXT,
+            entry_kind TEXT,
+            payment_method TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME DEFAULT NULL,
+            is_deleted INTEGER DEFAULT 0,
             FOREIGN KEY (customer_id) REFERENCES account_customers(id) ON DELETE CASCADE
         )
         """
@@ -1186,10 +1193,75 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
         """
     )
     conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_movements_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            movement_id INTEGER NOT NULL,
+            customer_id INTEGER NOT NULL,
+            action TEXT NOT NULL CHECK (action IN ('CREATE', 'UPDATE', 'DELETE', 'RESTORE')),
+            old_values TEXT,
+            new_values TEXT,
+            edited_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES account_customers(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_movements_backup (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            original_movement_id INTEGER,
+            customer_id INTEGER NOT NULL,
+            movement_type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            description TEXT,
+            document_type TEXT,
+            document_number TEXT,
+            due_date TEXT,
+            invoice_id INTEGER,
+            reference TEXT,
+            entry_kind TEXT,
+            payment_method TEXT,
+            created_at DATETIME,
+            deleted_at DATETIME,
+            backup_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES account_customers(id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS account_customers_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            customer_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            old_balance REAL,
+            new_balance REAL,
+            description TEXT,
+            edited_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES account_customers(id)
+        )
+        """
+    )
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_account_movements_customer_id ON account_movements(customer_id)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_account_documents_customer_id ON account_documents(customer_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_movement_id ON account_movements_audit(movement_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_customer_id ON account_movements_audit(customer_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_backup_customer_id ON account_movements_backup(customer_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_customer_audit ON account_customers_audit(customer_id)"
     )
     conn.commit()
 
@@ -1221,12 +1293,150 @@ def _balance_is_zero(balance: float, tolerance: float = 0.009) -> bool:
     return abs(float(balance)) <= tolerance
 
 
+def _safe_finite_float(value: Any, default: float = 0.0) -> float:
+    try:
+        parsed = float(value or 0)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(parsed):
+        return default
+    return parsed
+
+
 def _can_view_profit_metrics(role: Any) -> bool:
     return str(role or "").strip().lower() != ROLE_STAFF
 
 
 def _line_margin_value(quantity: float, unit_price: float, cost: float) -> float:
     return float(quantity or 0) * max(0.0, float(unit_price or 0) - float(cost or 0))
+
+
+def _log_movement_audit(
+    conn: DBConn,
+    movement_id: int,
+    customer_id: int,
+    action: str,
+    old_values: Optional[dict] = None,
+    new_values: Optional[dict] = None,
+    edited_by: str = "SYSTEM"
+) -> None:
+    """Registrar auditoría de cambios en movimientos"""
+    conn.execute(
+        """
+        INSERT INTO account_movements_audit
+        (movement_id, customer_id, action, old_values, new_values, edited_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (
+            movement_id,
+            customer_id,
+            action,
+            json.dumps(old_values, default=str) if old_values else None,
+            json.dumps(new_values, default=str) if new_values else None,
+            edited_by,
+        ),
+    )
+
+
+def _soft_delete_movement(
+    conn: DBConn,
+    movement_id: int,
+    customer_id: int,
+    edited_by: str = "SYSTEM"
+) -> bool:
+    """Hacer soft delete de un movimiento (marcarlo como eliminado, sin borrar datos)"""
+    # Obtener datos del movimiento
+    movement = conn.execute(
+        "SELECT * FROM account_movements WHERE id = ? AND customer_id = ?",
+        (movement_id, customer_id),
+    ).fetchone()
+    
+    if movement is None:
+        return False
+    
+    # Guardar en backup
+    mov_dict = dict(movement) if hasattr(movement, 'keys') else {}
+    if not mov_dict:
+        cursor = conn.execute(
+            "PRAGMA table_info(account_movements)"
+        )
+        cols = [row[1] for row in cursor.fetchall()]
+        mov_dict = {col: movement[i] for i, col in enumerate(cols)}
+    
+    conn.execute(
+        """
+        INSERT INTO account_movements_backup
+        (original_movement_id, customer_id, movement_type, amount, description, 
+         document_type, document_number, due_date, invoice_id, reference, entry_kind,
+         payment_method, created_at, deleted_at)
+        SELECT id, customer_id, movement_type, amount, description,
+               document_type, document_number, due_date, invoice_id, reference, entry_kind,
+               payment_method, created_at, CURRENT_TIMESTAMP
+        FROM account_movements
+        WHERE id = ? AND customer_id = ?
+        """,
+        (movement_id, customer_id),
+    )
+    
+    # Marcar como eliminado (soft delete)
+    conn.execute(
+        """
+        UPDATE account_movements
+        SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND customer_id = ?
+        """,
+        (movement_id, customer_id),
+    )
+    
+    # Registrar auditoría
+    _log_movement_audit(
+        conn,
+        movement_id,
+        customer_id,
+        "DELETE",
+        old_values=mov_dict,
+        edited_by=edited_by,
+    )
+    
+    return True
+
+
+def _restore_movement(
+    conn: DBConn,
+    movement_id: int,
+    customer_id: int,
+    edited_by: str = "SYSTEM"
+) -> bool:
+    """Restaurar un movimiento eliminado"""
+    # Verificar que existe en backup
+    backup = conn.execute(
+        "SELECT * FROM account_movements_backup WHERE original_movement_id = ? AND customer_id = ? ORDER BY backup_date DESC LIMIT 1",
+        (movement_id, customer_id),
+    ).fetchone()
+    
+    if backup is None:
+        return False
+    
+    # Restaurar
+    conn.execute(
+        """
+        UPDATE account_movements
+        SET is_deleted = 0, deleted_at = NULL
+        WHERE id = ? AND customer_id = ?
+        """,
+        (movement_id, customer_id),
+    )
+    
+    # Registrar auditoría
+    _log_movement_audit(
+        conn,
+        movement_id,
+        customer_id,
+        "RESTORE",
+        edited_by=edited_by,
+    )
+    
+    return True
 
 
 def _next_document_number(conn: DBConn, document_kind: str) -> str:
@@ -1399,7 +1609,9 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
     credits: list[dict[str, Any]] = []
     for row in rows:
         movement_type = str(row["movement_type"] if isinstance(row, dict) else row["movement_type"]).upper()
-        amount = float(row["amount"] if isinstance(row, dict) else row["amount"] or 0)
+        amount = _safe_finite_float(row["amount"] if isinstance(row, dict) else row["amount"])
+        if amount <= 0:
+            continue
         created_at = _safe_parse_datetime(row["created_at"] if isinstance(row, dict) else row["created_at"])
         due_at_raw = row.get("due_date") if isinstance(row, dict) else None
         due_at = _safe_parse_datetime(due_at_raw) if due_at_raw else None
@@ -1422,11 +1634,11 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
 
     debits.sort(key=lambda item: (item["due_date"] or _argentina_now(), item["id"]))
     for credit in credits:
-        remaining_credit = float(credit["amount"] or 0)
+        remaining_credit = _safe_finite_float(credit["amount"])
         for debit in debits:
             if remaining_credit <= 0:
                 break
-            available = float(debit["remaining"] or 0)
+            available = _safe_finite_float(debit["remaining"])
             if available <= 0:
                 continue
             consumed = min(available, remaining_credit)
@@ -1449,10 +1661,10 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
     open_items: list[dict[str, Any]] = []
     for debit in debits:
         if debit["entry_kind"] == "OPENING_BALANCE":
-            classification["opening_balance"] += float(debit["amount"] or 0)
+            classification["opening_balance"] += _safe_finite_float(debit["amount"])
         elif debit["entry_kind"] == "ADJUSTMENT":
-            classification["adjustments"] += float(debit["amount"] or 0)
-        remaining = float(debit["remaining"] or 0)
+            classification["adjustments"] += _safe_finite_float(debit["amount"])
+        remaining = _safe_finite_float(debit["remaining"])
         if remaining <= 0:
             continue
         due_date = debit["due_date"].date() if isinstance(debit["due_date"], datetime) else today
@@ -1486,14 +1698,14 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
         )
     for credit in credits:
         if credit["entry_kind"] == "PAYMENT":
-            classification["payments"] += float(credit["amount"] or 0)
-            classification["collected"] += float(credit["amount"] or 0)
+            classification["payments"] += _safe_finite_float(credit["amount"])
+            classification["collected"] += _safe_finite_float(credit["amount"])
         elif credit["entry_kind"] == "CREDIT_NOTE":
-            classification["credit_notes"] += float(credit["amount"] or 0)
+            classification["credit_notes"] += _safe_finite_float(credit["amount"])
         elif credit["entry_kind"] == "WRITEOFF":
-            classification["writeoffs"] += float(credit["amount"] or 0)
+            classification["writeoffs"] += _safe_finite_float(credit["amount"])
         elif credit["entry_kind"] == "ADJUSTMENT":
-            classification["adjustments"] -= float(credit["amount"] or 0)
+            classification["adjustments"] -= _safe_finite_float(credit["amount"])
     return {
         **{key: round(value, 2) for key, value in buckets.items()},
         "classification": {key: round(value, 2) for key, value in classification.items()},
@@ -1785,7 +1997,7 @@ def _ensure_sellers_table(conn: DBConn) -> None:
                 )
                 """
             )
-        _invalidate_table_cache("sellers")
+        _invalidate_table_cache("sellers")
     required_columns = (
         ("name", "TEXT", "TEXT"),
         ("commission_percent", "REAL NOT NULL DEFAULT 0", "NUMERIC(6, 2) NOT NULL DEFAULT 0"),
@@ -2687,14 +2899,14 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     }
     token = _sign_session(payload_data)
     if response is not None:
-        cookie_options = _session_cookie_options(request)
+        cookie_options = _session_cookie_options(request)
         response.set_cookie(
             key=SESSION_COOKIE,
             value=token,
             max_age=SESSION_TTL_SECONDS,
             httponly=True,
-            secure=bool(cookie_options["secure"]),
-            samesite=str(cookie_options["samesite"]),
+            secure=bool(cookie_options["secure"]),
+            samesite=str(cookie_options["samesite"]),
         )
     return {"username": row["username"], "role": row["role"]}
 
@@ -2702,12 +2914,12 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
     if response is not None:
-        cookie_options = _session_cookie_options(request)
-        response.delete_cookie(
-            SESSION_COOKIE,
-            secure=bool(cookie_options["secure"]),
-            samesite=str(cookie_options["samesite"]),
-        )
+        cookie_options = _session_cookie_options(request)
+        response.delete_cookie(
+            SESSION_COOKIE,
+            secure=bool(cookie_options["secure"]),
+            samesite=str(cookie_options["samesite"]),
+        )
     return {"status": "ok"}
 
 
@@ -4228,16 +4440,18 @@ def admin_cc_overview(
             if not customer_movements and str(row["sale_mode"] or "").strip().upper() != "CUENTA_CORRIENTE":
                 continue
             debit = sum(
-                float(item["amount"] or 0)
+                _safe_finite_float(item["amount"])
                 for item in customer_movements
                 if str(item["movement_type"] or "").upper() == "DEBIT"
             )
             credit = sum(
-                float(item["amount"] or 0)
+                _safe_finite_float(item["amount"])
                 for item in customer_movements
                 if str(item["movement_type"] or "").upper() == "CREDIT"
             )
             balance = round(debit - credit, 2)
+            if not math.isfinite(balance):
+                continue
             if _balance_is_zero(balance):
                 continue
             aging = _aging_from_movements(customer_movements)
@@ -4245,12 +4459,12 @@ def admin_cc_overview(
             total_debit += debit
             total_credit += credit
             total_balance += balance
-            total_pending += float(classification.get("pending") or 0)
-            total_overdue += float(classification.get("overdue") or 0)
-            total_collected += float(classification.get("collected") or 0)
-            total_credit_notes += float(classification.get("credit_notes") or 0)
-            total_writeoffs += float(classification.get("writeoffs") or 0)
-            total_adjustments += float(classification.get("adjustments") or 0)
+            total_pending += _safe_finite_float(classification.get("pending"))
+            total_overdue += _safe_finite_float(classification.get("overdue"))
+            total_collected += _safe_finite_float(classification.get("collected"))
+            total_credit_notes += _safe_finite_float(classification.get("credit_notes"))
+            total_writeoffs += _safe_finite_float(classification.get("writeoffs"))
+            total_adjustments += _safe_finite_float(classification.get("adjustments"))
             last_movement = customer_movements[-1]["created_at"] if customer_movements else None
             customers.append(
                 {
@@ -4335,7 +4549,9 @@ def admin_cc_customer_detail(
         running_balance = 0.0
         for row in movements:
             movement_type = str(row["movement_type"] or "").upper()
-            amount = float(row["amount"] or 0)
+            amount = _safe_finite_float(row["amount"])
+            if amount <= 0:
+                continue
             signed = amount if movement_type == "DEBIT" else -amount
             running_balance = round(running_balance + signed, 2)
             entry_kind = _movement_entry_kind(row)
@@ -4344,7 +4560,7 @@ def admin_cc_customer_detail(
             if movement_type == "DEBIT":
                 open_item = open_items_by_id.get(int(row["id"]))
                 if open_item is not None:
-                    remaining = float(open_item["remaining"] or 0)
+                    remaining = _safe_finite_float(open_item["remaining"])
                     status_label = str(open_item["status_label"] or "").strip() or "Pendiente"
                 else:
                     remaining = 0.0
@@ -4364,7 +4580,7 @@ def admin_cc_customer_detail(
                     "created_at": row["created_at"],
                     "payment_method": row["payment_method"],
                     "document_type": row["document_type"],
-                    "invoice_total": float(row["total"] or 0) if row["total"] is not None else None,
+                    "invoice_total": _safe_finite_float(row["total"]) if row["total"] is not None else None,
                     "due_date": row["due_date"],
                     "remaining_amount": remaining,
                     "status_label": status_label,
@@ -4414,7 +4630,47 @@ def admin_cc_delete_customer(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-        conn.execute("DELETE FROM account_movements WHERE customer_id = ?", (customer_id,))
+        # En lugar de DELETE, hacer soft delete y backup
+        if _has_table(conn, "account_movements"):
+            # Obtener movimientos
+            movements = conn.execute(
+                "SELECT * FROM account_movements WHERE customer_id = ? AND is_deleted = 0",
+                (customer_id,),
+            ).fetchall()
+            
+            # Guardar backup de cada movimiento
+            for movement in movements:
+                conn.execute(
+                    """
+                    INSERT INTO account_movements_backup
+                    (original_movement_id, customer_id, movement_type, amount, description,
+                     document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                     payment_method, created_at, deleted_at)
+                    SELECT id, customer_id, movement_type, amount, description,
+                           document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                           payment_method, created_at, CURRENT_TIMESTAMP
+                    FROM account_movements
+                    WHERE id = ? AND customer_id = ?
+                    """,
+                    (movement["id"], customer_id),
+                )
+            
+            # Marcar como eliminados (soft delete)
+            conn.execute(
+                "UPDATE account_movements SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ?",
+                (customer_id,),
+            )
+            
+            # Registrar auditoría
+            for movement in movements:
+                _log_movement_audit(
+                    conn,
+                    movement["id"],
+                    customer_id,
+                    "DELETE",
+                    old_values=dict(movement) if hasattr(movement, 'keys') else {},
+                    edited_by="ADMIN_MODE_CHANGE_TO_CONTADO",
+                )
 
         conn.execute(
             """
@@ -4430,7 +4686,7 @@ def admin_cc_delete_customer(
         return {
             "id": int(customer["id"]),
             "name": customer["name"],
-            "message": "Cuenta corriente eliminada",
+            "message": "Cuenta corriente eliminada (movimientos preservados en backup)",
         }
     finally:
         conn.close()
@@ -5052,7 +5308,47 @@ def admin_delete_invoice(
                 )
                 restocked_items += 1
 
-        conn.execute("DELETE FROM account_movements WHERE invoice_id = ?", (invoice_id,))
+        # En lugar de DELETE, hacer soft delete y backup de movimientos
+        if _has_table(conn, "account_movements"):
+            # Guardar backup de todos los movimientos de esta factura
+            invoice_movements = conn.execute(
+                "SELECT * FROM account_movements WHERE invoice_id = ? AND is_deleted = 0",
+                (invoice_id,),
+            ).fetchall()
+            
+            for movement in invoice_movements:
+                conn.execute(
+                    """
+                    INSERT INTO account_movements_backup
+                    (original_movement_id, customer_id, movement_type, amount, description,
+                     document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                     payment_method, created_at, deleted_at)
+                    SELECT id, customer_id, movement_type, amount, description,
+                           document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                           payment_method, created_at, CURRENT_TIMESTAMP
+                    FROM account_movements
+                    WHERE id = ? AND invoice_id = ?
+                    """,
+                    (movement["id"], invoice_id),
+                )
+            
+            # Marcar movimientos como eliminados en lugar de borrar
+            conn.execute(
+                "UPDATE account_movements SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE invoice_id = ?",
+                (invoice_id,),
+            )
+            
+            # Registrar auditoría
+            for movement in invoice_movements:
+                _log_movement_audit(
+                    conn,
+                    movement["id"],
+                    movement["customer_id"],
+                    "DELETE",
+                    old_values=dict(movement) if hasattr(movement, 'keys') else {},
+                    edited_by="ADMIN_DELETE_INVOICE",
+                )
+        
         conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
 
@@ -5075,7 +5371,7 @@ def admin_delete_invoice(
             "total": round(float(invoice["total"] or 0), 2),
             "restocked_items": restocked_items,
             "deleted_account_movements": len(cc_movements),
-            "message": "Comprobante cancelado",
+            "message": "Comprobante cancelado (movimientos preservados en backup)",
         }
     finally:
         conn.close()
@@ -6175,14 +6471,68 @@ def admin_delete_account_customer(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-        conn.execute("DELETE FROM account_movements WHERE customer_id = ?", (customer_id,))
-        conn.execute("DELETE FROM account_documents WHERE customer_id = ?", (customer_id,))
-        conn.execute("DELETE FROM account_customers WHERE id = ?", (customer_id,))
+        # En lugar de DELETE, hacer soft delete y backup
+        # 1. Guardar backup de todos los movimientos
+        movements = conn.execute(
+            "SELECT * FROM account_movements WHERE customer_id = ? AND is_deleted = 0",
+            (customer_id,),
+        ).fetchall()
+        
+        for movement in movements:
+            conn.execute(
+                """
+                INSERT INTO account_movements_backup
+                (original_movement_id, customer_id, movement_type, amount, description,
+                 document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                 payment_method, created_at, deleted_at)
+                SELECT id, customer_id, movement_type, amount, description,
+                       document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                       payment_method, created_at, CURRENT_TIMESTAMP
+                FROM account_movements
+                WHERE id = ? AND customer_id = ?
+                """,
+                (movement["id"], customer_id),
+            )
+        
+        # 2. Marcar todos los movimientos como eliminados (soft delete)
+        conn.execute(
+            "UPDATE account_movements SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP WHERE customer_id = ?",
+            (customer_id,),
+        )
+        
+        # 3. Registrar auditoría para cada movimiento eliminado
+        for movement in movements:
+            _log_movement_audit(
+                conn,
+                movement["id"],
+                customer_id,
+                "DELETE",
+                old_values=dict(movement) if hasattr(movement, 'keys') else {},
+                edited_by="ADMIN_DELETE_CUSTOMER",
+            )
+        
+        # 4. Hacer soft delete del cliente (marcar como eliminado en lugar de borrar)
+        conn.execute(
+            "UPDATE account_customers SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (customer_id,),
+        )
+        
+        # 5. Registrar auditoría del cliente
+        conn.execute(
+            """
+            INSERT INTO account_customers_audit
+            (customer_id, action, description, edited_by, created_at)
+            VALUES (?, 'DELETE', 'Cliente eliminado con soft delete', 'ADMIN', CURRENT_TIMESTAMP)
+            """,
+            (customer_id,),
+        )
+        
         conn.commit()
         return {
             "id": int(customer["id"]),
             "name": customer["name"],
-            "message": "Cuenta eliminada",
+            "message": "Cuenta eliminada (soft delete - datos recuperables)",
+            "movements_deleted": len(movements),
         }
     finally:
         conn.close()
@@ -6299,11 +6649,24 @@ def admin_update_account_movement(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
         movement = conn.execute(
-            "SELECT id FROM account_movements WHERE id = ? AND customer_id = ?",
+            "SELECT * FROM account_movements WHERE id = ? AND customer_id = ?",
             (movement_id, customer_id),
         ).fetchone()
         if movement is None:
             raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        
+        # Guardar valores anteriores para auditoría
+        old_values = dict(movement) if hasattr(movement, 'keys') else {}
+        
+        new_values = {
+            "movement_type": movement_type,
+            "amount": amount,
+            "description": str(payload.get("description") or "").strip() or None,
+            "document_type": str(payload.get("document_type") or "").strip() or None,
+            "document_number": str(payload.get("document_number") or "").strip() or None,
+            "due_date": str(payload.get("due_date") or "").strip() or None,
+        }
+        
         conn.execute(
             """
             UPDATE account_movements
@@ -6313,20 +6676,215 @@ def admin_update_account_movement(
             (
                 movement_type,
                 amount,
-                str(payload.get("description") or "").strip() or None,
-                str(payload.get("document_type") or "").strip() or None,
-                str(payload.get("document_number") or "").strip() or None,
-                str(payload.get("due_date") or "").strip() or None,
+                new_values["description"],
+                new_values["document_type"],
+                new_values["document_number"],
+                new_values["due_date"],
                 movement_id,
                 customer_id,
             ),
         )
+        
+        # Registrar auditoría
+        _log_movement_audit(
+            conn,
+            movement_id,
+            customer_id,
+            "UPDATE",
+            old_values=old_values,
+            new_values=new_values,
+        )
+        
         conn.execute(
             "UPDATE account_customers SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (customer_id,),
         )
         conn.commit()
         return {"customer_id": customer_id, "movement_id": movement_id, "balance": _customer_balance(conn, customer_id)}
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/account-customers/{customer_id}/movements/{movement_id}")
+def admin_delete_account_movement(
+    customer_id: int,
+    movement_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    """Soft delete de un movimiento individual (seguro, sin perder datos)"""
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        customer = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        
+        # Verificar que el movimiento existe
+        movement = conn.execute(
+            "SELECT id FROM account_movements WHERE id = ? AND customer_id = ? AND is_deleted = 0",
+            (movement_id, customer_id),
+        ).fetchone()
+        if movement is None:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado o ya fue eliminado")
+        
+        # Hacer soft delete
+        success = _soft_delete_movement(conn, movement_id, customer_id)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="No se pudo eliminar el movimiento")
+        
+        # Actualizar timestamp del cliente
+        conn.execute(
+            "UPDATE account_customers SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (customer_id,),
+        )
+        
+        conn.commit()
+        return {
+            "customer_id": customer_id,
+            "movement_id": movement_id,
+            "message": "Movimiento eliminado exitosamente (soft delete)",
+            "balance": _customer_balance(conn, customer_id)
+        }
+    finally:
+        conn.close()
+
+
+@app.post("/admin/account-customers/{customer_id}/movements/{movement_id}/restore")
+def admin_restore_account_movement(
+    customer_id: int,
+    movement_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    """Restaurar un movimiento eliminado"""
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        customer = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        
+        # Verificar que el movimiento existe y está eliminado
+        movement = conn.execute(
+            "SELECT id FROM account_movements WHERE id = ? AND customer_id = ? AND is_deleted = 1",
+            (movement_id, customer_id),
+        ).fetchone()
+        if movement is None:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado o no está eliminado")
+        
+        # Restaurar
+        success = _restore_movement(conn, movement_id, customer_id)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail="No se pudo restaurar el movimiento")
+        
+        # Actualizar timestamp del cliente
+        conn.execute(
+            "UPDATE account_customers SET updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (customer_id,),
+        )
+        
+        conn.commit()
+        return {
+            "customer_id": customer_id,
+            "movement_id": movement_id,
+            "message": "Movimiento restaurado exitosamente",
+            "balance": _customer_balance(conn, customer_id)
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/account-customers/{customer_id}/movements/deleted")
+def admin_get_deleted_movements(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    """Obtener movimientos eliminados (para recuperación)"""
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        customer = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        
+        # Obtener movimientos eliminados
+        deleted = conn.execute(
+            """
+            SELECT * FROM account_movements
+            WHERE customer_id = ? AND is_deleted = 1
+            ORDER BY deleted_at DESC
+            """,
+            (customer_id,),
+        ).fetchall()
+        
+        return {
+            "customer_id": customer_id,
+            "deleted_movements": [
+                {
+                    "id": int(mov["id"]),
+                    "movement_type": mov["movement_type"],
+                    "amount": float(mov["amount"]),
+                    "description": mov["description"],
+                    "document_type": mov["document_type"],
+                    "document_number": mov["document_number"],
+                    "created_at": mov["created_at"],
+                    "deleted_at": mov["deleted_at"],
+                }
+                for mov in deleted
+            ]
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/account-customers/{customer_id}/movements/{movement_id}/audit")
+def admin_get_movement_audit(
+    customer_id: int,
+    movement_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    """Obtener historial de cambios de un movimiento"""
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_accounting_tables(conn)
+        customer = conn.execute("SELECT id FROM account_customers WHERE id = ?", (customer_id,)).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        
+        # Obtener auditoría
+        audit_records = conn.execute(
+            """
+            SELECT * FROM account_movements_audit
+            WHERE movement_id = ? AND customer_id = ?
+            ORDER BY created_at DESC
+            """,
+            (movement_id, customer_id),
+        ).fetchall()
+        
+        return {
+            "customer_id": customer_id,
+            "movement_id": movement_id,
+            "audit_history": [
+                {
+                    "id": int(record["id"]),
+                    "action": record["action"],
+                    "old_values": json.loads(record["old_values"]) if record["old_values"] else None,
+                    "new_values": json.loads(record["new_values"]) if record["new_values"] else None,
+                    "edited_by": record["edited_by"],
+                    "created_at": record["created_at"],
+                }
+                for record in audit_records
+            ]
+        }
     finally:
         conn.close()
 
