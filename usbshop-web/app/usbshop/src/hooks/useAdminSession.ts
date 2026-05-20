@@ -13,28 +13,30 @@ type SessionSnapshot = {
   user: AdminUser | null;
   isLoading: boolean;
   error: string | null;
+  isVerified: boolean;
 };
 
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
+const CONFIG_TIMEOUT_MS = 5000;
+const SESSION_REQUEST_TIMEOUT_MS = 10000;
 
 const isBrowser = typeof window !== 'undefined';
 
+const emptySnapshot = (): SessionSnapshot => ({
+  user: null,
+  isLoading: true,
+  error: null,
+  isVerified: false,
+});
+
 const restoreSnapshot = (): SessionSnapshot => {
   if (!isBrowser) {
-    return {
-      user: null,
-      isLoading: true,
-      error: null,
-    };
+    return emptySnapshot();
   }
   try {
     const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) {
-      return {
-        user: null,
-        isLoading: true,
-        error: null,
-      };
+      return emptySnapshot();
     }
     const parsed = JSON.parse(raw) as { user?: AdminUser | null } | null;
     const user =
@@ -47,13 +49,10 @@ const restoreSnapshot = (): SessionSnapshot => {
       user,
       isLoading: user ? false : true,
       error: null,
+      isVerified: false,
     };
   } catch {
-    return {
-      user: null,
-      isLoading: true,
-      error: null,
-    };
+    return emptySnapshot();
   }
 };
 
@@ -74,6 +73,57 @@ const persistSnapshot = (snapshot: SessionSnapshot) => {
     );
   } catch {
     return;
+  }
+};
+
+const getFriendlySessionError = (err: unknown, fallback: string) => {
+  if (!(err instanceof Error)) {
+    return fallback;
+  }
+  const message = err.message.trim();
+  if (!message) {
+    return fallback;
+  }
+  if (message === 'Failed to fetch' || message.includes('NetworkError')) {
+    return 'No se pudo conectar con la API. Revisa la conexion e intenta nuevamente.';
+  }
+  if (message.includes('timed out') || message.includes('tardo demasiado')) {
+    return 'La API demoro demasiado en responder. Intenta nuevamente.';
+  }
+  return message;
+};
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('La solicitud tardo demasiado');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 };
 
@@ -100,10 +150,10 @@ const subscribe = (listener: (snapshot: SessionSnapshot) => void) => {
 };
 
 const fetchSession = async (): Promise<AdminUser | null> => {
-  await loadRuntimeConfig();
-  const res = await fetch(`${getApiBaseUrl()}/auth/me`, {
+  await withTimeout(loadRuntimeConfig(), CONFIG_TIMEOUT_MS, 'No se pudo cargar la configuracion');
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/auth/me`, {
     credentials: 'include',
-  });
+  }, SESSION_REQUEST_TIMEOUT_MS);
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
@@ -116,25 +166,23 @@ const fetchSession = async (): Promise<AdminUser | null> => {
 };
 
 const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => {
-  if (!force && sessionSnapshot.user && !sessionSnapshot.error) {
-    return sessionSnapshot.user;
-  }
   if (!force && sessionRequest) {
     return sessionRequest;
   }
 
   updateSnapshot({
     isLoading: sessionSnapshot.user ? false : true,
-    error: force ? null : sessionSnapshot.error,
+    error: null,
+    isVerified: false,
   });
   sessionRequest = (async () => {
     try {
       const user = await fetchSession();
-      updateSnapshot({ user, isLoading: false, error: null });
+      updateSnapshot({ user, isLoading: false, error: null, isVerified: true });
       return user;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error verificando sesion';
-      updateSnapshot({ user: null, isLoading: false, error: message });
+      const message = getFriendlySessionError(err, 'Error verificando sesion');
+      updateSnapshot({ user: null, isLoading: false, error: message, isVerified: true });
       return null;
     } finally {
       sessionRequest = null;
@@ -157,13 +205,13 @@ export function useAdminSession() {
   const login = useCallback(async (username: string, password: string) => {
     updateSnapshot({ isLoading: true, error: null });
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
+      await withTimeout(loadRuntimeConfig(), CONFIG_TIMEOUT_MS, 'No se pudo cargar la configuracion');
+      const res = await fetchWithTimeout(`${getApiBaseUrl()}/auth/login`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
-      });
+      }, SESSION_REQUEST_TIMEOUT_MS);
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ detail: 'Error desconocido' }));
@@ -171,11 +219,11 @@ export function useAdminSession() {
       }
 
       const data = (await res.json()) as AdminUser;
-      updateSnapshot({ user: data, isLoading: false, error: null });
+      updateSnapshot({ user: data, isLoading: false, error: null, isVerified: true });
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error de login';
-      updateSnapshot({ user: null, isLoading: false, error: message });
+      const message = getFriendlySessionError(err, 'Error de login');
+      updateSnapshot({ user: null, isLoading: false, error: message, isVerified: true });
       return false;
     }
   }, []);
@@ -190,7 +238,7 @@ export function useAdminSession() {
     } catch (err) {
       console.error('Error during logout:', err);
     } finally {
-      sessionSnapshot = { user: null, isLoading: false, error: null };
+      sessionSnapshot = { user: null, isLoading: false, error: null, isVerified: true };
       persistSnapshot(sessionSnapshot);
       emitSnapshot();
       router.push('/login');
@@ -205,6 +253,7 @@ export function useAdminSession() {
     user: state.user,
     isLoading: state.isLoading,
     error: state.error,
+    isVerified: state.isVerified,
     login,
     logout,
     refreshSession,

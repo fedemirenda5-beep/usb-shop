@@ -7,7 +7,7 @@ import styles from './login.module.css';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading, error, isAuthenticated, user } = useAdminSession();
+  const { login, isLoading, error, isAuthenticated, user, isVerified } = useAdminSession();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -26,10 +26,10 @@ export default function LoginPage() {
 
   // Redirigir si ya está autenticado
   useEffect(() => {
-    if (isAuthenticated && user) {
+    if (isVerified && isAuthenticated && user) {
       router.replace(targetPath);
     }
-  }, [isAuthenticated, user, router, targetPath]);
+  }, [isAuthenticated, isVerified, user, router, targetPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
