@@ -106,6 +106,7 @@ export default function ComprobantesPage() {
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
   const [detailOnly, setDetailOnly] = useState(false);
+  const [pendingOutput, setPendingOutput] = useState<'view' | 'print' | 'pdf' | null>(null);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
@@ -158,6 +159,7 @@ export default function ComprobantesPage() {
       if (detailRequestRef.current !== requestId) return null;
       setDetailError(err instanceof Error ? err.message : 'Error cargando detalle');
       setDetail(null);
+      setPendingOutput(null);
       return null;
     } finally {
       if (detailRequestRef.current === requestId) {
@@ -166,12 +168,14 @@ export default function ComprobantesPage() {
     }
   }
 
-  async function openInvoice(invoiceId: number) {
+  async function openInvoice(invoiceId: number, output: 'view' | 'print' | 'pdf' = 'view') {
     setSelectedId(invoiceId);
     setDetail(null);
     setDetailError('');
     setDetailOnly(true);
-    await loadDetail(invoiceId);
+    setPendingOutput(output);
+    const payload = await loadDetail(invoiceId);
+    return payload;
   }
 
   async function loadInvoices() {
@@ -198,12 +202,23 @@ export default function ComprobantesPage() {
   }, []);
 
   useEffect(() => {
-    const rawInvoiceId = searchParams.get('invoice');
+    const rawInvoiceId = searchParams.get('invoice') || searchParams.get('created');
     if (!rawInvoiceId) return;
     const invoiceId = Number(rawInvoiceId);
     if (!Number.isInteger(invoiceId) || invoiceId <= 0) return;
-    void openInvoice(invoiceId);
+    void openInvoice(invoiceId, 'view');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!pendingOutput || pendingOutput === 'view' || !detail || detailLoading) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      window.print();
+      setPendingOutput(null);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [pendingOutput, detail, detailLoading]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -253,10 +268,12 @@ export default function ComprobantesPage() {
   };
 
   const printDocument = () => {
+    setPendingOutput(null);
     window.print();
   };
 
   const exportPdf = () => {
+    setPendingOutput(null);
     window.print();
   };
 
@@ -319,7 +336,18 @@ export default function ComprobantesPage() {
                     className={selectedId === item.id ? styles.selectedRow : ''}
                     onClick={() => setSelectedId(item.id)}
                   >
-                    <td><button type="button" className={styles.linkButton}>#{item.id}</button></td>
+                    <td>
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void openInvoice(item.id, 'view');
+                        }}
+                      >
+                        #{item.id}
+                      </button>
+                    </td>
                     <td className={styles.typeCell}>{item.document_type || '-'}</td>
                     <td className={styles.customerCell}>{item.customer_name}</td>
                     <td className={styles.modeCell}>{getSaleModeLabel(item.sale_mode)}</td>
@@ -339,7 +367,7 @@ export default function ComprobantesPage() {
                           className={styles.secondaryButton}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void openInvoice(item.id);
+                            void openInvoice(item.id, 'view');
                           }}
                         >
                           Ver
@@ -361,7 +389,7 @@ export default function ComprobantesPage() {
                           className={styles.pdfButton}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void openInvoice(item.id);
+                            void openInvoice(item.id, 'pdf');
                           }}
                         >
                           PDF
@@ -371,7 +399,7 @@ export default function ComprobantesPage() {
                           className={styles.printButton}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void openInvoice(item.id);
+                            void openInvoice(item.id, 'print');
                           }}
                         >
                           Impr.
@@ -398,7 +426,13 @@ export default function ComprobantesPage() {
       </div>
 
       {detailOnly ? (
-        <div className={styles.modalOverlay} onClick={() => setDetailOnly(false)}>
+        <div
+          className={styles.modalOverlay}
+          onClick={() => {
+            setPendingOutput(null);
+            setDetailOnly(false);
+          }}
+        >
           <aside className={styles.detailModal} onClick={(event) => event.stopPropagation()}>
             <div className={styles.detailToolbar}>
               <button type="button" className={styles.pdfButton} onClick={exportPdf}>
@@ -407,7 +441,14 @@ export default function ComprobantesPage() {
               <button type="button" className={styles.printButton} onClick={printDocument}>
                 Imprimir
               </button>
-              <button type="button" className={styles.secondaryButton} onClick={() => setDetailOnly(false)}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => {
+                  setPendingOutput(null);
+                  setDetailOnly(false);
+                }}
+              >
                 Cerrar
               </button>
             </div>

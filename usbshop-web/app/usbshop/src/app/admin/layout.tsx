@@ -20,7 +20,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   useEffect(() => {
     if (!isLoading && !user) {
-      const targetPath = pathname?.startsWith('/admin') ? pathname : '/admin';
+      const targetPath =
+        typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
+          ? `${window.location.pathname}${window.location.search || ''}`
+          : pathname?.startsWith('/admin')
+            ? pathname
+            : '/admin';
       router.replace(`/login?from=${encodeURIComponent(targetPath)}`);
     }
   }, [user, isLoading, pathname, router]);
