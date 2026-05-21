@@ -76,6 +76,12 @@ Si una mejora no puede cerrar las capas necesarias, no debe quedar visible en el
 
 La web publicada apunta a `https://api.usbshop.com.ar`.
 
+Rama operativa:
+
+- `release` es la rama de trabajo y publicacion
+- cualquier referencia a `main` o `master` en deploys debe corregirse o tratarse como compatibilidad transitoria
+- no se considera valido asumir que un push a otra rama publica cambios del admin
+
 Para que produccion muestre clientes, comprobantes y cuentas corrientes reales, hace falta sincronizar:
 
 ```powershell

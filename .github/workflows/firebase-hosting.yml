@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - release
-      - main
       - "deploy-*"
     paths:
       - "usbshop-web/app/usbshop/**"

@@ -1,95 +1,70 @@
-# ControlStock
+# USB Shop Repo
 
-## Web admin
+Repositorio operativo de la web publica y la API/admin de USB Shop.
 
-La guia operativa del panel web esta en [ADMIN_WEB.md](./ADMIN_WEB.md).
+## Estructura
 
-Puntos base:
+- `usbshop-web/app/usbshop`: frontend Next.js exportado como sitio estatico
+- `usbshop-web/api`: API FastAPI para admin, catalogo, pedidos, comprobantes y cuentas corrientes
+- `render.yaml`: referencia de configuracion de servicios en Render
+- `.github/workflows/firebase-hosting.yml`: deploy del frontend a Firebase Hosting
+- `ADMIN_WEB.md`: guia operativa del panel admin y criterios para cambios
 
-- En local, la web debe correr junto con la API local para leer `controlStock.db`
-- En produccion, la web lee `https://api.usbshop.com.ar`
-- Los modulos del admin se centralizan en `usbshop-web/app/usbshop/src/app/admin/adminModules.ts`
+## Fuente de verdad
 
-Aplicación de escritorio para la gestión de inventario, clientes, vendedores, ventas y cuentas corrientes.
+- Frontend publicado: `https://www.usbshop.com.ar`
+- API publicada: `https://api.usbshop.com.ar`
+- Config runtime web: `https://www.usbshop.com.ar/usbshop-config.json`
 
-## Windows 7
+La web siempre consume la API. No se agregan lecturas directas desde bases o archivos en el frontend.
 
-Para usar la web en una PC con Windows 7, exportala como sitio estatico y servila localmente sin Node.
+## Flujo local
 
-Guia:
+1. Levantar la API:
 
-- [WINDOWS7_EXPORT.md](./WINDOWS7_EXPORT.md)
-
-## Requisitos
-
-- Python 3.11+
-- PyQt6
-- SQLite 3 (incluido con Python)
-
-Instala las dependencias con:
-
-```bash
+```powershell
+cd usbshop-web\api
 pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Por defecto la aplicación utilizará el archivo de base de datos `~/controlStock.db`.
-Si ya tienes la base en `C:\Users\Fede\controlStock.db`, no necesitas cambiar nada. Para apuntar a otra ruta ajusta `DatabaseConfig.path` en `controlstock/config.py`.
+2. Levantar la web:
 
-## Estructura del proyecto
-
-```text
-controlStock/
-+-- main.py
-+-- README.md
-+-- requirements.txt
-+-- controlstock/
-    +-- __init__.py
-    +-- app.py
-    +-- config.py
-    +-- database.py
-    +-- models/
-    ¦   +-- __init__.py
-    ¦   +-- account_movement.py
-    ¦   +-- category.py
-    ¦   +-- customer.py
-    ¦   +-- invoice.py
-    ¦   +-- product.py
-    ¦   +-- seller.py
-    ¦   +-- stock_movement.py
-    +-- services/
-    ¦   +-- __init__.py
-    ¦   +-- account_service.py
-    ¦   +-- category_service.py
-    ¦   +-- customer_service.py
-    ¦   +-- product_service.py
-    ¦   +-- report_service.py
-    ¦   +-- sales_service.py
-    ¦   +-- seller_service.py
-    +-- ui/
-        +-- __init__.py
-        +-- category_dialog.py
-        +-- customer_dialog.py
-        +-- invoice_history_view.py
-        +-- main_window.py
-        +-- product_detail_dialog.py
-        +-- product_dialog.py
-        +-- report_dialog.py
-        +-- sale_dialog.py
-        +-- seller_dialog.py
+```powershell
+cd usbshop-web\app\usbshop
+npm install
+npm run dev
 ```
 
-## Flujo básico
+3. Entrar a:
 
-1. Alta y administración de clientes con modo de venta (contado o cuenta corriente).
-2. Alta y administración de vendedores con porcentaje de comisión.
-3. Alta de productos con categoría, foto, costo, margen y precio de venta.
-4. Registro de documentos de venta (factura o remito); se asigna vendedor, se elige la lista de precios, se descuenta stock y se genera la comisión correspondiente.
-5. Consultas de facturas y remitos emitidos, disponibilidad de inventario y detalle por producto.
-6. Cuentas corrientes: visualización de saldos por cliente y generación automática de débitos.
-7. Reportes: ranking de ventas, stock bajo, listas de precios/costos, detalle de ventas/margen por período e informes de inventario (existencia y valorización).
+- `http://localhost:3000`
+- `http://127.0.0.1:8000/health`
 
-## Próximos pasos sugeridos
+## Validaciones minimas
 
-- Agregar edición de clientes/productos/vendedores y registros de pagos a cuenta corriente.
-- Mostrar comisiones en informes consolidados y permitir liquidaciones.
-- Añadir autenticación de usuarios y pruebas automatizadas.
+- Frontend: `cmd /c npm run build` en `usbshop-web/app/usbshop`
+- API: `python -m py_compile usbshop-web/api/main.py`
+
+## Deploy y ramas
+
+- `release`: rama operativa unica
+- Firebase Hosting despliega desde `release`
+- Cualquier referencia a `main` o `master` en automatizaciones debe considerarse residuo o compatibilidad transitoria
+
+Si alguna infraestructura externa sigue mirando otra rama, hay que corregir esa configuracion para que el deploy real lea `release`.
+
+## Sincronizacion de datos productivos
+
+```powershell
+$env:USBSHOP_SYNC_API_BASE_URL="https://api.usbshop.com.ar"
+$env:USB_SYNC_TOKEN="TU_SECRET"
+python usbshop-web\api\scripts\sync_backoffice_to_api.py
+```
+
+## Criterio de limpieza
+
+- No dejar rutas visibles sin backend real
+- No dejar defaults apuntando a dominios viejos
+- No dejar ramas de deploy referenciadas que no existan
+- No dejar archivos locales/cookies/debug trackeados en git

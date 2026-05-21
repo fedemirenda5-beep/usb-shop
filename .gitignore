@@ -58,3 +58,4 @@ usbshop-web/api/.venv38/
 
 # Large git bundle backups
 *.bundle
+usbshop_cookies.txt

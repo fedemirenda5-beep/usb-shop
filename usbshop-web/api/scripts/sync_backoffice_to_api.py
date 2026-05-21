@@ -8,7 +8,7 @@ import urllib.request
 from urllib.error import HTTPError, URLError
 from pathlib import Path
 
-API_BASE_URL = (os.getenv("USBSHOP_SYNC_API_BASE_URL") or "https://usbshop-api.onrender.com").rstrip("/")
+API_BASE_URL = (os.getenv("USBSHOP_SYNC_API_BASE_URL") or "https://api.usbshop.com.ar").rstrip("/")
 SYNC_TOKEN = (os.getenv("USB_SYNC_TOKEN") or os.getenv("USB_SYNC_SECRET") or "").strip()
 SOURCE_DB_CANDIDATES = [
     Path(r"C:\Users\Fede\ControlStock\documentos\controlStock.db"),
