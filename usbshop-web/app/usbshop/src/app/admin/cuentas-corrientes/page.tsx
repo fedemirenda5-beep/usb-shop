@@ -139,6 +139,9 @@ export default function CuentasCorrientesPage() {
   const detailRef = useRef<HTMLElement | null>(null);
   const movementFormRef = useRef<HTMLFormElement | null>(null);
   const amountInputRef = useRef<HTMLInputElement | null>(null);
+  const overviewRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
+  const invoicesRequestRef = useRef(0);
   const [isMobileLayout, setIsMobileLayout] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth <= 860 : false
   );
@@ -316,11 +319,14 @@ export default function CuentasCorrientesPage() {
   };
 
   async function loadOverview() {
+    const requestId = overviewRequestRef.current + 1;
+    overviewRequestRef.current = requestId;
     setLoading(true);
     await loadRuntimeConfig();
     const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
     if (res.ok) {
       const data = await res.json();
+      if (overviewRequestRef.current !== requestId) return;
       setLegacyMode(false);
       setCustomers(data.customers || []);
       setSummary(
@@ -348,6 +354,7 @@ export default function CuentasCorrientesPage() {
     const legacyRes = await fetch(`${getApiBaseUrl()}/admin/account-customers?limit=300`, { credentials: 'include' });
     if (!legacyRes.ok) throw new Error('No se pudo cargar cuentas corrientes');
     const legacyRows = await legacyRes.json();
+    if (overviewRequestRef.current !== requestId) return;
     const data = mapLegacyCustomers(Array.isArray(legacyRows) ? legacyRows : []);
     setLegacyMode(true);
     setCustomers(data.customers);
@@ -358,6 +365,8 @@ export default function CuentasCorrientesPage() {
   }
 
   async function loadDetail(customerId: number) {
+    const requestId = detailRequestRef.current + 1;
+    detailRequestRef.current = requestId;
     setDetailLoading(true);
     await loadRuntimeConfig();
     try {
@@ -365,6 +374,7 @@ export default function CuentasCorrientesPage() {
         const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
         if (res.ok) {
           const payload = await res.json();
+          if (detailRequestRef.current !== requestId) return null;
           setDetail(payload);
           return payload as CustomerDetail;
         }
@@ -379,14 +389,19 @@ export default function CuentasCorrientesPage() {
       const customer = await customerRes.json();
       const movements = await movementsRes.json();
       const payload = mapLegacyDetail(customer, movements);
+      if (detailRequestRef.current !== requestId) return null;
       setDetail(payload);
       return payload;
     } finally {
-      setDetailLoading(false);
+      if (detailRequestRef.current === requestId) {
+        setDetailLoading(false);
+      }
     }
   }
 
   async function loadInvoices(customerId: number) {
+    const requestId = invoicesRequestRef.current + 1;
+    invoicesRequestRef.current = requestId;
     if (legacyMode) {
       setInvoices([]);
       return;
@@ -395,6 +410,7 @@ export default function CuentasCorrientesPage() {
     const res = await fetch(`${getApiBaseUrl()}/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
     if (!res.ok) throw new Error('No se pudieron cargar los comprobantes del cliente');
     const data = await res.json();
+    if (invoicesRequestRef.current !== requestId) return;
     setInvoices(data || []);
   }
 
@@ -810,7 +826,7 @@ export default function CuentasCorrientesPage() {
               {detail.customer.address || detail.customer.locality || 'Sin domicilio'}
             </span>
             {detailOnly ? (
-              <span>Período visible: {rangeLabel}</span>
+              <span>Periodo visible: {rangeLabel}</span>
             ) : (
               <span>
                 Facturas: {money(invoices.reduce((sum, invoice) => sum + invoice.total, 0))} - Cobrado:{' '}
@@ -1259,7 +1275,7 @@ export default function CuentasCorrientesPage() {
                     <div className={styles.mobileCustomerMeta}>
                       <span>{customer.email || customer.phone || customer.cuit || 'Sin dato de contacto'}</span>
                       <span>
-                        Pend.: {money(customer.classification?.pending || Math.max(0, customer.balance))} · Venc.:{' '}
+                        Pend.: {money(customer.classification?.pending || Math.max(0, customer.balance))} - Venc.:{' '}
                         {money(customer.classification?.overdue || 0)}
                       </span>
                       <span>{customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : 'Sin movimientos recientes'}</span>
@@ -1396,7 +1412,7 @@ export default function CuentasCorrientesPage() {
                               {customer.last_movement ? `Ult. mov.: ${formatDate(customer.last_movement)}` : (customer.email || customer.phone || customer.cuit || 'Sin dato')}
                             </span>
                             <span>
-                              Pend.: {money(customer.classification?.pending || Math.max(0, customer.balance))} ·
+                              Pend.: {money(customer.classification?.pending || Math.max(0, customer.balance))} -
                               Venc.: {money(customer.classification?.overdue || 0)}
                             </span>
                           </div>

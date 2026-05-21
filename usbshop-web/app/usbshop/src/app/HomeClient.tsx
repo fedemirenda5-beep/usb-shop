@@ -276,6 +276,12 @@ export default function HomeClient({
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const cartNoticeTimer = useRef<number | null>(null);
   const cartHydrated = useRef(false);
+  const featuredRetryTimer = useRef<number | null>(null);
+  const productsRetryTimer = useRef<number | null>(null);
+  const featuredRequestRef = useRef(0);
+  const productsRequestRef = useRef(0);
+  const isFetchingMoreRef = useRef(false);
+  const hasMoreProductsRef = useRef(true);
   const [orderName, setOrderName] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
@@ -288,6 +294,14 @@ export default function HomeClient({
   const isPublic =
     typeof window !== "undefined" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname);
+
+  useEffect(() => {
+    isFetchingMoreRef.current = isFetchingMore;
+  }, [isFetchingMore]);
+
+  useEffect(() => {
+    hasMoreProductsRef.current = hasMoreProducts;
+  }, [hasMoreProducts]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -428,9 +442,10 @@ export default function HomeClient({
   };
 
   const loadMoreProducts = async () => {
-    if (isFetchingMore || !hasMoreProducts) {
+    if (isFetchingMoreRef.current || !hasMoreProductsRef.current) {
       return;
     }
+    isFetchingMoreRef.current = true;
     setIsFetchingMore(true);
     try {
       const result = await fetchProductsPage(products.length);
@@ -444,14 +459,16 @@ export default function HomeClient({
     } catch {
       setHasMoreProducts(false);
     } finally {
+      isFetchingMoreRef.current = false;
       setIsFetchingMore(false);
     }
   };
 
   const fetchAllProducts = async () => {
-    if (isFetchingMore || !hasMoreProducts) {
+    if (isFetchingMoreRef.current || !hasMoreProductsRef.current) {
       return;
     }
+    isFetchingMoreRef.current = true;
     setIsFetchingMore(true);
     try {
       let offset = products.length;
@@ -477,6 +494,7 @@ export default function HomeClient({
     } catch {
       setHasMoreProducts(false);
     } finally {
+      isFetchingMoreRef.current = false;
       setIsFetchingMore(false);
     }
   };
@@ -566,6 +584,8 @@ export default function HomeClient({
 
   useEffect(() => {
     let active = true;
+    const requestId = featuredRequestRef.current + 1;
+    featuredRequestRef.current = requestId;
     const loadFeatured = async () => {
       try {
         const cached = loadCachedList<Product[]>(FEATURED_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
@@ -577,17 +597,22 @@ export default function HomeClient({
           setIsLoadingFeatured(true);
         }
         const result = await fetchWithRetry<Product[]>("/featured?limit=6");
-        if (!active || !Array.isArray(result.data) || result.data.length === 0) {
+        if (!active || featuredRequestRef.current !== requestId || !Array.isArray(result.data) || result.data.length === 0) {
           return;
         }
         applyFeaturedResult(result);
       } catch {
-        if (!active) {
+        if (!active || featuredRequestRef.current !== requestId) {
           return;
         }
-        window.setTimeout(loadFeatured, 2500);
+        if (featuredRetryTimer.current) {
+          window.clearTimeout(featuredRetryTimer.current);
+        }
+        featuredRetryTimer.current = window.setTimeout(() => {
+          void loadFeatured();
+        }, 2500);
       } finally {
-        if (active) {
+        if (active && featuredRequestRef.current === requestId) {
           setIsLoadingFeatured(false);
         }
       }
@@ -595,6 +620,10 @@ export default function HomeClient({
     void loadFeatured();
     return () => {
       active = false;
+      if (featuredRetryTimer.current) {
+        window.clearTimeout(featuredRetryTimer.current);
+        featuredRetryTimer.current = null;
+      }
     };
   }, []);
 
@@ -611,6 +640,8 @@ export default function HomeClient({
 
   useEffect(() => {
     let active = true;
+    const requestId = productsRequestRef.current + 1;
+    productsRequestRef.current = requestId;
     const loadProducts = async () => {
       try {
         const cached = loadCachedList<Product[]>(PRODUCTS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
@@ -623,17 +654,23 @@ export default function HomeClient({
           setIsLoadingProducts(true);
         }
         const result = await fetchProductsPage(0);
-        if (!active || !Array.isArray(result.data) || result.data.length === 0) {
+        if (!active || productsRequestRef.current !== requestId || !Array.isArray(result.data) || result.data.length === 0) {
           return;
         }
         applyProductsResult(result);
       } catch {
-        if (!active) {
+        if (!active || productsRequestRef.current !== requestId) {
           return;
         }
-        window.setTimeout(loadProducts, 2500);
+        if (productsRetryTimer.current) {
+          window.clearTimeout(productsRetryTimer.current);
+        }
+        productsRetryTimer.current = window.setTimeout(() => {
+          void loadProducts();
+        }, 2500);
       } finally {
-        if (active) {
+        if (active && productsRequestRef.current === requestId) {
+          isFetchingMoreRef.current = false;
           setIsLoadingProducts(false);
           setIsFetchingMore(false);
         }
@@ -642,6 +679,10 @@ export default function HomeClient({
     void loadProducts();
     return () => {
       active = false;
+      if (productsRetryTimer.current) {
+        window.clearTimeout(productsRetryTimer.current);
+        productsRetryTimer.current = null;
+      }
     };
   }, []);
 

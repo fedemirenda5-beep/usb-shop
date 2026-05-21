@@ -38,6 +38,22 @@ const statusColors: Record<string, { bg: string; text: string; label: string }> 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const normalized = error.message.trim().toLowerCase();
+    if (
+      normalized === 'failed to fetch' ||
+      normalized === 'fetch failed' ||
+      normalized.includes('networkerror') ||
+      normalized.includes('load failed')
+    ) {
+      return 'No se pudo conectar con el servidor. Revisa la API y volve a intentar.';
+    }
+    return error.message;
+  }
+  return fallback;
+};
+
 export default function PedidosPage() {
   useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -47,27 +63,33 @@ export default function PedidosPage() {
   const [deletingOrderId, setDeletingOrderId] = useState<number | null>(null);
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState<Order | null>(null);
 
-  const loadOrders = async () => {
+  const loadOrders = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError('');
       await loadRuntimeConfig();
       const res = await fetch(
         `${getApiBaseUrl()}/admin/orders?status=ALL&limit=300&include_items=true`,
-        { credentials: 'include' }
+        { credentials: 'include', signal }
       );
-      if (!res.ok) throw new Error('No se pudieron cargar las órdenes de compra');
+      if (!res.ok) throw new Error('No se pudieron cargar las ordenes de compra');
       const data = await res.json();
+      if (signal?.aborted) return;
       setOrders(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando órdenes de compra');
+      if (signal?.aborted) return;
+      setError(getErrorMessage(err, 'Error cargando ordenes de compra'));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    void loadOrders();
+    const controller = new AbortController();
+    void loadOrders(controller.signal);
+    return () => controller.abort();
   }, []);
 
   const pendingOrders = useMemo(() => orders.filter((order) => order.status === 'PENDING'), [orders]);
@@ -113,7 +135,7 @@ export default function PedidosPage() {
       setDetailOrderId((current) => (current === order.id ? null : current));
       await loadOrders();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error eliminando orden de compra');
+      setError(getErrorMessage(err, 'Error eliminando orden de compra'));
     } finally {
       setDeletingOrderId(null);
     }
@@ -167,7 +189,7 @@ export default function PedidosPage() {
                     <h4>Cliente</h4>
                     <p><strong>Nombre:</strong> {order.customer_name}</p>
                     <p><strong>Email:</strong> {order.customer_email || '-'}</p>
-                    <p><strong>Teléfono:</strong> {order.customer_phone || '-'}</p>
+                    <p><strong>Telefono:</strong> {order.customer_phone || '-'}</p>
                   </div>
 
                   <div className={styles.detailColumn}>
@@ -186,7 +208,7 @@ export default function PedidosPage() {
 
                 {order.items.length > 0 ? (
                   <div className={styles.itemsSection}>
-                    <h4>Detalle de artículos</h4>
+                    <h4>Detalle de articulos</h4>
                     <table className={styles.itemsTable}>
                       <thead>
                         <tr>
@@ -225,7 +247,7 @@ export default function PedidosPage() {
       <div className={styles.header}>
         <div>
           <h1>Pedidos Web</h1>
-          <p>Vista operativa con órdenes pendientes al frente e historial separado para evitar confusiones.</p>
+          <p>Vista operativa con ordenes pendientes al frente e historial separado para evitar confusiones.</p>
         </div>
       </div>
 
@@ -233,7 +255,7 @@ export default function PedidosPage() {
 
       <section className={styles.summaryGrid}>
         <article className={styles.summaryCard}>
-          <span>Órdenes ingresadas</span>
+          <span>Ordenes ingresadas</span>
           <strong>{summary.total}</strong>
         </article>
         <article className={styles.summaryCard}>
@@ -254,17 +276,17 @@ export default function PedidosPage() {
         <div className={styles.sectionHeader}>
           <div>
             <h2>Pendientes</h2>
-            <p>Solo aparecen las órdenes de compra que todavía necesitan atención.</p>
+            <p>Solo aparecen las ordenes de compra que todavia necesitan atencion.</p>
           </div>
           <span className={styles.sectionCount}>{summary.pending} pendientes</span>
         </div>
 
         <div className={styles.tableWrapper}>
           {loading ? (
-            <div className={styles.loading}>Cargando órdenes pendientes...</div>
+            <div className={styles.loading}>Cargando ordenes pendientes...</div>
           ) : pendingOrders.length === 0 ? (
             <div className={styles.empty}>
-              <p>No hay órdenes de compra pendientes.</p>
+              <p>No hay ordenes de compra pendientes.</p>
             </div>
           ) : (
             <table className={styles.table}>
@@ -288,8 +310,8 @@ export default function PedidosPage() {
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <div>
-            <h2>Historial de órdenes</h2>
-            <p>Órdenes ya procesadas o canceladas, separadas de la operación principal.</p>
+            <h2>Historial de ordenes</h2>
+            <p>Ordenes ya procesadas o canceladas, separadas de la operacion principal.</p>
           </div>
           <span className={styles.sectionCount}>{summary.processed} en historial</span>
         </div>
@@ -301,7 +323,7 @@ export default function PedidosPage() {
               <div className={styles.loading}>Cargando historial...</div>
             ) : historicalOrders.length === 0 ? (
               <div className={styles.empty}>
-                <p>No hay órdenes en historial.</p>
+                <p>No hay ordenes en historial.</p>
               </div>
             ) : (
               <table className={styles.table}>
@@ -359,7 +381,7 @@ export default function PedidosPage() {
                 onClick={() => void deleteOrder(pendingDeleteOrder)}
                 disabled={deletingOrderId === pendingDeleteOrder.id}
               >
-                {deletingOrderId === pendingDeleteOrder.id ? 'Eliminando...' : 'Confirmar eliminación'}
+                {deletingOrderId === pendingDeleteOrder.id ? 'Eliminando...' : 'Confirmar eliminacion'}
               </button>
             </div>
           </aside>
