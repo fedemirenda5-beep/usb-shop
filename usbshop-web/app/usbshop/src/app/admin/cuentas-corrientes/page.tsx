@@ -323,33 +323,34 @@ export default function CuentasCorrientesPage() {
     overviewRequestRef.current = requestId;
     setLoading(true);
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
-    if (res.ok) {
-      const data = await res.json();
-      if (overviewRequestRef.current !== requestId) return;
-      setLegacyMode(false);
-      setCustomers(data.customers || []);
-      setSummary(
-        data.summary || {
-          customers: 0,
-          debit: 0,
-          credit: 0,
-          balance: 0,
-          pending: 0,
-          overdue: 0,
-          collected: 0,
-          credit_notes: 0,
-          writeoffs: 0,
-          adjustments: 0,
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        if (overviewRequestRef.current !== requestId) return;
+        setLegacyMode(false);
+        setCustomers(data.customers || []);
+        setSummary(
+          data.summary || {
+            customers: 0,
+            debit: 0,
+            credit: 0,
+            balance: 0,
+            pending: 0,
+            overdue: 0,
+            collected: 0,
+            credit_notes: 0,
+            writeoffs: 0,
+            adjustments: 0,
+          }
+        );
+        if (!isMobileLayout && (data.customers || []).length > 0) {
+          setSelectedId((current) => current ?? data.customers[0].id);
         }
-      );
-      if (!isMobileLayout && (data.customers || []).length > 0) {
-        setSelectedId((current) => current ?? data.customers[0].id);
+        return;
       }
-      return;
-    }
-    if (res.status !== 404) {
-      throw new Error('No se pudo cargar cuentas corrientes');
+    } catch {
+      // Si el endpoint nuevo no responde, intentamos el flujo legacy antes de dar error.
     }
     const legacyRes = await fetch(`${getApiBaseUrl()}/admin/account-customers?limit=300`, { credentials: 'include' });
     if (!legacyRes.ok) throw new Error('No se pudo cargar cuentas corrientes');
@@ -364,21 +365,24 @@ export default function CuentasCorrientesPage() {
     }
   }
 
-  async function loadDetail(customerId: number) {
+  async function loadDetail(customerId: number): Promise<{ payload: CustomerDetail | null; usedLegacy: boolean }> {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
     setDetailLoading(true);
     await loadRuntimeConfig();
     try {
       if (!legacyMode) {
-        const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
-        if (res.ok) {
-          const payload = await res.json();
-          if (detailRequestRef.current !== requestId) return null;
-          setDetail(payload);
-          return payload as CustomerDetail;
+        try {
+          const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
+          if (res.ok) {
+            const payload = await res.json();
+            if (detailRequestRef.current !== requestId) return { payload: null, usedLegacy: false };
+            setDetail(payload);
+            return { payload: payload as CustomerDetail, usedLegacy: false };
+          }
+        } catch {
+          // Caemos al flujo legacy si el detalle moderno no esta disponible.
         }
-        if (res.status !== 404) throw new Error('No se pudo cargar el detalle');
         setLegacyMode(true);
       }
       const [customerRes, movementsRes] = await Promise.all([
@@ -389,9 +393,9 @@ export default function CuentasCorrientesPage() {
       const customer = await customerRes.json();
       const movements = await movementsRes.json();
       const payload = mapLegacyDetail(customer, movements);
-      if (detailRequestRef.current !== requestId) return null;
+      if (detailRequestRef.current !== requestId) return { payload: null, usedLegacy: true };
       setDetail(payload);
-      return payload;
+      return { payload, usedLegacy: true };
     } finally {
       if (detailRequestRef.current === requestId) {
         setDetailLoading(false);
@@ -432,7 +436,12 @@ export default function CuentasCorrientesPage() {
     resetMovementForm();
     const loadSelectedCustomer = async () => {
       try {
-        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
+        const detailResult = await loadDetail(selectedId);
+        if (detailResult.usedLegacy) {
+          setInvoices([]);
+          return;
+        }
+        await loadInvoices(selectedId);
       } catch (err) {
         setError(getErrorMessage(err, 'Error cargando el detalle'));
       }
@@ -488,7 +497,13 @@ export default function CuentasCorrientesPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || (editingMovementId ? 'No se pudo actualizar el movimiento' : 'No se pudo registrar el movimiento'));
-      await Promise.all([loadOverview(), loadDetail(selectedId), loadInvoices(selectedId)]);
+      await loadOverview();
+      const detailResult = await loadDetail(selectedId);
+      if (detailResult.usedLegacy) {
+        setInvoices([]);
+      } else {
+        await loadInvoices(selectedId);
+      }
       setEditingMovementId(null);
       setForm((current) => ({
         ...current,
@@ -708,7 +723,12 @@ export default function CuentasCorrientesPage() {
       setError('');
       await loadOverview();
       if (selectedId) {
-        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
+        const detailResult = await loadDetail(selectedId);
+        if (detailResult.usedLegacy) {
+          setInvoices([]);
+        } else {
+          await loadInvoices(selectedId);
+        }
       }
     } catch (err) {
       setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
@@ -741,8 +761,13 @@ export default function CuentasCorrientesPage() {
     try {
       let currentDetail = detail;
       if (!currentDetail || currentDetail.customer.id !== selectedId) {
-        const [detailPayload] = await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
-        currentDetail = detailPayload || null;
+        const detailResult = await loadDetail(selectedId);
+        currentDetail = detailResult.payload || null;
+        if (detailResult.usedLegacy) {
+          setInvoices([]);
+        } else {
+          await loadInvoices(selectedId);
+        }
       }
       const nextRange = { ...dateRangeDraft };
       setOutputRange(nextRange);
