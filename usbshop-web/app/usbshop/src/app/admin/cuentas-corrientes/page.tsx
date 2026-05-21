@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { openAdminAccountPrint } from '@/lib/adminAccountPrint';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
@@ -363,8 +364,9 @@ export default function CuentasCorrientesPage() {
       if (!legacyMode) {
         const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
         if (res.ok) {
-          setDetail(await res.json());
-          return;
+          const payload = await res.json();
+          setDetail(payload);
+          return payload as CustomerDetail;
         }
         if (res.status !== 404) throw new Error('No se pudo cargar el detalle');
         setLegacyMode(true);
@@ -376,7 +378,9 @@ export default function CuentasCorrientesPage() {
       if (!customerRes.ok || !movementsRes.ok) throw new Error('No se pudo cargar el detalle');
       const customer = await customerRes.json();
       const movements = await movementsRes.json();
-      setDetail(mapLegacyDetail(customer, movements));
+      const payload = mapLegacyDetail(customer, movements);
+      setDetail(payload);
+      return payload;
     } finally {
       setDetailLoading(false);
     }
@@ -587,6 +591,19 @@ export default function CuentasCorrientesPage() {
     );
   }, [filteredMovements]);
 
+  const displayMovements = detailOnly ? visibleMovements : filteredMovements;
+  const displayMovementSummary = detailOnly
+    ? visibleMovements.reduce(
+        (acc, movement) => {
+          if (movement.movement_type === 'DEBIT') acc.debits += movement.amount;
+          if (movement.movement_type === 'CREDIT') acc.credits += movement.amount;
+          acc.movements += 1;
+          return acc;
+        },
+        { debits: 0, credits: 0, movements: 0 }
+      )
+    : visibleMovementSummary;
+
   const rangeLabel = useMemo(() => {
     if (!outputRange?.from && !outputRange?.to) return 'Historial completo';
     const from = outputRange?.from || 'Inicio';
@@ -706,15 +723,40 @@ export default function CuentasCorrientesPage() {
   const confirmOutput = async () => {
     if (!selectedId) return;
     try {
-      if (!detail || detail.customer.id !== selectedId) {
-        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
+      let currentDetail = detail;
+      if (!currentDetail || currentDetail.customer.id !== selectedId) {
+        const [detailPayload] = await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
+        currentDetail = detailPayload || null;
       }
-      setOutputRange({ ...dateRangeDraft });
+      const nextRange = { ...dateRangeDraft };
+      setOutputRange(nextRange);
       setDetailOnly(true);
       setShowDateRangeModal(false);
-      window.setTimeout(() => window.print(), 180);
+      if (!currentDetail) {
+        throw new Error('No se pudo cargar el detalle de la cuenta');
+      }
+      const fromTs = nextRange.from ? new Date(`${nextRange.from}T00:00:00`).getTime() : null;
+      const toTs = nextRange.to ? new Date(`${nextRange.to}T23:59:59`).getTime() : null;
+      const printableMovements = currentDetail.movements.filter((movement) => {
+        if (!movement.created_at) return false;
+        const ts = new Date(movement.created_at).getTime();
+        if (Number.isNaN(ts)) return false;
+        if (fromTs !== null && ts < fromTs) return false;
+        if (toTs !== null && ts > toTs) return false;
+        return true;
+      });
+      const printableRangeLabel =
+        !nextRange.from && !nextRange.to
+          ? 'Historial completo'
+          : `${nextRange.from || 'Inicio'} a ${nextRange.to || 'Hoy'}`;
+      await openAdminAccountPrint({
+        customer: currentDetail.customer,
+        balance: currentDetail.balance,
+        movements: printableMovements,
+        rangeLabel: printableRangeLabel,
+      });
     } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo preparar la exportación'));
+      setError(getErrorMessage(err, 'No se pudo preparar la exportacion'));
     }
   };
 
@@ -817,8 +859,8 @@ export default function CuentasCorrientesPage() {
                   <strong>{detail.balance >= 0 ? `Deudor ${money(detail.balance)}` : `A favor ${money(Math.abs(detail.balance))}`}</strong>
                 </div>
                 <div>
-                  <span>Movimiento neto del período</span>
-                  <strong>{money(visibleMovementSummary.debits - visibleMovementSummary.credits)}</strong>
+                  <span>Movimiento neto del periodo</span>
+                  <strong>{money(displayMovementSummary.debits - displayMovementSummary.credits)}</strong>
                 </div>
               </div>
             ) : (
@@ -888,10 +930,10 @@ export default function CuentasCorrientesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMovements.length === 0 ? (
+                  {displayMovements.length === 0 ? (
                     <tr><td colSpan={detailOnly ? 6 : 7}>Sin movimientos.</td></tr>
                   ) : (
-                    filteredMovements.map((movement) => (
+                    displayMovements.map((movement) => (
                       <tr
                         key={movement.id}
                         className={movement.id === editingMovementId ? styles.movementRowActive : ''}

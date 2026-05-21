@@ -62,7 +62,7 @@ const escapeHtml = (value: unknown) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const buildPrintableHtml = (detail: InvoicePrintDetail) => {
+const buildPrintableHtml = (detail: InvoicePrintDetail, logoUrl: string) => {
   const itemRows = detail.items
     .map(
       (item) => `
@@ -183,7 +183,7 @@ const buildPrintableHtml = (detail: InvoicePrintDetail) => {
       <div class="accent"></div>
       <section class="banner">
         <div class="brand">
-          <div class="logo-box"><img src="/logo-small.jpeg" alt="USB Shop" /></div>
+          <div class="logo-box"><img src="${escapeHtml(logoUrl)}" alt="USB Shop" /></div>
           <div>
             <div class="brand-name">USB Shop</div>
             <div class="brand-meta">Venta mayorista</div>
@@ -252,6 +252,35 @@ const buildPrintableHtml = (detail: InvoicePrintDetail) => {
       </section>
     </div>
   </div>
+  <script>
+    (function() {
+      var fired = false;
+      function triggerPrint() {
+        if (fired) return;
+        fired = true;
+        setTimeout(function() { window.print(); }, 120);
+      }
+      var images = Array.prototype.slice.call(document.images || []);
+      if (images.length === 0) {
+        if (document.readyState === 'complete') triggerPrint();
+        else window.addEventListener('load', triggerPrint, { once: true });
+        return;
+      }
+      var pending = images.length;
+      function done() {
+        pending -= 1;
+        if (pending <= 0) triggerPrint();
+      }
+      images.forEach(function(img) {
+        if (img.complete) done();
+        else {
+          img.addEventListener('load', done, { once: true });
+          img.addEventListener('error', done, { once: true });
+        }
+      });
+      setTimeout(triggerPrint, 1500);
+    })();
+  </script>
 </body>
 </html>`;
 };
@@ -271,18 +300,11 @@ export async function openAdminInvoicePrint(invoiceId: number): Promise<void> {
     const res = await fetch(`${apiBaseUrl}/admin/invoices/${invoiceId}`, { credentials: 'include' });
     if (!res.ok) throw new Error('No se pudo cargar el comprobante');
     const detail = (await res.json()) as InvoicePrintDetail;
+    const logoUrl = new URL('/logo-small.jpeg', window.location.origin).toString();
     popup.document.open();
-    popup.document.write(buildPrintableHtml(detail));
+    popup.document.write(buildPrintableHtml(detail, logoUrl));
     popup.document.close();
     popup.focus();
-    window.setTimeout(() => {
-      try {
-        popup.focus();
-        popup.print();
-      } catch {
-        // Let the user print manually from the popup if needed.
-      }
-    }, 300);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No se pudo preparar la impresion';
     popup.document.open();

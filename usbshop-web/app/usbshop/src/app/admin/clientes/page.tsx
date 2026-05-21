@@ -154,6 +154,8 @@ export default function ClientesPage() {
       setShowCustomerForm(false);
     } catch (err) {
       if (signal?.aborted) return;
+      setSelectedCustomer(null);
+      setCustomerForm(emptyCustomerForm());
       setError(err instanceof Error ? err.message : 'Error cargando el detalle');
     }
   };
