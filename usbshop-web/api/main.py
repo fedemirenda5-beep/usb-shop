@@ -1092,7 +1092,8 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
                 city TEXT,
                 notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP DEFAULT NULL
             )
             """
         )
@@ -1107,7 +1108,13 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
                 document_type TEXT,
                 document_number TEXT,
                 due_date DATE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                invoice_id INTEGER,
+                reference TEXT,
+                entry_kind TEXT,
+                payment_method TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                deleted_at TIMESTAMP DEFAULT NULL,
+                is_deleted INTEGER DEFAULT 0
             )
             """
         )
@@ -1131,11 +1138,120 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
             """
         )
         conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS account_movements_audit (
+                id SERIAL PRIMARY KEY,
+                movement_id INTEGER NOT NULL,
+                customer_id INTEGER NOT NULL REFERENCES account_customers(id),
+                action TEXT NOT NULL,
+                old_values TEXT,
+                new_values TEXT,
+                edited_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS account_movements_backup (
+                id SERIAL PRIMARY KEY,
+                original_movement_id INTEGER,
+                customer_id INTEGER NOT NULL REFERENCES account_customers(id),
+                movement_type TEXT NOT NULL,
+                amount NUMERIC(12, 2) NOT NULL,
+                description TEXT,
+                document_type TEXT,
+                document_number TEXT,
+                due_date DATE,
+                invoice_id INTEGER,
+                reference TEXT,
+                entry_kind TEXT,
+                payment_method TEXT,
+                created_at TIMESTAMP,
+                deleted_at TIMESTAMP,
+                backup_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS account_customers_audit (
+                id SERIAL PRIMARY KEY,
+                customer_id INTEGER NOT NULL REFERENCES account_customers(id),
+                action TEXT NOT NULL,
+                old_balance NUMERIC(12, 2),
+                new_balance NUMERIC(12, 2),
+                description TEXT,
+                edited_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_account_movements_customer_id ON account_movements(customer_id)"
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_account_documents_customer_id ON account_documents(customer_id)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_movement_id ON account_movements_audit(movement_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_audit_customer_id ON account_movements_audit(customer_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_backup_customer_id ON account_movements_backup(customer_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_customer_audit ON account_customers_audit(customer_id)"
+        )
+        required_columns = {
+            "account_customers": (
+                ("tax_id", "TEXT"),
+                ("tax_condition", "TEXT"),
+                ("address", "TEXT"),
+                ("city", "TEXT"),
+                ("notes", "TEXT"),
+                ("created_at", "TIMESTAMP"),
+                ("updated_at", "TIMESTAMP"),
+                ("deleted_at", "TIMESTAMP DEFAULT NULL"),
+            ),
+            "account_movements": (
+                ("invoice_id", "INTEGER"),
+                ("reference", "TEXT"),
+                ("entry_kind", "TEXT"),
+                ("payment_method", "TEXT"),
+                ("created_at", "TIMESTAMP"),
+                ("deleted_at", "TIMESTAMP DEFAULT NULL"),
+                ("is_deleted", "INTEGER DEFAULT 0"),
+            ),
+            "account_movements_audit": (
+                ("edited_by", "TEXT"),
+                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ),
+            "account_movements_backup": (
+                ("invoice_id", "INTEGER"),
+                ("reference", "TEXT"),
+                ("entry_kind", "TEXT"),
+                ("payment_method", "TEXT"),
+                ("created_at", "TIMESTAMP"),
+                ("deleted_at", "TIMESTAMP"),
+                ("backup_date", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ),
+            "account_customers_audit": (
+                ("old_balance", "NUMERIC(12, 2)"),
+                ("new_balance", "NUMERIC(12, 2)"),
+                ("description", "TEXT"),
+                ("edited_by", "TEXT"),
+                ("created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ),
+        }
+        for table_name, columns in required_columns.items():
+            for column_name, column_type in columns:
+                if _has_column(conn, table_name, column_name):
+                    continue
+                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            _invalidate_table_cache(table_name)
         conn.commit()
         return
 
@@ -1152,7 +1268,8 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
             city TEXT,
             notes TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            deleted_at DATETIME DEFAULT NULL
         )
         """
     )
@@ -1269,6 +1386,53 @@ def _ensure_accounting_tables(conn: DBConn) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_customer_audit ON account_customers_audit(customer_id)"
     )
+    required_columns = {
+        "account_customers": (
+            ("tax_id", "TEXT"),
+            ("tax_condition", "TEXT"),
+            ("address", "TEXT"),
+            ("city", "TEXT"),
+            ("notes", "TEXT"),
+            ("created_at", "DATETIME"),
+            ("updated_at", "DATETIME"),
+            ("deleted_at", "DATETIME DEFAULT NULL"),
+        ),
+        "account_movements": (
+            ("invoice_id", "INTEGER"),
+            ("reference", "TEXT"),
+            ("entry_kind", "TEXT"),
+            ("payment_method", "TEXT"),
+            ("created_at", "DATETIME"),
+            ("deleted_at", "DATETIME DEFAULT NULL"),
+            ("is_deleted", "INTEGER DEFAULT 0"),
+        ),
+        "account_movements_audit": (
+            ("edited_by", "TEXT"),
+            ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+        ),
+        "account_movements_backup": (
+            ("invoice_id", "INTEGER"),
+            ("reference", "TEXT"),
+            ("entry_kind", "TEXT"),
+            ("payment_method", "TEXT"),
+            ("created_at", "DATETIME"),
+            ("deleted_at", "DATETIME"),
+            ("backup_date", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+        ),
+        "account_customers_audit": (
+            ("old_balance", "REAL"),
+            ("new_balance", "REAL"),
+            ("description", "TEXT"),
+            ("edited_by", "TEXT"),
+            ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP"),
+        ),
+    }
+    for table_name, columns in required_columns.items():
+        for column_name, column_type in columns:
+            if _has_column(conn, table_name, column_name):
+                continue
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        _invalidate_table_cache(table_name)
     conn.commit()
 
 
@@ -1631,7 +1795,7 @@ def _aging_from_movements(rows: list[Any], terms_days: int = 30) -> dict[str, An
         if amount <= 0:
             continue
         created_at = _safe_parse_datetime(row["created_at"] if isinstance(row, dict) else row["created_at"])
-        due_at_raw = row.get("due_date") if isinstance(row, dict) else None
+        due_at_raw = _row_get(row, "due_date")
         due_at = _safe_parse_datetime(due_at_raw) if due_at_raw else None
         entry_kind = _movement_entry_kind(row)
         payload = {
