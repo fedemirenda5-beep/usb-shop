@@ -735,13 +735,25 @@ export default function CuentasCorrientesPage() {
     }
   };
 
-  const openCustomerDetail = (customerId: number) => {
+  const openCustomerDetail = async (customerId: number) => {
+    setError('');
     setSelectedId(customerId);
+    setDetail(null);
+    setInvoices([]);
     setDetailOnly(true);
     setOutputRange(null);
-    window.requestAnimationFrame(() => {
-      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    try {
+      const detailResult = await loadDetail(customerId);
+      if (!detailResult.usedLegacy) {
+        await loadInvoices(customerId);
+      }
+    } catch (err) {
+      setError(getErrorMessage(err, 'Error cargando el detalle'));
+    } finally {
+      window.requestAnimationFrame(() => {
+        detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
   };
 
   const closeDetailOnly = () => {
