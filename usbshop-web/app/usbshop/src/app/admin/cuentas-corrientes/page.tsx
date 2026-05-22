@@ -374,23 +374,27 @@ export default function CuentasCorrientesPage() {
     setDetailLoading(true);
     await loadRuntimeConfig();
     try {
-      try {
+      if (overviewMode === 'modern') {
         const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
-        if (res.ok) {
-          const payload = await res.json();
-          if (detailRequestRef.current !== requestId) return { payload: null, mode: 'modern' };
-          setDetailMode('modern');
-          setDetail(payload);
-          return { payload: payload as CustomerDetail, mode: 'modern' };
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(
+            typeof data?.detail === 'string' && data.detail.trim()
+              ? data.detail
+              : 'No se pudo cargar el detalle de la cuenta corriente'
+          );
         }
-      } catch {
-        // Caemos al flujo legacy si el detalle moderno no esta disponible.
+        if (detailRequestRef.current !== requestId) return { payload: null, mode: 'modern' };
+        setDetailMode('modern');
+        setDetail(data);
+        return { payload: data as CustomerDetail, mode: 'modern' };
       }
+
       const [customerRes, movementsRes] = await Promise.all([
         fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}`, { credentials: 'include' }),
         fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}/movements`, { credentials: 'include' }),
       ]);
-      if (!customerRes.ok || !movementsRes.ok) throw new Error('No se pudo cargar el detalle');
+      if (!customerRes.ok || !movementsRes.ok) throw new Error('No se pudo cargar el detalle legacy');
       const customer = await customerRes.json();
       const movements = await movementsRes.json();
       const payload = mapLegacyDetail(customer, movements);
