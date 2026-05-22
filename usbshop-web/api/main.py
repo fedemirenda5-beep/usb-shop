@@ -4871,14 +4871,19 @@ def admin_cc_customer_detail(
             """,
             (customer_id,),
         ).fetchall()
-        aging = _aging_from_movements(movements)
-        open_items_by_id = {
-            int(item["id"]): item
-            for item in aging.get("open_items", [])
-            if item.get("id") is not None
-        }
         serialized = []
         running_balance = 0.0
+        balance = 0.0
+        classification = {
+            "pending": 0.0,
+            "overdue": 0.0,
+            "collected": 0.0,
+            "payments": 0.0,
+            "credit_notes": 0.0,
+            "writeoffs": 0.0,
+            "adjustments": 0.0,
+            "opening_balance": 0.0,
+        }
         for row in movements:
             movement_type = str(row["movement_type"] or "").upper()
             amount = _safe_finite_float(row["amount"])
@@ -4886,19 +4891,26 @@ def admin_cc_customer_detail(
                 continue
             signed = amount if movement_type == "DEBIT" else -amount
             running_balance = round(running_balance + signed, 2)
+            balance = running_balance
             entry_kind = _movement_entry_kind(row)
-            remaining = None
-            status_label = None
+            remaining = amount if movement_type == "DEBIT" else None
             if movement_type == "DEBIT":
-                open_item = open_items_by_id.get(int(row["id"]))
-                if open_item is not None:
-                    remaining = _safe_finite_float(open_item["remaining"])
-                    status_label = str(open_item["status_label"] or "").strip() or "Pendiente"
-                else:
-                    remaining = 0.0
-                    status_label = "Cobrado"
+                if entry_kind == "OPENING_BALANCE":
+                    classification["opening_balance"] += amount
+                elif entry_kind == "ADJUSTMENT":
+                    classification["adjustments"] += amount
+                status_label = "Pendiente"
             else:
                 status_label = _movement_entry_label(entry_kind)
+                if entry_kind == "PAYMENT":
+                    classification["payments"] += amount
+                    classification["collected"] += amount
+                elif entry_kind == "CREDIT_NOTE":
+                    classification["credit_notes"] += amount
+                elif entry_kind == "WRITEOFF":
+                    classification["writeoffs"] += amount
+                elif entry_kind == "ADJUSTMENT":
+                    classification["adjustments"] -= amount
             serialized.append(
                 {
                     "id": int(row["id"]),
@@ -4920,6 +4932,17 @@ def admin_cc_customer_detail(
                     "editable": not (int(row["invoice_id"] or 0) > 0 and (movement_type == "DEBIT" or entry_kind == "SALE")),
                 }
             )
+        classification["pending"] = round(max(balance, 0.0), 2)
+        aging = {
+            "current": round(max(balance, 0.0), 2),
+            "d1_30": 0.0,
+            "d31_60": 0.0,
+            "d61_90": 0.0,
+            "d90_plus": 0.0,
+            "total": round(max(balance, 0.0), 2),
+            "classification": {key: round(value, 2) for key, value in classification.items()},
+            "open_items": [],
+        }
         return {
             "customer": {
                 "id": int(customer["id"]),
@@ -4932,7 +4955,7 @@ def admin_cc_customer_detail(
                 "tax_condition": _safe_text(customer["tax_condition"]),
                 "cuit": _safe_text(customer["cuit"]),
             },
-            "balance": _customer_current_balance_from_rows(movements),
+            "balance": round(balance, 2),
             "aging": aging,
             "classification": aging.get("classification", {}),
             "movements": serialized,
