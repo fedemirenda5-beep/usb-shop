@@ -2151,6 +2151,31 @@ def _active_account_movements_clause(conn: DBConn, alias: str = "account_movemen
     return " AND " + " AND ".join(clauses)
 
 
+def _customer_select_fields(conn: DBConn, alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    fields: list[str] = [
+        f"{prefix}id",
+        f"{prefix}name",
+        f"{prefix}email",
+        f"{prefix}phone",
+    ]
+    optional_fields = [
+        "created_at",
+        "sale_mode",
+        "locality",
+        "address",
+        "tax_condition",
+        "cuit",
+        "external_ref",
+    ]
+    for field_name in optional_fields:
+        if _has_column(conn, "customers", field_name):
+            fields.append(f"{prefix}{field_name}")
+        else:
+            fields.append(f"NULL AS {field_name}")
+    return ", ".join(fields)
+
+
 def _ensure_sellers_table(conn: DBConn) -> None:
     if not _has_table(conn, "sellers"):
         if DB_IS_POSTGRES:
@@ -3617,9 +3642,10 @@ def admin_backoffice_customers(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        customer_fields = _customer_select_fields(conn)
         rows = conn.execute(
-            """
-            SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
+            f"""
+            SELECT {customer_fields}
             FROM customers
             WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
@@ -4150,9 +4176,10 @@ def admin_backoffice_customer_detail(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        customer_fields = _customer_select_fields(conn)
         customer = conn.execute(
-            """
-            SELECT id, name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, external_ref
+            f"""
+            SELECT {customer_fields}
             FROM customers
             WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
             """,
@@ -4600,9 +4627,10 @@ def _build_admin_cc_overview(conn: DBConn) -> dict[str, Any]:
     _ensure_syncable_tables(conn)
     if not _has_table(conn, "customers") or not _has_table(conn, "account_movements"):
         return {"customers": [], "summary": {"customers": 0, "debit": 0, "credit": 0, "balance": 0}}
+    customer_fields = _customer_select_fields(conn)
     customer_rows = conn.execute(
-        """
-        SELECT id, name, email, phone, sale_mode, locality, address, tax_condition, cuit
+        f"""
+        SELECT {customer_fields}
         FROM customers
         WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
         ORDER BY LOWER(TRIM(name)) ASC
@@ -4789,9 +4817,10 @@ def admin_cc_customer_detail(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        customer_fields = _customer_select_fields(conn)
         customer = conn.execute(
-            """
-            SELECT id, name, email, phone, sale_mode, locality, address, tax_condition, cuit
+            f"""
+            SELECT {customer_fields}
             FROM customers
             WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
             """,

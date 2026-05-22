@@ -326,44 +326,33 @@ export default function CuentasCorrientesPage() {
     overviewRequestRef.current = requestId;
     setLoading(true);
     await loadRuntimeConfig();
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        if (overviewRequestRef.current !== requestId) return;
-        setOverviewMode('modern');
-        setCustomers(data.customers || []);
-        setSummary(
-          data.summary || {
-            customers: 0,
-            debit: 0,
-            credit: 0,
-            balance: 0,
-            pending: 0,
-            overdue: 0,
-            collected: 0,
-            credit_notes: 0,
-            writeoffs: 0,
-            adjustments: 0,
-          }
-        );
-        if (!isMobileLayout && (data.customers || []).length > 0) {
-          setSelectedId((current) => current ?? data.customers[0].id);
-        }
-        return;
-      }
-    } catch {
-      // Si el endpoint nuevo no responde, intentamos el flujo legacy antes de dar error.
+    const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data?.detail === 'string' && data.detail.trim()
+          ? data.detail
+          : 'No se pudo cargar cuentas corrientes'
+      );
     }
-    const legacyRes = await fetch(`${getApiBaseUrl()}/admin/account-customers?limit=300`, { credentials: 'include' });
-    if (!legacyRes.ok) throw new Error('No se pudo cargar cuentas corrientes');
-    const legacyRows = await legacyRes.json();
     if (overviewRequestRef.current !== requestId) return;
-    const data = mapLegacyCustomers(Array.isArray(legacyRows) ? legacyRows : []);
-    setOverviewMode('legacy');
-    setCustomers(data.customers);
-    setSummary(data.summary);
-    if (!isMobileLayout && data.customers.length > 0) {
+    setOverviewMode('modern');
+    setCustomers(data.customers || []);
+    setSummary(
+      data.summary || {
+        customers: 0,
+        debit: 0,
+        credit: 0,
+        balance: 0,
+        pending: 0,
+        overdue: 0,
+        collected: 0,
+        credit_notes: 0,
+        writeoffs: 0,
+        adjustments: 0,
+      }
+    );
+    if (!isMobileLayout && (data.customers || []).length > 0) {
       setSelectedId((current) => current ?? data.customers[0].id);
     }
   }
