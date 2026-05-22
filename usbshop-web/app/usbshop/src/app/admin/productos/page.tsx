@@ -16,6 +16,11 @@ interface Product {
   name: string;
   sku: string;
   price: number;
+  price_list_1?: number | null;
+  price_list_2?: number | null;
+  storefront_price?: number;
+  storefront_original_price?: number;
+  storefront_price_source?: 'flash_offer' | 'price_list_1' | 'price';
   cost: number;
   stock: number;
   imageUrl?: string | null;
@@ -120,6 +125,28 @@ const getProductPrimaryImageUrl = (product: Product, baseUrl: string) =>
   resolveImageUrl(product.imageUrl, baseUrl) ||
   resolveImageUrl(product.image_path, baseUrl) ||
   resolveImageUrl(Array.isArray(product.image_urls) ? product.image_urls[0] : null, baseUrl);
+
+const getStorefrontPrice = (product: Product) => {
+  if (Number(product.flash_offer_price || 0) > 0 && product.flash_offer_active) {
+    return Number(product.flash_offer_price || 0);
+  }
+  const priceList1 = Number(product.price_list_1 || 0);
+  if (priceList1 > 0) {
+    return priceList1;
+  }
+  return Number(product.price || 0);
+};
+
+const getStorefrontPriceLabel = (product: Product) => {
+  if (Number(product.flash_offer_price || 0) > 0 && product.flash_offer_active) {
+    return 'Web: relampago';
+  }
+  const priceList1 = Number(product.price_list_1 || 0);
+  if (priceList1 > 0 && priceList1 !== Number(product.price || 0)) {
+    return 'Web: lista 1';
+  }
+  return 'Web: precio base';
+};
 
 export default function ProductosPage() {
   const { user } = useAdminSession();
@@ -316,10 +343,12 @@ export default function ProductosPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      body: JSON.stringify({
           name: product.name,
           sku: product.sku,
           price: product.price,
+          price_list_1: product.price_list_1 || 0,
+          price_list_2: product.price_list_2 || 0,
           cost: product.cost,
           stock: product.stock,
           category_id: product.category_id,
@@ -343,6 +372,8 @@ export default function ProductosPage() {
     name: product.name,
     sku: product.sku,
     price: product.price,
+    price_list_1: product.price_list_1 || 0,
+    price_list_2: product.price_list_2 || 0,
     cost: product.cost,
     stock: product.stock,
     category_id: product.category_id,
@@ -370,7 +401,7 @@ export default function ProductosPage() {
   };
 
   const activateFlashOffer = async (product: Product) => {
-    const rawPrice = prompt(`Precio relampago para "${product.name}"`, String(product.flash_offer_price || product.price));
+    const rawPrice = prompt(`Precio relampago para "${product.name}"`, String(product.flash_offer_price || getStorefrontPrice(product)));
     if (rawPrice === null) return;
     const price = Number(rawPrice.replace(',', '.'));
     if (!Number.isFinite(price) || price <= 0) {
@@ -473,7 +504,7 @@ export default function ProductosPage() {
         const embeddedImageUrl =
           includeImages && resolvedImageUrl ? await fetchImageAsDataUrl(resolvedImageUrl) : null;
         const finalImageUrl = embeddedImageUrl || resolvedImageUrl;
-        const amount = valueMode === 'cost' ? product.cost || 0 : product.price || 0;
+        const amount = valueMode === 'cost' ? product.cost || 0 : getStorefrontPrice(product);
         const imageCell = includeImages
           ? finalImageUrl
             ? `<td class="imageCell"><img src="${escapeHtml(finalImageUrl)}" alt="${escapeHtml(product.name)}" /></td>`
@@ -724,6 +755,7 @@ export default function ProductosPage() {
             ) : (
               filteredProducts.map((product) => {
                 const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
+                const storefrontPrice = getStorefrontPrice(product);
                 return (
                   <button
                     key={product.id}
@@ -744,7 +776,7 @@ export default function ProductosPage() {
                       </div>
                     </div>
                     <div className={styles.mobileCardMeta}>
-                      <span>{currencyFormatter.format(product.price || 0)}</span>
+                      <span>{currencyFormatter.format(storefrontPrice)}</span>
                       <span>Stock {product.stock}</span>
                       <span>{product.is_featured ? 'Destacado' : 'Comun'}</span>
                     </div>
@@ -793,6 +825,8 @@ export default function ProductosPage() {
               {visibleProducts.map((product) => {
                 const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const margin = calculateMargin(product.cost, product.price);
+                const storefrontPrice = getStorefrontPrice(product);
+                const storefrontPriceLabel = getStorefrontPriceLabel(product);
                 return (
                   <tr
                     key={product.id}
@@ -811,7 +845,15 @@ export default function ProductosPage() {
                     <td className={styles.name}>{product.name}</td>
                     <td className={styles.skuCell} title={product.sku}>{product.sku}</td>
                     <td>{product.category || categoryMap.get(product.category_id || 0) || 'Sin rubro'}</td>
-                    <td className={styles.price}>${product.price.toFixed(2)}</td>
+                    <td className={styles.price}>
+                      <div className={styles.priceStack}>
+                        <strong>{currencyFormatter.format(storefrontPrice)}</strong>
+                        <span>{storefrontPriceLabel}</span>
+                        {storefrontPrice !== Number(product.price || 0) ? (
+                          <small>Base: {currencyFormatter.format(Number(product.price || 0))}</small>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className={styles.price}>${product.cost.toFixed(2)}</td>
                     {canViewProfit ? (
                       <td className={styles.margin}>
@@ -911,9 +953,21 @@ export default function ProductosPage() {
             ) : null}
             <h2>{selectedProduct.name}</h2>
             <div className={styles.mobileDetailGrid}>
+              {(() => {
+                const storefrontPrice = getStorefrontPrice(selectedProduct);
+                const storefrontPriceLabel = getStorefrontPriceLabel(selectedProduct);
+                return (
+                  <>
+                    <div><span>Precio web</span><strong>{currencyFormatter.format(storefrontPrice)}</strong></div>
+                    <div><span>Origen</span><strong>{storefrontPriceLabel}</strong></div>
+                    <div><span>Precio base</span><strong>{currencyFormatter.format(selectedProduct.price || 0)}</strong></div>
+                    <div><span>Lista 1</span><strong>{currencyFormatter.format(Number(selectedProduct.price_list_1 || 0))}</strong></div>
+                    <div><span>Lista 2</span><strong>{currencyFormatter.format(Number(selectedProduct.price_list_2 || 0))}</strong></div>
+                  </>
+                );
+              })()}
               <div><span>SKU</span><strong>{selectedProduct.sku || '-'}</strong></div>
               <div><span>Rubro</span><strong>{selectedProduct.category || categoryMap.get(selectedProduct.category_id || 0) || 'Sin rubro'}</strong></div>
-              <div><span>Precio</span><strong>{currencyFormatter.format(selectedProduct.price || 0)}</strong></div>
               <div><span>Costo</span><strong>{currencyFormatter.format(selectedProduct.cost || 0)}</strong></div>
               <div><span>Stock</span><strong>{selectedProduct.stock}</strong></div>
               <div><span>Estado</span><strong>{selectedProduct.is_active ? 'Activo' : 'Inactivo'}</strong></div>

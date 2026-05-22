@@ -3196,6 +3196,7 @@ def admin_list_products(
         _ensure_product_images_table(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
+        _ensure_products_flash_offer_columns(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
@@ -3247,6 +3248,15 @@ def admin_list_products(
                 "price": float(row["price"] or 0),
                 "price_list_1": float(row["price_list_1"] or 0),
                 "price_list_2": float(row["price_list_2"] or 0),
+                "storefront_price": _storefront_price(row),
+                "storefront_original_price": _pick_price(row),
+                "storefront_price_source": (
+                    "flash_offer"
+                    if _flash_offer_is_active(row)
+                    else "price_list_1"
+                    if float(row["price_list_1"] or 0) > 0 and float(row["price_list_1"] or 0) != float(row["price"] or 0)
+                    else "price"
+                ),
                 "cost": float(row["cost"] or 0),
                 "stock": int(row["stock"] or 0),
                 "category_id": int(row["category_id"]) if row["category_id"] else None,
@@ -3306,6 +3316,7 @@ def admin_create_product(
     try:
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
+        _ensure_products_flash_offer_columns(conn)
         if conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone():
             raise HTTPException(status_code=400, detail="Ya existe un producto con ese SKU")
 
@@ -3315,6 +3326,12 @@ def admin_create_product(
         if _has_column(conn, "products", "cost"):
             columns.append("cost")
             values.append(cost)
+        if _has_column(conn, "products", "price_list_1"):
+            columns.append("price_list_1")
+            values.append(float(payload.get("price_list_1") or 0))
+        if _has_column(conn, "products", "price_list_2"):
+            columns.append("price_list_2")
+            values.append(float(payload.get("price_list_2") or 0))
         if _has_column(conn, "products", "image_path"):
             columns.append("image_path")
             values.append(primary_image)
@@ -3360,6 +3377,8 @@ def admin_create_product(
             "name": name,
             "sku": sku,
             "price": price,
+            "price_list_1": float(payload.get("price_list_1") or 0),
+            "price_list_2": float(payload.get("price_list_2") or 0),
             "cost": cost,
             "stock": stock,
             "category_id": category_id,
@@ -3424,6 +3443,7 @@ def admin_update_product(
     try:
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
+        _ensure_products_flash_offer_columns(conn)
         row = conn.execute(
             "SELECT id FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
@@ -3444,6 +3464,12 @@ def admin_update_product(
         if "price" in payload:
             updates.append("price = ?")
             params.append(float(payload["price"]))
+        if "price_list_1" in payload and _has_column(conn, "products", "price_list_1"):
+            updates.append("price_list_1 = ?")
+            params.append(float(payload.get("price_list_1") or 0))
+        if "price_list_2" in payload and _has_column(conn, "products", "price_list_2"):
+            updates.append("price_list_2 = ?")
+            params.append(float(payload.get("price_list_2") or 0))
         if "cost" in payload:
             updates.append("cost = ?")
             params.append(float(payload["cost"]))

@@ -373,6 +373,24 @@
   color: var(--purple);
 }
 
+.priceStack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.priceStack strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.priceStack span,
+.priceStack small {
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
 .margin {
   font-weight: 700;
   color: #0f766e;

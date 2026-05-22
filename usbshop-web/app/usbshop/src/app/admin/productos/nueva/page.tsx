@@ -11,6 +11,8 @@ type ProductPayload = {
   name: string;
   sku: string;
   price: number;
+  price_list_1?: number | null;
+  price_list_2?: number | null;
   cost: number;
   stock: number;
   category_id?: number | null;

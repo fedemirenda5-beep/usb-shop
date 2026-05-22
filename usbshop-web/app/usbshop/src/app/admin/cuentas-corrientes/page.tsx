@@ -92,6 +92,8 @@ type InvoiceOption = {
   status?: string | null;
 };
 
+type AccountApiMode = 'modern' | 'legacy';
+
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
@@ -152,7 +154,8 @@ export default function CuentasCorrientesPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
-  const [legacyMode, setLegacyMode] = useState(false);
+  const [overviewMode, setOverviewMode] = useState<AccountApiMode>('modern');
+  const [detailMode, setDetailMode] = useState<AccountApiMode | null>(null);
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState<'all' | 'debt' | 'overdue' | 'credit'>('all');
   const [summary, setSummary] = useState({
@@ -328,7 +331,7 @@ export default function CuentasCorrientesPage() {
       if (res.ok) {
         const data = await res.json();
         if (overviewRequestRef.current !== requestId) return;
-        setLegacyMode(false);
+        setOverviewMode('modern');
         setCustomers(data.customers || []);
         setSummary(
           data.summary || {
@@ -357,7 +360,7 @@ export default function CuentasCorrientesPage() {
     const legacyRows = await legacyRes.json();
     if (overviewRequestRef.current !== requestId) return;
     const data = mapLegacyCustomers(Array.isArray(legacyRows) ? legacyRows : []);
-    setLegacyMode(true);
+    setOverviewMode('legacy');
     setCustomers(data.customers);
     setSummary(data.summary);
     if (!isMobileLayout && data.customers.length > 0) {
@@ -365,25 +368,23 @@ export default function CuentasCorrientesPage() {
     }
   }
 
-  async function loadDetail(customerId: number): Promise<{ payload: CustomerDetail | null; usedLegacy: boolean }> {
+  async function loadDetail(customerId: number): Promise<{ payload: CustomerDetail | null; mode: AccountApiMode }> {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
     setDetailLoading(true);
     await loadRuntimeConfig();
     try {
-      if (!legacyMode) {
-        try {
-          const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
-          if (res.ok) {
-            const payload = await res.json();
-            if (detailRequestRef.current !== requestId) return { payload: null, usedLegacy: false };
-            setDetail(payload);
-            return { payload: payload as CustomerDetail, usedLegacy: false };
-          }
-        } catch {
-          // Caemos al flujo legacy si el detalle moderno no esta disponible.
+      try {
+        const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
+        if (res.ok) {
+          const payload = await res.json();
+          if (detailRequestRef.current !== requestId) return { payload: null, mode: 'modern' };
+          setDetailMode('modern');
+          setDetail(payload);
+          return { payload: payload as CustomerDetail, mode: 'modern' };
         }
-        setLegacyMode(true);
+      } catch {
+        // Caemos al flujo legacy si el detalle moderno no esta disponible.
       }
       const [customerRes, movementsRes] = await Promise.all([
         fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}`, { credentials: 'include' }),
@@ -393,9 +394,10 @@ export default function CuentasCorrientesPage() {
       const customer = await customerRes.json();
       const movements = await movementsRes.json();
       const payload = mapLegacyDetail(customer, movements);
-      if (detailRequestRef.current !== requestId) return { payload: null, usedLegacy: true };
+      if (detailRequestRef.current !== requestId) return { payload: null, mode: 'legacy' };
+      setDetailMode('legacy');
       setDetail(payload);
-      return { payload, usedLegacy: true };
+      return { payload, mode: 'legacy' };
     } finally {
       if (detailRequestRef.current === requestId) {
         setDetailLoading(false);
@@ -406,10 +408,6 @@ export default function CuentasCorrientesPage() {
   async function loadInvoices(customerId: number) {
     const requestId = invoicesRequestRef.current + 1;
     invoicesRequestRef.current = requestId;
-    if (legacyMode) {
-      setInvoices([]);
-      return;
-    }
     await loadRuntimeConfig();
     const res = await fetch(`${getApiBaseUrl()}/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
     if (!res.ok) throw new Error('No se pudieron cargar los comprobantes del cliente');
@@ -434,10 +432,11 @@ export default function CuentasCorrientesPage() {
   useEffect(() => {
     if (!selectedId) return;
     resetMovementForm();
+    setDetailMode(null);
     const loadSelectedCustomer = async () => {
       try {
         const detailResult = await loadDetail(selectedId);
-        if (detailResult.usedLegacy) {
+        if (detailResult.mode === 'legacy') {
           setInvoices([]);
           return;
         }
@@ -468,14 +467,15 @@ export default function CuentasCorrientesPage() {
         throw new Error('Ingresa un importe valido. Podes usar 306000, 306.000 o 306,00');
       }
       await loadRuntimeConfig();
-      const endpoint = legacyMode
+      const activeMode = detailMode ?? overviewMode;
+      const endpoint = activeMode === 'legacy'
         ? editingMovementId
           ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements/${editingMovementId}`
           : `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements`
         : editingMovementId
           ? `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${editingMovementId}`
           : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
-      const payload = legacyMode
+      const payload = activeMode === 'legacy'
         ? {
             movement_type: form.movement_type,
             amount: parsedAmount,
@@ -499,7 +499,7 @@ export default function CuentasCorrientesPage() {
       if (!res.ok) throw new Error(data.detail || (editingMovementId ? 'No se pudo actualizar el movimiento' : 'No se pudo registrar el movimiento'));
       await loadOverview();
       const detailResult = await loadDetail(selectedId);
-      if (detailResult.usedLegacy) {
+      if (detailResult.mode === 'legacy') {
         setInvoices([]);
       } else {
         await loadInvoices(selectedId);
@@ -724,7 +724,7 @@ export default function CuentasCorrientesPage() {
       await loadOverview();
       if (selectedId) {
         const detailResult = await loadDetail(selectedId);
-        if (detailResult.usedLegacy) {
+        if (detailResult.mode === 'legacy') {
           setInvoices([]);
         } else {
           await loadInvoices(selectedId);
@@ -739,12 +739,13 @@ export default function CuentasCorrientesPage() {
     setError('');
     setSelectedId(customerId);
     setDetail(null);
+    setDetailMode(null);
     setInvoices([]);
     setDetailOnly(true);
     setOutputRange(null);
     try {
       const detailResult = await loadDetail(customerId);
-      if (!detailResult.usedLegacy) {
+      if (detailResult.mode !== 'legacy') {
         await loadInvoices(customerId);
       }
     } catch (err) {
@@ -775,7 +776,7 @@ export default function CuentasCorrientesPage() {
       if (!currentDetail || currentDetail.customer.id !== selectedId) {
         const detailResult = await loadDetail(selectedId);
         currentDetail = detailResult.payload || null;
-        if (detailResult.usedLegacy) {
+        if (detailResult.mode === 'legacy') {
           setInvoices([]);
         } else {
           await loadInvoices(selectedId);
@@ -819,7 +820,8 @@ export default function CuentasCorrientesPage() {
       setDeleting(true);
       setError('');
       await loadRuntimeConfig();
-      const endpoint = legacyMode
+      const activeMode = detailMode ?? overviewMode;
+      const endpoint = activeMode === 'legacy'
         ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}`
         : `${getApiBaseUrl()}/admin/cc/${selectedId}`;
       const res = await fetch(endpoint, {

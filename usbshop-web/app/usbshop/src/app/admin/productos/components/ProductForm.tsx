@@ -11,6 +11,8 @@ interface ProductFormData {
   name: string;
   sku: string;
   price: number;
+  price_list_1?: number | null;
+  price_list_2?: number | null;
   cost: number;
   stock: number;
   category_id?: number | null;
@@ -27,6 +29,8 @@ interface ProductFormState {
   name: string;
   sku: string;
   price: string;
+  price_list_1: string;
+  price_list_2: string;
   cost: string;
   stock: string;
   category_id: string;
@@ -140,6 +144,8 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     name: source.name,
     sku: source.sku,
     price: toDecimalString(source.price),
+    price_list_1: source.price_list_1 ? toDecimalString(source.price_list_1) : '',
+    price_list_2: source.price_list_2 ? toDecimalString(source.price_list_2) : '',
     cost: toDecimalString(source.cost),
     stock: toIntegerString(source.stock),
     category_id: source.category_id ? String(source.category_id) : '',
@@ -195,7 +201,7 @@ export function ProductForm({
     setFormData((prev) => ({ ...prev, [name]: value } as ProductFormState));
   };
 
-  const handleNumericChange = (name: 'price' | 'cost' | 'stock' | 'flash_offer_price', rawValue: string) => {
+  const handleNumericChange = (name: 'price' | 'price_list_1' | 'price_list_2' | 'cost' | 'stock' | 'flash_offer_price', rawValue: string) => {
     setFormData((prev) => {
       if (name === 'stock') {
         return {
@@ -245,7 +251,7 @@ export function ProductForm({
       handleFieldChange(name as keyof ProductFormState, checked);
       return;
     }
-    if (name === 'price' || name === 'cost' || name === 'stock' || name === 'flash_offer_price') {
+    if (name === 'price' || name === 'price_list_1' || name === 'price_list_2' || name === 'cost' || name === 'stock' || name === 'flash_offer_price') {
       handleNumericChange(name, value);
       return;
     }
@@ -351,6 +357,8 @@ export function ProductForm({
 
     try {
       const price = parseDecimal(formData.price);
+      const priceList1 = parseDecimal(formData.price_list_1);
+      const priceList2 = parseDecimal(formData.price_list_2);
       const cost = parseDecimal(formData.cost);
       const stock = parseInteger(formData.stock);
       const flashOfferPrice = parseDecimal(formData.flash_offer_price);
@@ -366,6 +374,12 @@ export function ProductForm({
       }
       if (!Number.isFinite(cost) || cost < 0) {
         throw new Error('Costo no puede ser negativo');
+      }
+      if (formData.price_list_1.trim() && (!Number.isFinite(priceList1) || priceList1 < 0)) {
+        throw new Error('Lista 1 invalida');
+      }
+      if (formData.price_list_2.trim() && (!Number.isFinite(priceList2) || priceList2 < 0)) {
+        throw new Error('Lista 2 invalida');
       }
       if (!Number.isFinite(stock) || stock < 0) {
         throw new Error('Stock no puede ser negativo');
@@ -391,6 +405,8 @@ export function ProductForm({
         name: formData.name.trim(),
         sku: formData.sku.trim(),
         price,
+        price_list_1: formData.price_list_1.trim() ? priceList1 : 0,
+        price_list_2: formData.price_list_2.trim() ? priceList2 : 0,
         cost,
         stock,
         category_id: formData.category_id ? Number(formData.category_id) : null,
@@ -484,6 +500,38 @@ export function ProductForm({
           </div>
 
           <div className={styles.field}>
+            <label htmlFor="price_list_1">Lista 1 web ($)</label>
+            <input
+              id="price_list_1"
+              type="text"
+              inputMode="decimal"
+              name="price_list_1"
+              value={formData.price_list_1}
+              onChange={handleChange}
+              disabled={loading}
+              className={styles.input}
+              placeholder="Si queda vacio usa el precio base"
+            />
+          </div>
+
+          <div className={styles.field}>
+            <label htmlFor="price_list_2">Lista 2 ($)</label>
+            <input
+              id="price_list_2"
+              type="text"
+              inputMode="decimal"
+              name="price_list_2"
+              value={formData.price_list_2}
+              onChange={handleChange}
+              disabled={loading}
+              className={styles.input}
+              placeholder="Opcional"
+            />
+          </div>
+        </div>
+
+        <div className={styles.fieldRowTriple}>
+          <div className={styles.field}>
             <label htmlFor="cost">Costo ($)</label>
             <input
               id="cost"
@@ -536,6 +584,25 @@ export function ProductForm({
             </div>
           </div>
         ) : null}
+
+        <div className={styles.summaryCard}>
+          <span className={styles.summaryLabel}>Precio visible en web</span>
+          <strong className={styles.summaryValue}>
+            {(() => {
+              const flash = parseDecimal(formData.flash_offer_price);
+              const list1 = parseDecimal(formData.price_list_1);
+              const base = parseDecimal(formData.price);
+              const visible =
+                formData.flash_offer_price.trim() && Number.isFinite(flash) && flash > 0
+                  ? flash
+                  : formData.price_list_1.trim() && Number.isFinite(list1) && list1 > 0
+                    ? list1
+                    : base;
+              return Number.isFinite(visible) ? visible.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' }) : '$0';
+            })()}
+          </strong>
+          <p className={styles.help}>Prioridad: relampago, lista 1, precio base.</p>
+        </div>
 
         <div className={styles.field}>
           <label>Imagenes del producto</label>
