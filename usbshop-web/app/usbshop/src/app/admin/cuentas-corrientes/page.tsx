@@ -400,9 +400,6 @@ export default function CuentasCorrientesPage() {
         adjustments: 0,
       }
     );
-    if (!isMobileLayout && mapped.customers.length > 0) {
-      setSelectedId((current) => current ?? mapped.customers[0].id);
-    }
   }
 
   async function loadDetail(customerId: number): Promise<{ payload: CustomerDetail | null; mode: AccountApiMode }> {
@@ -491,11 +488,8 @@ export default function CuentasCorrientesPage() {
 
   useEffect(() => {
     if (isMobileLayout) return;
-    if (!selectedId && customers.length > 0) {
-      setSelectedId(customers[0].id);
-    }
     setDetailOnly(false);
-  }, [customers, isMobileLayout, selectedId]);
+  }, [customers, isMobileLayout]);
 
   const submitMovement = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
