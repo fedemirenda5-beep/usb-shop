@@ -1243,12 +1243,12 @@ export default function HomeClient({
       {!isSearching && !selectedCategory && flashOfferProduct && flashOfferTimeLeft > 0 ? (
         <section className="flash-offer">
           <div className="flash-offer__content">
-            <div>
-              <p className="section-kicker">Oferta relampago</p>
+            <div className="flash-offer__copy">
+              <p className="section-kicker flash-offer__kicker">Oferta relampago</p>
               <h2>{flashOfferProduct.name}</h2>
-              <p>Precio especial por tiempo limitado.</p>
+              <p className="flash-offer__subtitle">Precio especial por tiempo limitado.</p>
             </div>
-            <div className="flash-offer__price">
+            <div className="flash-offer__price" aria-label="Precio de oferta">
               {flashOfferProduct.originalPrice && flashOfferProduct.originalPrice > flashOfferProduct.price ? (
                 <span>${flashOfferProduct.originalPrice.toLocaleString("es-AR")}</span>
               ) : null}
@@ -1260,7 +1260,7 @@ export default function HomeClient({
             </div>
             <button
               type="button"
-              className="button button--lime"
+              className="button button--lime flash-offer__button"
               onClick={() => addItem(flashOfferProduct)}
             >
               Agregar oferta
