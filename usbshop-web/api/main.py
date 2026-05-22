@@ -4202,9 +4202,6 @@ def admin_backoffice_customer_detail(
     try:
         _ensure_syncable_tables(conn)
         customer_fields = _customer_select_fields(conn)
-        invoice_document_type_field = "i.document_type" if _has_column(conn, "invoices", "document_type") else "NULL AS document_type"
-        invoice_total_field = "i.total" if _has_column(conn, "invoices", "total") else "NULL AS total"
-        invoice_due_date_field = "i.due_date" if _has_column(conn, "invoices", "due_date") else "NULL AS due_date"
         customer = conn.execute(
             f"""
             SELECT {customer_fields}
@@ -4857,12 +4854,11 @@ def admin_cc_customer_detail(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
         movements = conn.execute(
-            f"""
+            """
             SELECT am.id, am.customer_id, am.amount, am.movement_type, am.reference, am.invoice_id,
                    am.entry_kind, am.created_at, am.payment_method,
-                   {invoice_document_type_field}, {invoice_total_field}, {invoice_due_date_field}
+                   NULL AS document_type, NULL AS total, NULL AS due_date
             FROM account_movements am
-            LEFT JOIN invoices i ON i.id = am.invoice_id
             WHERE am.customer_id = ?
             """
             + _active_account_movements_clause(conn, "am")

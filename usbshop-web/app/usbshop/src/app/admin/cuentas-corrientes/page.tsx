@@ -447,11 +447,16 @@ export default function CuentasCorrientesPage() {
     const requestId = invoicesRequestRef.current + 1;
     invoicesRequestRef.current = requestId;
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
-    if (!res.ok) throw new Error('No se pudieron cargar los comprobantes del cliente');
-    const data = await res.json();
-    if (invoicesRequestRef.current !== requestId) return;
-    setInvoices(data || []);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
+      if (!res.ok) throw new Error('No se pudieron cargar los comprobantes del cliente');
+      const data = await res.json();
+      if (invoicesRequestRef.current !== requestId) return;
+      setInvoices(data || []);
+    } catch {
+      if (invoicesRequestRef.current !== requestId) return;
+      setInvoices([]);
+    }
   }
 
   useEffect(() => {
@@ -754,18 +759,18 @@ export default function CuentasCorrientesPage() {
   const hideGlobalTotals = (user?.role || '').toLowerCase() === 'staff';
 
   const refreshAll = async () => {
-    try {
-      setError('');
-      await loadOverview();
-      if (selectedId) {
-        const detailResult = await loadDetail(selectedId);
-        if (detailResult.mode === 'legacy') {
-          setInvoices([]);
-        } else {
-          await loadInvoices(selectedId);
+      try {
+        setError('');
+        await loadOverview();
+        if (selectedId) {
+          const detailResult = await loadDetail(selectedId);
+          if (detailResult.mode === 'legacy') {
+            setInvoices([]);
+          } else {
+            await loadInvoices(selectedId);
+          }
         }
-      }
-    } catch (err) {
+      } catch (err) {
       setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
     }
   };
