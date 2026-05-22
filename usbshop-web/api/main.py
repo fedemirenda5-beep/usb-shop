@@ -2176,6 +2176,31 @@ def _customer_select_fields(conn: DBConn, alias: str = "") -> str:
     return ", ".join(fields)
 
 
+def _invoice_select_fields(conn: DBConn, alias: str = "") -> str:
+    prefix = f"{alias}." if alias else ""
+    fields: list[str] = [f"{prefix}id"]
+    optional_fields = [
+        "customer_id",
+        "total",
+        "created_at",
+        "document_type",
+        "sale_mode",
+        "price_list",
+        "due_date",
+        "notes",
+        "payment_method",
+        "seller_id",
+        "commission_amount",
+        "special_discount",
+    ]
+    for field_name in optional_fields:
+        if _has_column(conn, "invoices", field_name):
+            fields.append(f"{prefix}{field_name}")
+        else:
+            fields.append(f"NULL AS {field_name}")
+    return ", ".join(fields)
+
+
 def _ensure_sellers_table(conn: DBConn) -> None:
     if not _has_table(conn, "sellers"):
         if DB_IS_POSTGRES:
@@ -4177,6 +4202,9 @@ def admin_backoffice_customer_detail(
     try:
         _ensure_syncable_tables(conn)
         customer_fields = _customer_select_fields(conn)
+        invoice_document_type_field = "i.document_type" if _has_column(conn, "invoices", "document_type") else "NULL AS document_type"
+        invoice_total_field = "i.total" if _has_column(conn, "invoices", "total") else "NULL AS total"
+        invoice_due_date_field = "i.due_date" if _has_column(conn, "invoices", "due_date") else "NULL AS due_date"
         customer = conn.execute(
             f"""
             SELECT {customer_fields}
@@ -4829,9 +4857,10 @@ def admin_cc_customer_detail(
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
         movements = conn.execute(
-            """
+            f"""
             SELECT am.id, am.customer_id, am.amount, am.movement_type, am.reference, am.invoice_id,
-                   am.entry_kind, am.created_at, am.payment_method, i.document_type, i.total, i.due_date
+                   am.entry_kind, am.created_at, am.payment_method,
+                   {invoice_document_type_field}, {invoice_total_field}, {invoice_due_date_field}
             FROM account_movements am
             LEFT JOIN invoices i ON i.id = am.invoice_id
             WHERE am.customer_id = ?
