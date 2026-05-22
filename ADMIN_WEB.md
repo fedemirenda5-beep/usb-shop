@@ -47,6 +47,7 @@ En particular, `Cuentas corrientes` quedo alineado asi:
 - listado inicial: `/admin/backoffice-customers`
 - detalle, altas, edicion y borrado: `/admin/cc/...`
 - los comprobantes asociados son complementarios y no deben bloquear la apertura de la cuenta
+- `staff` tambien tiene acceso operativo al modulo; solo se ocultan metricas globales sensibles
 
 ## Como trabajar sin ensuciar el proyecto
 
