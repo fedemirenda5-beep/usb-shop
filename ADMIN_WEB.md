@@ -42,6 +42,12 @@ La operacion actual del admin debe apoyarse en:
 - `/admin/reports/overview`
 - `/admin/orders`
 
+En particular, `Cuentas corrientes` quedo alineado asi:
+
+- listado inicial: `/admin/backoffice-customers`
+- detalle, altas, edicion y borrado: `/admin/cc/...`
+- los comprobantes asociados son complementarios y no deben bloquear la apertura de la cuenta
+
 ## Como trabajar sin ensuciar el proyecto
 
 Cada cambio nuevo del admin debe cerrar estas 5 capas cuando apliquen:

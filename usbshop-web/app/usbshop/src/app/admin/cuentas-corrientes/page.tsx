@@ -92,8 +92,6 @@ type InvoiceOption = {
   status?: string | null;
 };
 
-type AccountApiMode = 'modern' | 'legacy';
-
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
@@ -154,8 +152,6 @@ export default function CuentasCorrientesPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
-  const [overviewMode, setOverviewMode] = useState<AccountApiMode>('modern');
-  const [detailMode, setDetailMode] = useState<AccountApiMode | null>(null);
   const [search, setSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState<'all' | 'debt' | 'overdue' | 'credit'>('all');
   const [summary, setSummary] = useState({
@@ -223,48 +219,6 @@ export default function CuentasCorrientesPage() {
     },
   });
 
-  const mapLegacyCustomers = (rows: Array<Record<string, unknown>>) => {
-    const normalized = rows.map((row) => ({
-      id: Number(row.id || 0),
-      name: String(row.name || 'Sin nombre'),
-      email: typeof row.email === 'string' ? row.email : null,
-      phone: typeof row.phone === 'string' ? row.phone : null,
-      sale_mode: 'CUENTA_CORRIENTE',
-      locality: typeof row.city === 'string' ? row.city : null,
-      address: typeof row.address === 'string' ? row.address : null,
-      tax_condition: typeof row.tax_condition === 'string' ? row.tax_condition : null,
-      cuit: typeof row.tax_id === 'string' ? row.tax_id : null,
-      debit: Number(row.balance || 0) > 0 ? Number(row.balance || 0) : 0,
-      credit: Number(row.balance || 0) < 0 ? Math.abs(Number(row.balance || 0)) : 0,
-      balance: Number(row.balance || 0),
-      aging: { ...emptyAging(), total: Number(row.balance || 0) },
-      classification: {
-        ...emptyAging().classification,
-        pending: Math.max(0, Number(row.balance || 0)),
-      },
-      last_movement: typeof row.updated_at === 'string' ? row.updated_at : null,
-    }));
-    const debit = normalized.filter((item) => item.balance > 0).reduce((sum, item) => sum + item.balance, 0);
-    const credit = Math.abs(
-      normalized.filter((item) => item.balance < 0).reduce((sum, item) => sum + item.balance, 0)
-    );
-    return {
-      customers: normalized,
-      summary: {
-        customers: normalized.length,
-        debit,
-        credit,
-        balance: normalized.reduce((sum, item) => sum + item.balance, 0),
-        pending: normalized.reduce((sum, item) => sum + Math.max(0, item.balance), 0),
-        overdue: 0,
-        collected: 0,
-        credit_notes: 0,
-        writeoffs: 0,
-        adjustments: 0,
-      },
-    };
-  };
-
   const mapBackofficeCustomers = (rows: Array<Record<string, unknown>>) => {
     const normalized = rows
       .map((row) => {
@@ -312,62 +266,6 @@ export default function CuentasCorrientesPage() {
     };
   };
 
-  const mapLegacyDetail = (
-    customer: Record<string, unknown>,
-    movementsPayload: { balance?: number; items?: Array<Record<string, unknown>> }
-  ): CustomerDetail => {
-    const items = Array.isArray(movementsPayload.items) ? movementsPayload.items : [];
-    const signedAscending = [...items]
-      .map((item) => ({
-        id: Number(item.id || 0),
-        movement_type: String(item.movement_type || ''),
-        amount: Number(item.amount || 0),
-        signed_amount: Number(item.signed_amount || 0),
-        reference: typeof item.description === 'string' ? item.description : null,
-        invoice_id: null,
-        created_at: typeof item.created_at === 'string' ? item.created_at : null,
-        payment_method: null,
-        document_type:
-          typeof item.document_type === 'string' && typeof item.document_number === 'string'
-            ? `${item.document_type} ${item.document_number}`.trim()
-            : typeof item.document_type === 'string'
-              ? item.document_type
-              : null,
-        due_date: typeof item.due_date === 'string' ? item.due_date : null,
-        running_balance: 0,
-        editable: true,
-      }))
-      .reverse();
-    let runningBalance = 0;
-    const movements = signedAscending
-      .map((item) => {
-        runningBalance += item.signed_amount;
-        return { ...item, running_balance: runningBalance };
-      })
-      .reverse();
-    const balance = Number(movementsPayload.balance || customer.balance || 0);
-    return {
-      customer: {
-        id: Number(customer.id || 0),
-        name: String(customer.name || 'Sin nombre'),
-        email: typeof customer.email === 'string' ? customer.email : null,
-        phone: typeof customer.phone === 'string' ? customer.phone : null,
-        sale_mode: 'CUENTA_CORRIENTE',
-        locality: typeof customer.city === 'string' ? customer.city : null,
-        address: typeof customer.address === 'string' ? customer.address : null,
-        tax_condition: typeof customer.tax_condition === 'string' ? customer.tax_condition : null,
-        cuit: typeof customer.tax_id === 'string' ? customer.tax_id : null,
-      },
-      balance,
-      aging: { ...emptyAging(), total: balance },
-      classification: {
-        ...emptyAging().classification,
-        pending: Math.max(0, balance),
-      },
-      movements,
-    };
-  };
-
   async function loadOverview() {
     const requestId = overviewRequestRef.current + 1;
     overviewRequestRef.current = requestId;
@@ -384,7 +282,6 @@ export default function CuentasCorrientesPage() {
     }
     if (overviewRequestRef.current !== requestId) return;
     const mapped = mapBackofficeCustomers(Array.isArray(data) ? data : []);
-    setOverviewMode('modern');
     setCustomers(mapped.customers);
     setSummary(
       mapped.summary || {
@@ -402,40 +299,24 @@ export default function CuentasCorrientesPage() {
     );
   }
 
-  async function loadDetail(customerId: number): Promise<{ payload: CustomerDetail | null; mode: AccountApiMode }> {
+  async function loadDetail(customerId: number): Promise<CustomerDetail | null> {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
     setDetailLoading(true);
     await loadRuntimeConfig();
     try {
-      if (overviewMode === 'modern') {
-        const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            typeof data?.detail === 'string' && data.detail.trim()
-              ? data.detail
-              : 'No se pudo cargar el detalle de la cuenta corriente'
-          );
-        }
-        if (detailRequestRef.current !== requestId) return { payload: null, mode: 'modern' };
-        setDetailMode('modern');
-        setDetail(data);
-        return { payload: data as CustomerDetail, mode: 'modern' };
+      const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.detail === 'string' && data.detail.trim()
+            ? data.detail
+            : 'No se pudo cargar el detalle de la cuenta corriente'
+        );
       }
-
-      const [customerRes, movementsRes] = await Promise.all([
-        fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}`, { credentials: 'include' }),
-        fetch(`${getApiBaseUrl()}/admin/account-customers/${customerId}/movements`, { credentials: 'include' }),
-      ]);
-      if (!customerRes.ok || !movementsRes.ok) throw new Error('No se pudo cargar el detalle legacy');
-      const customer = await customerRes.json();
-      const movements = await movementsRes.json();
-      const payload = mapLegacyDetail(customer, movements);
-      if (detailRequestRef.current !== requestId) return { payload: null, mode: 'legacy' };
-      setDetailMode('legacy');
-      setDetail(payload);
-      return { payload, mode: 'legacy' };
+      if (detailRequestRef.current !== requestId) return null;
+      setDetail(data);
+      return data as CustomerDetail;
     } finally {
       if (detailRequestRef.current === requestId) {
         setDetailLoading(false);
@@ -475,14 +356,9 @@ export default function CuentasCorrientesPage() {
   useEffect(() => {
     if (!selectedId) return;
     resetMovementForm();
-    setDetailMode(null);
     const loadSelectedCustomer = async () => {
       try {
-        const detailResult = await loadDetail(selectedId);
-        if (detailResult.mode === 'legacy') {
-          setInvoices([]);
-          return;
-        }
+        await loadDetail(selectedId);
         await loadInvoices(selectedId);
       } catch (err) {
         setError(getErrorMessage(err, 'Error cargando el detalle'));
@@ -507,28 +383,17 @@ export default function CuentasCorrientesPage() {
         throw new Error('Ingresa un importe valido. Podes usar 306000, 306.000 o 306,00');
       }
       await loadRuntimeConfig();
-      const activeMode = detailMode ?? overviewMode;
-      const endpoint = activeMode === 'legacy'
-        ? editingMovementId
-          ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements/${editingMovementId}`
-          : `${getApiBaseUrl()}/admin/account-customers/${selectedId}/movements`
-        : editingMovementId
-          ? `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${editingMovementId}`
-          : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
-      const payload = activeMode === 'legacy'
-        ? {
-            movement_type: form.movement_type,
-            amount: parsedAmount,
-            description: form.reference || form.payment_method || null,
-          }
-        : {
-            movement_type: form.movement_type,
-            entry_kind: form.entry_kind,
-            amount: parsedAmount,
-            payment_method: form.payment_method || null,
-            reference: form.reference || null,
-            invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
-          };
+      const endpoint = editingMovementId
+        ? `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${editingMovementId}`
+        : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
+      const payload = {
+        movement_type: form.movement_type,
+        entry_kind: form.entry_kind,
+        amount: parsedAmount,
+        payment_method: form.payment_method || null,
+        reference: form.reference || null,
+        invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
+      };
       const res = await fetch(endpoint, {
         method: editingMovementId ? 'PUT' : 'POST',
         credentials: 'include',
@@ -538,12 +403,8 @@ export default function CuentasCorrientesPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || (editingMovementId ? 'No se pudo actualizar el movimiento' : 'No se pudo registrar el movimiento'));
       await loadOverview();
-      const detailResult = await loadDetail(selectedId);
-      if (detailResult.mode === 'legacy') {
-        setInvoices([]);
-      } else {
-        await loadInvoices(selectedId);
-      }
+      await loadDetail(selectedId);
+      await loadInvoices(selectedId);
       setEditingMovementId(null);
       setForm((current) => ({
         ...current,
@@ -760,16 +621,12 @@ export default function CuentasCorrientesPage() {
 
   const refreshAll = async () => {
       try {
-        setError('');
-        await loadOverview();
-        if (selectedId) {
-          const detailResult = await loadDetail(selectedId);
-          if (detailResult.mode === 'legacy') {
-            setInvoices([]);
-          } else {
-            await loadInvoices(selectedId);
-          }
-        }
+      setError('');
+      await loadOverview();
+      if (selectedId) {
+        await loadDetail(selectedId);
+        await loadInvoices(selectedId);
+      }
       } catch (err) {
       setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
     }
@@ -779,15 +636,12 @@ export default function CuentasCorrientesPage() {
     setError('');
     setSelectedId(customerId);
     setDetail(null);
-    setDetailMode(null);
     setInvoices([]);
     setDetailOnly(true);
     setOutputRange(null);
     try {
-      const detailResult = await loadDetail(customerId);
-      if (detailResult.mode !== 'legacy') {
-        await loadInvoices(customerId);
-      }
+      await loadDetail(customerId);
+      await loadInvoices(customerId);
     } catch (err) {
       setError(getErrorMessage(err, 'Error cargando el detalle'));
     } finally {
@@ -814,13 +668,8 @@ export default function CuentasCorrientesPage() {
     try {
       let currentDetail = detail;
       if (!currentDetail || currentDetail.customer.id !== selectedId) {
-        const detailResult = await loadDetail(selectedId);
-        currentDetail = detailResult.payload || null;
-        if (detailResult.mode === 'legacy') {
-          setInvoices([]);
-        } else {
-          await loadInvoices(selectedId);
-        }
+        currentDetail = await loadDetail(selectedId);
+        await loadInvoices(selectedId);
       }
       const nextRange = { ...dateRangeDraft };
       setOutputRange(nextRange);
@@ -860,10 +709,7 @@ export default function CuentasCorrientesPage() {
       setDeleting(true);
       setError('');
       await loadRuntimeConfig();
-      const activeMode = detailMode ?? overviewMode;
-      const endpoint = activeMode === 'legacy'
-        ? `${getApiBaseUrl()}/admin/account-customers/${selectedId}`
-        : `${getApiBaseUrl()}/admin/cc/${selectedId}`;
+      const endpoint = `${getApiBaseUrl()}/admin/cc/${selectedId}`;
       const res = await fetch(endpoint, {
         method: 'DELETE',
         credentials: 'include',
