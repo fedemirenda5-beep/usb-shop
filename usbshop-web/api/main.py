@@ -5627,6 +5627,7 @@ def admin_delete_invoice(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_accounting_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         invoice = conn.execute(
             """
@@ -5949,6 +5950,7 @@ def admin_cc_delete_movement(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_accounting_tables(conn)
         customer = conn.execute(
             """
             SELECT id
