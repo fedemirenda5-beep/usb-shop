@@ -5641,17 +5641,32 @@ def admin_delete_invoice(
 
         cc_movements = conn.execute(
             """
-            SELECT id, amount, movement_type
+            SELECT id, amount, movement_type, entry_kind
             FROM account_movements
             WHERE invoice_id = ?
+            """
+            + _active_account_movements_clause(conn)
+            + """
             ORDER BY created_at ASC, id ASC
             """,
             (invoice_id,),
         ).fetchall()
-        credit_movements = [
-            row for row in cc_movements if str(row["movement_type"] or "").strip().upper() == "CREDIT"
-        ]
-        if credit_movements:
+        deleted_document_type = str(invoice["document_type"] or "").strip().upper()
+        blocking_movements = []
+        for row in cc_movements:
+            movement_type = str(row["movement_type"] or "").strip().upper()
+            entry_kind = str(row["entry_kind"] or "").strip().upper()
+            # Una nota de credito genera su propio movimiento CREDIT/CREDIT_NOTE.
+            # Ese movimiento debe poder revertirse al eliminar un duplicado.
+            if (
+                deleted_document_type == "NOTA_CREDITO"
+                and movement_type == "CREDIT"
+                and entry_kind == "CREDIT_NOTE"
+            ):
+                continue
+            if movement_type == "CREDIT":
+                blocking_movements.append(row)
+        if blocking_movements:
             raise HTTPException(
                 status_code=400,
                 detail="No se puede cancelar un comprobante con pagos o creditos aplicados",
@@ -5667,7 +5682,6 @@ def admin_delete_invoice(
         ).fetchall()
 
         restocked_items = 0
-        deleted_document_type = str(invoice["document_type"] or "").strip().upper()
         stock_restore_delta = 1 if deleted_document_type == "FACTURA" else -1 if deleted_document_type == "NOTA_CREDITO" else 0
         if stock_restore_delta != 0:
             for item in items:
