@@ -31,6 +31,10 @@ type CurrentYearMonth = {
   count: number;
   previous_year_sales: number;
   previous_year_margin: number;
+  previous_year_adjusted_margin?: number | null;
+  previous_year_margin_display?: number;
+  previous_year_margin_adjustment_applied?: boolean;
+  previous_year_margin_adjustment_label?: string | null;
   previous_year_expenses: number;
   previous_year_operating_result: number;
   sales_growth_pct?: number | null;
@@ -419,7 +423,17 @@ export default function BalancesPage() {
                                 ) : null}
                               </div>
                             </td>
-                            <td>{money(item.previous_year_margin)}</td>
+                            <td>
+                              <div className={styles.metricCell}>
+                                <strong>{money(item.previous_year_margin_display ?? item.previous_year_margin)}</strong>
+                                {item.previous_year_margin_adjustment_applied ? (
+                                  <>
+                                    <span>{item.previous_year_margin_adjustment_label || 'Margen ajustado'}</span>
+                                    <small>Calc. actual: {money(item.previous_year_margin)}</small>
+                                  </>
+                                ) : null}
+                              </div>
+                            </td>
                             <td>{money(item.expenses)}</td>
                             <td>{money(item.previous_year_expenses)}</td>
                             <td className={(item.margin_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>

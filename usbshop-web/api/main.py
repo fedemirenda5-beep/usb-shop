@@ -6673,6 +6673,7 @@ def admin_reports_overview(
                 if item.get("adjusted_margin") is not None
                 else None
             )
+            margin_display_value = adjusted_margin_value if adjusted_margin_value is not None else margin_value
             expenses_value = round(float(item["expenses"] or 0), 2)
             operating_result_value = round(
                 float(
@@ -6684,6 +6685,14 @@ def admin_reports_overview(
             )
             previous_sales = round(float(previous_item.get("sales") or 0), 2)
             previous_margin = round(float(previous_item.get("margin") or 0), 2)
+            previous_adjusted_margin = (
+                round(float(previous_item.get("adjusted_margin") or 0), 2)
+                if previous_item.get("adjusted_margin") is not None
+                else None
+            )
+            previous_margin_display = (
+                previous_adjusted_margin if previous_adjusted_margin is not None else previous_margin
+            )
             previous_expenses = round(float(previous_item.get("expenses") or 0), 2)
             previous_operating_result = round(float(previous_item.get("operating_result") or 0), 2)
             sales_growth_pct = (
@@ -6692,8 +6701,8 @@ def admin_reports_overview(
                 else None
             )
             margin_growth_pct = (
-                round(((margin_value - previous_margin) / previous_margin) * 100, 2)
-                if previous_margin > 0
+                round(((margin_display_value - previous_margin_display) / previous_margin_display) * 100, 2)
+                if previous_margin_display > 0
                 else None
             )
             operating_result_growth_pct = (
@@ -6715,6 +6724,10 @@ def admin_reports_overview(
                     "count": int(item["count"] or 0),
                     "previous_year_sales": previous_sales,
                     "previous_year_margin": previous_margin,
+                    "previous_year_adjusted_margin": previous_adjusted_margin,
+                    "previous_year_margin_display": previous_margin_display,
+                    "previous_year_margin_adjustment_applied": bool(previous_item.get("margin_adjustment_applied")),
+                    "previous_year_margin_adjustment_label": previous_item.get("margin_adjustment_label"),
                     "previous_year_expenses": previous_expenses,
                     "previous_year_operating_result": previous_operating_result,
                     "sales_growth_pct": sales_growth_pct,
