@@ -412,28 +412,8 @@ export default function BalancesPage() {
                             <td className={(item.sales_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                               {formatPercent(item.sales_growth_pct)}
                             </td>
-                            <td>
-                              <div className={styles.metricCell}>
-                                <strong>{money(item.margin_display ?? item.margin)}</strong>
-                                {item.margin_adjustment_applied ? (
-                                  <>
-                                    <span>{item.margin_adjustment_label || 'Margen ajustado'}</span>
-                                    <small>Calc. actual: {money(item.margin)}</small>
-                                  </>
-                                ) : null}
-                              </div>
-                            </td>
-                            <td>
-                              <div className={styles.metricCell}>
-                                <strong>{money(item.previous_year_margin_display ?? item.previous_year_margin)}</strong>
-                                {item.previous_year_margin_adjustment_applied ? (
-                                  <>
-                                    <span>{item.previous_year_margin_adjustment_label || 'Margen ajustado'}</span>
-                                    <small>Calc. actual: {money(item.previous_year_margin)}</small>
-                                  </>
-                                ) : null}
-                              </div>
-                            </td>
+                            <td>{money(item.margin_display ?? item.margin)}</td>
+                            <td>{money(item.previous_year_margin_display ?? item.previous_year_margin)}</td>
                             <td>{money(item.expenses)}</td>
                             <td>{money(item.previous_year_expenses)}</td>
                             <td className={(item.margin_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
@@ -597,19 +577,7 @@ export default function BalancesPage() {
                       <tr key={item.month}>
                         <td>{formatMonthLabel(item.month)}</td>
                         <td>{money(item.sales)}</td>
-                        <td>
-                          <div className={styles.metricCell}>
-                            <strong>{money(item.margin_display ?? item.margin)}</strong>
-                            {item.margin_adjustment_applied ? (
-                              <>
-                                <span>{item.margin_adjustment_label || 'Margen ajustado'}</span>
-                                <small>Calc. actual: {money(item.margin)}</small>
-                              </>
-                            ) : (
-                              <span>Margen calculado</span>
-                            )}
-                          </div>
-                        </td>
+                        <td>{money(item.margin_display ?? item.margin)}</td>
                         <td>{money(item.adjusted_operating_result ?? item.operating_result)}</td>
                         <td>{integer(item.count)}</td>
                       </tr>
