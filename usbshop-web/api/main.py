@@ -2166,6 +2166,30 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("created_at", "TEXT", "TIMESTAMP"),
         ("payment_method", "TEXT", "TEXT"),
     ],
+    "annual_balances": [
+        ("year", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("total_sales", "REAL", "NUMERIC(12, 2)"),
+        ("capital_ars", "REAL", "NUMERIC(12, 2)"),
+        ("exchange_rate", "REAL", "NUMERIC(12, 2)"),
+        ("capital_usd", "REAL", "NUMERIC(12, 2)"),
+        ("notes", "TEXT", "TEXT"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+        ("updated_at", "TEXT", "TIMESTAMP"),
+        ("january_sales", "REAL", "NUMERIC(12, 2)"),
+        ("february_sales", "REAL", "NUMERIC(12, 2)"),
+        ("march_sales", "REAL", "NUMERIC(12, 2)"),
+        ("april_sales", "REAL", "NUMERIC(12, 2)"),
+        ("may_sales", "REAL", "NUMERIC(12, 2)"),
+        ("june_sales", "REAL", "NUMERIC(12, 2)"),
+        ("july_sales", "REAL", "NUMERIC(12, 2)"),
+        ("august_sales", "REAL", "NUMERIC(12, 2)"),
+        ("september_sales", "REAL", "NUMERIC(12, 2)"),
+        ("october_sales", "REAL", "NUMERIC(12, 2)"),
+        ("november_sales", "REAL", "NUMERIC(12, 2)"),
+        ("december_sales", "REAL", "NUMERIC(12, 2)"),
+        ("total_profit", "REAL", "NUMERIC(12, 2)"),
+        ("cash_closure", "REAL", "NUMERIC(12, 2)"),
+    ],
 }
 
 
@@ -2293,15 +2317,16 @@ def _ensure_sellers_table(conn: DBConn) -> None:
 
 def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
     columns = [name for name, _, _ in SYNC_TABLE_SCHEMAS[table_name]]
+    primary_key = columns[0]
     placeholders = ", ".join(["?"] * len(columns))
-    update_columns = [name for name in columns if name != "id"]
+    update_columns = [name for name in columns if name != primary_key]
     updates = ", ".join(
         f"{name} = {'EXCLUDED' if DB_IS_POSTGRES else 'excluded'}.{name}"
         for name in update_columns
     )
     sql = (
         f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders}) "
-        f"ON CONFLICT(id) DO UPDATE SET {updates}"
+        f"ON CONFLICT({primary_key}) DO UPDATE SET {updates}"
     )
     processed = 0
     for row in rows:
@@ -2314,6 +2339,10 @@ def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
 
 def _reset_sync_sequence(conn: DBConn, table_name: str) -> None:
     if not DB_IS_POSTGRES:
+        return
+    columns = [name for name, _, _ in SYNC_TABLE_SCHEMAS[table_name]]
+    primary_key = columns[0]
+    if primary_key != "id":
         return
     row = conn.execute(
         "SELECT pg_get_serial_sequence(?, 'id') AS seq_name",

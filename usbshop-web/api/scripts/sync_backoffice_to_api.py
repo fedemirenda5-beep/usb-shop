@@ -17,8 +17,8 @@ SOURCE_DB_CANDIDATES = [
 DEFAULT_CHUNK_SIZE = int((os.getenv("USBSHOP_SYNC_CHUNK_SIZE") or "250").strip() or "250")
 RETRY_ATTEMPTS = int((os.getenv("USBSHOP_SYNC_RETRIES") or "4").strip() or "4")
 RETRYABLE_STATUS_CODES = {502, 503, 504}
-DELETE_ORDER = ["invoice_items", "account_movements", "invoices", "customers"]
-IMPORT_ORDER = ["customers", "invoices", "invoice_items", "account_movements"]
+DELETE_ORDER = ["invoice_items", "account_movements", "invoices", "customers", "annual_balances"]
+IMPORT_ORDER = ["customers", "invoices", "invoice_items", "account_movements", "annual_balances"]
 TABLE_COLUMNS: dict[str, list[str]] = {
     "customers": [
         "id",
@@ -66,12 +66,37 @@ TABLE_COLUMNS: dict[str, list[str]] = {
         "created_at",
         "payment_method",
     ],
+    "annual_balances": [
+        "year",
+        "total_sales",
+        "capital_ars",
+        "exchange_rate",
+        "capital_usd",
+        "notes",
+        "created_at",
+        "updated_at",
+        "january_sales",
+        "february_sales",
+        "march_sales",
+        "april_sales",
+        "may_sales",
+        "june_sales",
+        "july_sales",
+        "august_sales",
+        "september_sales",
+        "october_sales",
+        "november_sales",
+        "december_sales",
+        "total_profit",
+        "cash_closure",
+    ],
 }
 TABLE_CHUNK_SIZES: dict[str, int] = {
     "customers": min(DEFAULT_CHUNK_SIZE, 250),
     "invoices": min(DEFAULT_CHUNK_SIZE, 250),
     "invoice_items": min(DEFAULT_CHUNK_SIZE, 150),
     "account_movements": min(DEFAULT_CHUNK_SIZE, 250),
+    "annual_balances": min(DEFAULT_CHUNK_SIZE, 100),
 }
 
 
