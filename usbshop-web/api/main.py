@@ -5943,6 +5943,73 @@ def admin_cc_update_movement(
         conn.close()
 
 
+@app.delete("/admin/cc/{customer_id}/movements/{movement_id}")
+def admin_cc_delete_movement(
+    customer_id: int,
+    movement_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        customer = conn.execute(
+            """
+            SELECT id
+            FROM customers
+            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        movement = conn.execute(
+            """
+            SELECT id, customer_id, invoice_id, movement_type, entry_kind
+            FROM account_movements
+            WHERE id = ? AND customer_id = ?
+            """
+            + _active_account_movements_clause(conn)
+            ,
+            (movement_id, customer_id),
+        ).fetchone()
+        if movement is None:
+            raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        current_entry_kind = str(movement["entry_kind"] or "").strip().upper()
+        if int(movement["invoice_id"] or 0) > 0 and (
+            str(movement["movement_type"] or "").strip().upper() == "DEBIT" or current_entry_kind == "SALE"
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar un movimiento generado por un comprobante de venta",
+            )
+        success = _soft_delete_movement(conn, movement_id, customer_id, edited_by="ADMIN_DELETE_CC_MOVEMENT")
+        if not success:
+            raise HTTPException(status_code=400, detail="No se pudo eliminar el movimiento")
+        conn.commit()
+        balance_row = conn.execute(
+            """
+            SELECT amount, movement_type
+            FROM account_movements
+            WHERE customer_id = ?
+            """
+            + _active_account_movements_clause(conn)
+            + """
+            ORDER BY created_at ASC, id ASC
+            """,
+            (customer_id,),
+        ).fetchall()
+        return {
+            "customer_id": customer_id,
+            "movement_id": movement_id,
+            "balance": _customer_current_balance_from_rows(balance_row),
+            "message": "Movimiento eliminado",
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/admin/reports/overview")
 def admin_reports_overview(
     request: Request,

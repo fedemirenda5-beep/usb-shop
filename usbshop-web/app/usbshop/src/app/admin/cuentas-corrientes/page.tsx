@@ -168,6 +168,7 @@ export default function CuentasCorrientesPage() {
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingMovementId, setDeletingMovementId] = useState<number | null>(null);
   const [detailOnly, setDetailOnly] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDateRangeModal, setShowDateRangeModal] = useState(false);
@@ -730,6 +731,35 @@ export default function CuentasCorrientesPage() {
     }
   };
 
+  const deleteMovement = async (movement: Movement) => {
+    if (!selectedId) return;
+    const label = movement.entry_label || (movement.movement_type === 'DEBIT' ? 'debito' : 'credito');
+    const confirmed = window.confirm(`Eliminar el movimiento #${movement.id} (${label}) por ${money(movement.amount)}?`);
+    if (!confirmed) return;
+    try {
+      setDeletingMovementId(movement.id);
+      setError('');
+      await loadRuntimeConfig();
+      const endpoint = `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${movement.id}`;
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo eliminar el movimiento');
+      if (editingMovementId === movement.id) {
+        resetMovementForm();
+      }
+      await loadOverview();
+      await loadDetail(selectedId);
+      await loadInvoices(selectedId);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Error eliminando movimiento'));
+    } finally {
+      setDeletingMovementId(null);
+    }
+  };
+
   const renderDetailContent = () => {
     if (detailLoading && !detail) {
       return <div className={styles.empty}>Cargando detalle de la cuenta...</div>;
@@ -895,16 +925,30 @@ export default function CuentasCorrientesPage() {
                         {!detailOnly ? (
                           <td className={styles.actionsCell}>
                             {movement.editable !== false ? (
-                              <button
-                                type="button"
-                                className={styles.linkButton}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  startEditingMovement(movement);
-                                }}
-                              >
-                                Editar
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  className={styles.linkButton}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    startEditingMovement(movement);
+                                  }}
+                                  disabled={deletingMovementId === movement.id}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.linkButton}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void deleteMovement(movement);
+                                  }}
+                                  disabled={deletingMovementId === movement.id}
+                                >
+                                  {deletingMovementId === movement.id ? 'Eliminando...' : 'Eliminar'}
+                                </button>
+                              </>
                             ) : (
                               <span className={styles.mutedText}>Bloqueado</span>
                             )}
