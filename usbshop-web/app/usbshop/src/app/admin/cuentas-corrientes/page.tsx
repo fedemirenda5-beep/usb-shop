@@ -925,30 +925,17 @@ export default function CuentasCorrientesPage() {
                         {!detailOnly ? (
                           <td className={styles.actionsCell}>
                             {movement.editable !== false ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className={styles.linkButton}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    startEditingMovement(movement);
-                                  }}
-                                  disabled={deletingMovementId === movement.id}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.linkButton}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void deleteMovement(movement);
-                                  }}
-                                  disabled={deletingMovementId === movement.id}
-                                >
-                                  {deletingMovementId === movement.id ? 'Eliminando...' : 'Eliminar'}
-                                </button>
-                              </>
+                              <button
+                                type="button"
+                                className={styles.linkButton}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  startEditingMovement(movement);
+                                }}
+                                disabled={deletingMovementId === movement.id}
+                              >
+                                Editar
+                              </button>
                             ) : (
                               <span className={styles.mutedText}>Bloqueado</span>
                             )}
@@ -983,6 +970,16 @@ export default function CuentasCorrientesPage() {
                         Cancelar edicion
                       </button>
                     ) : null}
+                    {editingMovement ? (
+                      <button
+                        type="button"
+                        className={styles.dangerButton}
+                        onClick={() => void deleteMovement(editingMovement)}
+                        disabled={saving || deletingMovementId === editingMovement.id}
+                      >
+                        {deletingMovementId === editingMovement.id ? 'Eliminando movimiento...' : 'Eliminar movimiento'}
+                      </button>
+                    ) : null}
                     <button type="submit" className={styles.primaryButton} disabled={saving}>
                       {saving ? 'Guardando...' : editingMovementId ? 'Guardar cambios' : movementMode === 'payment' ? 'Guardar pago' : 'Guardar deuda'}
                     </button>
@@ -991,7 +988,7 @@ export default function CuentasCorrientesPage() {
 
                 {editingMovementId ? (
                   <div className={styles.editingNotice}>
-                    Editando movimiento #{editingMovementId}. Al guardar se recalcula el saldo de la cuenta.
+                    Editando movimiento #{editingMovementId}. Desde aca podes corregirlo o eliminarlo si fue cargado por error.
                   </div>
                 ) : null}
 

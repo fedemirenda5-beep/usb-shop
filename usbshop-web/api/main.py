@@ -5658,10 +5658,14 @@ def admin_delete_invoice(
             entry_kind = str(row["entry_kind"] or "").strip().upper()
             # Una nota de credito genera su propio movimiento CREDIT/CREDIT_NOTE.
             # Ese movimiento debe poder revertirse al eliminar un duplicado.
+            # Tambien cubre notas viejas donde entry_kind puede venir vacio.
             if (
                 deleted_document_type == "NOTA_CREDITO"
                 and movement_type == "CREDIT"
-                and entry_kind == "CREDIT_NOTE"
+                and (
+                    entry_kind in {"", "CREDIT_NOTE"}
+                    or len(cc_movements) == 1
+                )
             ):
                 continue
             if movement_type == "CREDIT":
