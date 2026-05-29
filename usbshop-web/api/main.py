@@ -1542,6 +1542,16 @@ def _log_movement_audit(
     )
 
 
+def _can_use_accounting_audit(conn: DBConn, customer_id: int) -> bool:
+    if not _has_table(conn, "account_customers"):
+        return False
+    row = conn.execute(
+        "SELECT id FROM account_customers WHERE id = ?",
+        (customer_id,),
+    ).fetchone()
+    return row is not None
+
+
 def _soft_delete_movement(
     conn: DBConn,
     movement_id: int,
@@ -1557,6 +1567,8 @@ def _soft_delete_movement(
     
     if movement is None:
         return False
+
+    can_audit = _can_use_accounting_audit(conn, customer_id)
     
     # Guardar en backup
     mov_dict = dict(movement) if hasattr(movement, 'keys') else {}
@@ -1567,20 +1579,21 @@ def _soft_delete_movement(
         cols = [row[1] for row in cursor.fetchall()]
         mov_dict = {col: movement[i] for i, col in enumerate(cols)}
     
-    conn.execute(
-        """
-        INSERT INTO account_movements_backup
-        (original_movement_id, customer_id, movement_type, amount, description, 
-         document_type, document_number, due_date, invoice_id, reference, entry_kind,
-         payment_method, created_at, deleted_at)
-        SELECT id, customer_id, movement_type, amount, description,
-               document_type, document_number, due_date, invoice_id, reference, entry_kind,
-               payment_method, created_at, CURRENT_TIMESTAMP
-        FROM account_movements
-        WHERE id = ? AND customer_id = ?
-        """,
-        (movement_id, customer_id),
-    )
+    if can_audit and _has_table(conn, "account_movements_backup"):
+        conn.execute(
+            """
+            INSERT INTO account_movements_backup
+            (original_movement_id, customer_id, movement_type, amount, description, 
+             document_type, document_number, due_date, invoice_id, reference, entry_kind,
+             payment_method, created_at, deleted_at)
+            SELECT id, customer_id, movement_type, amount, description,
+                   document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                   payment_method, created_at, CURRENT_TIMESTAMP
+            FROM account_movements
+            WHERE id = ? AND customer_id = ?
+            """,
+            (movement_id, customer_id),
+        )
     
     # Marcar como eliminado (soft delete)
     conn.execute(
@@ -1593,14 +1606,15 @@ def _soft_delete_movement(
     )
     
     # Registrar auditoría
-    _log_movement_audit(
-        conn,
-        movement_id,
-        customer_id,
-        "DELETE",
-        old_values=mov_dict,
-        edited_by=edited_by,
-    )
+    if can_audit and _has_table(conn, "account_movements_audit"):
+        _log_movement_audit(
+            conn,
+            movement_id,
+            customer_id,
+            "DELETE",
+            old_values=mov_dict,
+            edited_by=edited_by,
+        )
     
     return True
 
@@ -5700,20 +5714,26 @@ def admin_delete_invoice(
             ).fetchall()
             
             for movement in invoice_movements:
-                conn.execute(
-                    """
-                    INSERT INTO account_movements_backup
-                    (original_movement_id, customer_id, movement_type, amount, description,
-                     document_type, document_number, due_date, invoice_id, reference, entry_kind,
-                     payment_method, created_at, deleted_at)
-                    SELECT id, customer_id, movement_type, amount, description,
-                           document_type, document_number, due_date, invoice_id, reference, entry_kind,
-                           payment_method, created_at, CURRENT_TIMESTAMP
-                    FROM account_movements
-                    WHERE id = ? AND invoice_id = ?
-                    """,
-                    (movement["id"], invoice_id),
-                )
+                movement_customer_id = int(movement["customer_id"] or 0)
+                if (
+                    movement_customer_id > 0
+                    and _can_use_accounting_audit(conn, movement_customer_id)
+                    and _has_table(conn, "account_movements_backup")
+                ):
+                    conn.execute(
+                        """
+                        INSERT INTO account_movements_backup
+                        (original_movement_id, customer_id, movement_type, amount, description,
+                         document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                         payment_method, created_at, deleted_at)
+                        SELECT id, customer_id, movement_type, amount, description,
+                               document_type, document_number, due_date, invoice_id, reference, entry_kind,
+                               payment_method, created_at, CURRENT_TIMESTAMP
+                        FROM account_movements
+                        WHERE id = ? AND invoice_id = ?
+                        """,
+                        (movement["id"], invoice_id),
+                    )
             
             # Marcar movimientos como eliminados en lugar de borrar
             conn.execute(
@@ -5723,14 +5743,20 @@ def admin_delete_invoice(
             
             # Registrar auditoría
             for movement in invoice_movements:
-                _log_movement_audit(
-                    conn,
-                    movement["id"],
-                    movement["customer_id"],
-                    "DELETE",
-                    old_values=dict(movement) if hasattr(movement, 'keys') else {},
-                    edited_by="ADMIN_DELETE_INVOICE",
-                )
+                movement_customer_id = int(movement["customer_id"] or 0)
+                if (
+                    movement_customer_id > 0
+                    and _can_use_accounting_audit(conn, movement_customer_id)
+                    and _has_table(conn, "account_movements_audit")
+                ):
+                    _log_movement_audit(
+                        conn,
+                        movement["id"],
+                        movement_customer_id,
+                        "DELETE",
+                        old_values=dict(movement) if hasattr(movement, 'keys') else {},
+                        edited_by="ADMIN_DELETE_INVOICE",
+                    )
         
         conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
