@@ -904,6 +904,17 @@ def _ensure_invoice_special_discount_column(conn: DBConn) -> None:
     _invalidate_table_cache("invoices")
 
 
+def _ensure_invoice_items_cost_snapshot_column(conn: DBConn) -> None:
+    if _has_column(conn, "invoice_items", "cost_snapshot"):
+        return
+    if DB_IS_POSTGRES:
+        conn.execute("ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS cost_snapshot NUMERIC(12, 2)")
+    else:
+        conn.execute("ALTER TABLE invoice_items ADD COLUMN cost_snapshot REAL")
+    conn.commit()
+    _invalidate_table_cache("invoice_items")
+
+
 def _require_sync_token(request: Request) -> None:
     token = (os.getenv("USB_SYNC_TOKEN") or os.getenv("USB_SYNC_SECRET") or "").strip()
     if not token:
@@ -3835,6 +3846,7 @@ def admin_sellers_monthly_summary(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
         period_key = (period or _argentina_now().strftime("%Y-%m")).strip()
@@ -3898,7 +3910,7 @@ def admin_sellers_monthly_summary(
             placeholders = ",".join(["?"] * len(invoice_ids))
             invoice_items = conn.execute(
                 f"""
-                SELECT ii.invoice_id, ii.quantity, ii.unit_price, p.cost
+                SELECT ii.invoice_id, ii.quantity, ii.unit_price, ii.cost_snapshot, p.cost
                 FROM invoice_items ii
                 LEFT JOIN products p ON p.id = ii.product_id
                 WHERE ii.invoice_id IN ({placeholders})
@@ -3912,7 +3924,8 @@ def admin_sellers_monthly_summary(
                     continue
                 sign = invoice_sign_map.get(invoice_id, 1.0)
                 quantity = float(row["quantity"] or 0)
-                margin_value = _line_margin_value(quantity, float(row["unit_price"] or 0), float(row["cost"] or 0))
+                unit_cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0)
+                margin_value = _line_margin_value(quantity, float(row["unit_price"] or 0), unit_cost)
                 summary_map[seller_id]["profit"] = round(
                     summary_map[seller_id]["profit"] + (margin_value * sign), 2
                 )
@@ -3965,6 +3978,7 @@ def admin_seller_monthly_detail(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
         seller = conn.execute(
@@ -4062,7 +4076,7 @@ def admin_seller_monthly_detail(
 
             invoice_items = conn.execute(
                 f"""
-                SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.cost
+                SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, ii.cost_snapshot, p.name AS product_name, p.cost
                 FROM invoice_items ii
                 LEFT JOIN products p ON p.id = ii.product_id
                 WHERE ii.invoice_id IN ({placeholders})
@@ -4079,7 +4093,7 @@ def admin_seller_monthly_detail(
                 sign = invoice_sign_map.get(invoice_id, 1.0)
                 quantity = float(row["quantity"] or 0)
                 unit_price = float(row["unit_price"] or 0)
-                cost = float(row["cost"] or 0)
+                cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0)
                 revenue = quantity * unit_price
                 cost_total = quantity * cost
                 margin = round(_line_margin_value(quantity, unit_price, cost) * sign, 2)
@@ -5092,6 +5106,8 @@ def admin_list_invoices(
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
+        _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
         params: list[Any] = []
         where = ""
@@ -5221,7 +5237,7 @@ def admin_create_invoice(
                 raise HTTPException(status_code=400, detail="Items invalidos")
             product = conn.execute(
                 """
-                SELECT id, name, price, price_list_1, price_list_2, stock
+                SELECT id, name, price, price_list_1, price_list_2, stock, cost
                 FROM products
                 WHERE id = ? AND deleted_at IS NULL AND COALESCE(is_active, 1) = 1
                 """,
@@ -5252,6 +5268,7 @@ def admin_create_invoice(
                     "product_id": product_id,
                     "quantity": quantity,
                     "unit_price": unit_price,
+                    "cost_snapshot": round(float(product["cost"] or 0), 2),
                     "subtotal": subtotal,
                 }
             )
@@ -5325,10 +5342,10 @@ def admin_create_invoice(
         for item in normalized_items:
             conn.execute(
                 """
-                INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (invoice_id, item["product_id"], item["quantity"], item["unit_price"]),
+                (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"]),
             )
             if affects_stock and stock_delta != 0:
                 conn.execute(
@@ -6047,6 +6064,7 @@ def admin_reports_overview(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
         products = conn.execute(
             """
             SELECT id, name, stock, price, cost, reorder_point, category_id
@@ -6069,7 +6087,7 @@ def admin_reports_overview(
         ).fetchall()
         invoice_items_rows = conn.execute(
             """
-            SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, i.customer_id, i.created_at, i.seller_id, i.document_type
+            SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, ii.cost_snapshot, i.customer_id, i.created_at, i.seller_id, i.document_type
             FROM invoice_items ii
             LEFT JOIN invoices i ON i.id = ii.invoice_id
             """
@@ -6143,6 +6161,7 @@ def admin_reports_overview(
         ][:20]
 
         monthly_map: dict[str, dict[str, Any]] = {}
+        snapshot_stats_by_year: dict[int, dict[str, int]] = {}
         for row in invoices:
             bucket = _argentina_month_bucket(row["created_at"])
             if bucket is None:
@@ -6169,13 +6188,23 @@ def admin_reports_overview(
             )
             quantity = int(row["quantity"] or 0)
             unit_price = float(row["unit_price"] or 0)
+            unit_cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else cost_by_product.get(product_id, 0.0))
             sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
             revenue = quantity * unit_price * sign
-            margin_value = quantity * max(0.0, unit_price - cost_by_product.get(product_id, 0.0)) * sign
+            margin_value = quantity * max(0.0, unit_price - unit_cost) * sign
             entry["quantity"] += quantity
             entry["revenue"] += revenue
             bucket = _argentina_month_bucket(row["created_at"])
             if bucket is not None:
+                try:
+                    bucket_year = int(str(bucket).split("-")[0])
+                except Exception:
+                    bucket_year = 0
+                if bucket_year > 0:
+                    snapshot_entry = snapshot_stats_by_year.setdefault(bucket_year, {"line_count": 0, "snapshot_count": 0})
+                    snapshot_entry["line_count"] += 1
+                    if row["cost_snapshot"] is not None:
+                        snapshot_entry["snapshot_count"] += 1
                 monthly_entry = monthly_map.setdefault(
                     bucket,
                     {"month": bucket, "sales": 0.0, "count": 0, "margin": 0.0, "expenses": 0.0, "commissions": 0.0},
@@ -6247,6 +6276,79 @@ def admin_reports_overview(
             }
             for key in sorted(monthly_map.keys())
         ]
+        annual_profit_map: dict[int, dict[str, float]] = {}
+        if _has_table(conn, "annual_balances"):
+            annual_balance_rows = conn.execute(
+                """
+                SELECT year, total_sales, total_profit
+                FROM annual_balances
+                WHERE COALESCE(total_sales, 0) > 0 AND COALESCE(total_profit, 0) > 0
+                ORDER BY year ASC
+                """
+            ).fetchall()
+            annual_profit_map = {
+                int(row["year"]): {
+                    "total_sales": round(float(row["total_sales"] or 0), 2),
+                    "total_profit": round(float(row["total_profit"] or 0), 2),
+                }
+                for row in annual_balance_rows
+                if row["year"] is not None
+            }
+        monthly_items_by_year: dict[int, list[dict[str, Any]]] = {}
+        for item in monthly_sales_all:
+            try:
+                item_year = int(str(item["month"]).split("-")[0])
+            except Exception:
+                continue
+            monthly_items_by_year.setdefault(item_year, []).append(item)
+        for year, items in monthly_items_by_year.items():
+            annual_profit_payload = annual_profit_map.get(year)
+            snapshot_stats = snapshot_stats_by_year.get(year, {"line_count": 0, "snapshot_count": 0})
+            line_count = int(snapshot_stats.get("line_count", 0) or 0)
+            snapshot_count = int(snapshot_stats.get("snapshot_count", 0) or 0)
+            snapshot_coverage = (snapshot_count / line_count) if line_count > 0 else 1.0
+            if annual_profit_payload is None or snapshot_coverage >= 0.95:
+                continue
+            annual_sales_value = float(annual_profit_payload.get("total_sales", 0.0) or 0.0)
+            annual_profit_value = float(annual_profit_payload.get("total_profit", 0.0) or 0.0)
+            if annual_sales_value <= 0 or annual_profit_value <= 0:
+                continue
+            annual_profit_ratio = annual_profit_value / annual_sales_value
+            stable_ratios = [
+                float(item["margin"] or 0) / float(item["sales"] or 0)
+                for item in items
+                if float(item["sales"] or 0) > 0
+                and abs((float(item["margin"] or 0) / float(item["sales"] or 0)) - annual_profit_ratio) <= 0.06
+            ]
+            baseline_ratio = (
+                sum(stable_ratios) / len(stable_ratios)
+                if len(stable_ratios) >= 4
+                else annual_profit_ratio
+            )
+            for item in items:
+                sales_value = float(item["sales"] or 0)
+                current_margin_value = float(item["margin"] or 0)
+                current_ratio = (current_margin_value / sales_value) if sales_value > 0 else None
+                should_adjust = current_ratio is not None and abs(current_ratio - baseline_ratio) >= 0.06
+                item["adjusted_margin"] = round(sales_value * baseline_ratio, 2) if should_adjust else None
+                item["adjusted_operating_result"] = (
+                    round(
+                        (sales_value * baseline_ratio)
+                        - float(item["expenses"] or 0)
+                        - float(item["commissions"] or 0),
+                        2,
+                    )
+                    if should_adjust
+                    else None
+                )
+                item["margin_adjustment_applied"] = bool(should_adjust)
+                item["margin_adjustment_label"] = (
+                    "Ajustado con rentabilidad historica anual"
+                    if should_adjust
+                    else None
+                )
+                item["annual_profit_ratio"] = round(annual_profit_ratio * 100, 2)
+                item["adjusted_margin_ratio"] = round(baseline_ratio * 100, 2) if should_adjust else None
         monthly_sales = monthly_sales_all[-12:]
         product_names = {int(row["id"]): row["name"] for row in products}
         seller_names = {
@@ -6385,7 +6487,15 @@ def admin_reports_overview(
         total_margin = round(
             sum(
                 int(row["quantity"] or 0)
-                * max(0.0, float(row["unit_price"] or 0) - cost_by_product.get(int(row["product_id"] or 0), 0.0))
+                * max(
+                    0.0,
+                    float(row["unit_price"] or 0)
+                    - float(
+                        row["cost_snapshot"]
+                        if row["cost_snapshot"] is not None
+                        else cost_by_product.get(int(row["product_id"] or 0), 0.0)
+                    )
+                )
                 * (-1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0)
                 for row in invoice_items
             )
@@ -6504,6 +6614,7 @@ def admin_reports_overview(
         previous_year_capital_value = 0.0
         for year in sorted(yearly_map.keys()):
             payload = yearly_map[year]
+            annual_profit_payload = annual_profit_map.get(year)
             cc_balance_end = round(float(year_end_cc_balance.get(year, 0.0)), 2)
             cash_balance_end = round(float(cash_balance_end_by_year.get(year, 0.0)), 2)
             capital_total = round(stock_value_sale + cc_balance_end, 2)
@@ -6511,7 +6622,13 @@ def admin_reports_overview(
             expenses_value = round(float(payload["expenses"] or 0), 2)
             purchases_value = round(float(payload["purchases"] or 0), 2)
             commissions_value = round(float(payload["commissions"] or 0), 2)
-            operating_result_value = round(float(payload["margin"] or 0) - expenses_value - commissions_value, 2)
+            margin_value = round(
+                float(annual_profit_payload["total_profit"])
+                if annual_profit_payload is not None
+                else float(payload["margin"] or 0),
+                2,
+            )
+            operating_result_value = round(margin_value - expenses_value - commissions_value, 2)
             sales_growth_pct = (
                 round(((sales_value - previous_year_sales_value) / previous_year_sales_value) * 100, 2)
                 if previous_year_sales_value > 0
@@ -6526,7 +6643,7 @@ def admin_reports_overview(
                 {
                     "year": year,
                     "sales": sales_value,
-                    "margin": round(float(payload["margin"] or 0), 2),
+                    "margin": margin_value,
                     "purchases": purchases_value,
                     "expenses": expenses_value,
                     "commissions": commissions_value,
@@ -6551,8 +6668,20 @@ def admin_reports_overview(
             previous_item = previous_month_map.get(previous_key, {})
             sales_value = round(float(item["sales"] or 0), 2)
             margin_value = round(float(item["margin"] or 0), 2)
+            adjusted_margin_value = (
+                round(float(item["adjusted_margin"] or 0), 2)
+                if item.get("adjusted_margin") is not None
+                else None
+            )
             expenses_value = round(float(item["expenses"] or 0), 2)
-            operating_result_value = round(float(item["operating_result"] or 0), 2)
+            operating_result_value = round(
+                float(
+                    item["adjusted_operating_result"]
+                    if item.get("adjusted_operating_result") is not None
+                    else item["operating_result"] or 0
+                ),
+                2,
+            )
             previous_sales = round(float(previous_item.get("sales") or 0), 2)
             previous_margin = round(float(previous_item.get("margin") or 0), 2)
             previous_expenses = round(float(previous_item.get("expenses") or 0), 2)
@@ -6577,6 +6706,10 @@ def admin_reports_overview(
                     "month": month_key,
                     "sales": sales_value,
                     "margin": margin_value,
+                    "adjusted_margin": adjusted_margin_value,
+                    "margin_display": adjusted_margin_value if adjusted_margin_value is not None else margin_value,
+                    "margin_adjustment_applied": bool(item.get("margin_adjustment_applied")),
+                    "margin_adjustment_label": item.get("margin_adjustment_label"),
                     "expenses": expenses_value,
                     "operating_result": operating_result_value,
                     "count": int(item["count"] or 0),

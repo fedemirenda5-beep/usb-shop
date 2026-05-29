@@ -22,6 +22,10 @@ type CurrentYearMonth = {
   month: string;
   sales: number;
   margin: number;
+  adjusted_margin?: number | null;
+  margin_display?: number;
+  margin_adjustment_applied?: boolean;
+  margin_adjustment_label?: string | null;
   expenses: number;
   operating_result: number;
   count: number;
@@ -38,6 +42,13 @@ type MonthlySalesPoint = {
   month: string;
   sales: number;
   margin: number;
+  adjusted_margin?: number | null;
+  adjusted_operating_result?: number | null;
+  margin_display?: number;
+  margin_adjustment_applied?: boolean;
+  margin_adjustment_label?: string | null;
+  expenses?: number;
+  commissions?: number;
   operating_result: number;
   count: number;
 };
@@ -100,6 +111,7 @@ export default function BalancesPage() {
   const [currentYear, setCurrentYear] = useState<CurrentYearDetail | null>(null);
   const [annualHistory, setAnnualHistory] = useState<AnnualHistoryEntry[]>([]);
   const [monthlySalesAll, setMonthlySalesAll] = useState<MonthlySalesPoint[]>([]);
+  const [selectedHistoryYear, setSelectedHistoryYear] = useState('');
   const [error, setError] = useState('');
   useEffect(() => {
     const load = async () => {
@@ -210,6 +222,35 @@ export default function BalancesPage() {
     const baseline = 290 - 52;
     return `${chartLinePath} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`;
   }, [chartData, chartLinePath]);
+
+  const historyYears = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          monthlySalesAll
+            .map((item) => String(item.month || '').slice(0, 4))
+            .filter((value) => /^\d{4}$/.test(value))
+        )
+      ).sort((a, b) => Number(b) - Number(a)),
+    [monthlySalesAll]
+  );
+
+  useEffect(() => {
+    if (historyYears.length === 0 || selectedHistoryYear) return;
+    const currentYearValue = currentYear?.year ?? 0;
+    const preferredYear =
+      historyYears.find((year) => Number(year) < currentYearValue) ||
+      historyYears[0];
+    setSelectedHistoryYear(preferredYear);
+  }, [currentYear?.year, historyYears, selectedHistoryYear]);
+
+  const historicalMonthlyItems = useMemo(
+    () =>
+      monthlySalesAll.filter((item) =>
+        selectedHistoryYear ? String(item.month || '').startsWith(`${selectedHistoryYear}-`) : false
+      ),
+    [monthlySalesAll, selectedHistoryYear]
+  );
 
   return (
     <div className={styles.page}>
@@ -348,8 +389,8 @@ export default function BalancesPage() {
                         <th>Ventas {currentYear.year}</th>
                         <th>Ventas {currentYear.year - 1}</th>
                         <th>Var.</th>
-                        <th>Ganancia {currentYear.year}</th>
-                        <th>Ganancia {currentYear.year - 1}</th>
+                        <th>Margen {currentYear.year}</th>
+                        <th>Margen {currentYear.year - 1}</th>
                         <th>Gastos {currentYear.year}</th>
                         <th>Gastos {currentYear.year - 1}</th>
                         <th>Var.</th>
@@ -367,7 +408,17 @@ export default function BalancesPage() {
                             <td className={(item.sales_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                               {formatPercent(item.sales_growth_pct)}
                             </td>
-                            <td>{money(item.margin)}</td>
+                            <td>
+                              <div className={styles.metricCell}>
+                                <strong>{money(item.margin_display ?? item.margin)}</strong>
+                                {item.margin_adjustment_applied ? (
+                                  <>
+                                    <span>{item.margin_adjustment_label || 'Margen ajustado'}</span>
+                                    <small>Calc. actual: {money(item.margin)}</small>
+                                  </>
+                                ) : null}
+                              </div>
+                            </td>
                             <td>{money(item.previous_year_margin)}</td>
                             <td>{money(item.expenses)}</td>
                             <td>{money(item.previous_year_expenses)}</td>
@@ -407,7 +458,7 @@ export default function BalancesPage() {
 
                 <div className={styles.breakdownList}>
                   <div className={styles.breakdownRow}>
-                    <span>Ganancia bruta estimada</span>
+                    <span>Margen bruto estimado</span>
                     <strong>{money(currentYear.margin_total)}</strong>
                   </div>
                   <div className={styles.breakdownRow}>
@@ -478,6 +529,75 @@ export default function BalancesPage() {
                         <td className={(item.capital_growth_pct || 0) >= 0 ? styles.positive : styles.negative}>
                           {formatPercent(item.capital_growth_pct)}
                         </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className={styles.section}>
+            <div className={styles.sectionHeader}>
+              <div>
+                <span className={styles.kicker}>Mes A Mes</span>
+                <h2>Historial mensual</h2>
+              </div>
+              <div className={styles.historyToolbar}>
+                <label htmlFor="history-year" className={styles.historyLabel}>Año</label>
+                <select
+                  id="history-year"
+                  className={styles.historySelect}
+                  value={selectedHistoryYear}
+                  onChange={(e) => setSelectedHistoryYear(e.target.value)}
+                >
+                  {historyYears.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className={styles.note}>
+              Cuando un mes usa productos reutilizados y no conserva costo historico, el admin muestra un margen ajustado basado en la rentabilidad anual guardada en la app de escritorio.
+            </div>
+
+            <div className={styles.tableWrap}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Mes</th>
+                    <th>Ventas</th>
+                    <th>Margen visible</th>
+                    <th>Resultado operativo</th>
+                    <th>Comprobantes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historicalMonthlyItems.length === 0 ? (
+                    <tr><td colSpan={5}>No hay meses para el año seleccionado.</td></tr>
+                  ) : (
+                    historicalMonthlyItems.map((item) => (
+                      <tr key={item.month}>
+                        <td>{formatMonthLabel(item.month)}</td>
+                        <td>{money(item.sales)}</td>
+                        <td>
+                          <div className={styles.metricCell}>
+                            <strong>{money(item.margin_display ?? item.margin)}</strong>
+                            {item.margin_adjustment_applied ? (
+                              <>
+                                <span>{item.margin_adjustment_label || 'Margen ajustado'}</span>
+                                <small>Calc. actual: {money(item.margin)}</small>
+                              </>
+                            ) : (
+                              <span>Margen calculado</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>{money(item.adjusted_operating_result ?? item.operating_result)}</td>
+                        <td>{integer(item.count)}</td>
                       </tr>
                     ))
                   )}

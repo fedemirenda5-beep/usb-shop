@@ -132,6 +132,29 @@
   align-items: flex-start;
 }
 
+.historyToolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.historyLabel {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.historySelect {
+  min-width: 110px;
+  padding: 9px 12px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+
 .comparisonStrip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -294,6 +317,22 @@
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  font-size: 11px;
+}
+
+.metricCell {
+  display: grid;
+  gap: 3px;
+}
+
+.metricCell strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.metricCell span,
+.metricCell small {
+  color: var(--muted);
   font-size: 11px;
 }
 
