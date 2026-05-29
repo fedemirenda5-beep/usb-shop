@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { formatArgentinaDate, formatArgentinaMonth, formatArgentinaShortMonthYear } from '@/lib/datetime';
 import styles from './balances.module.css';
 
@@ -104,8 +104,8 @@ export default function BalancesPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/reports/overview`, { credentials: 'include' });
+        setError('');
+        const res = await fetchApiResponse('/admin/reports/overview', { cache: 'no-store' });
         if (!res.ok) throw new Error('No se pudieron cargar los balances');
         const data = await res.json();
         setSummary(data.summary || null);
@@ -113,7 +113,7 @@ export default function BalancesPage() {
         setMonthlySalesAll(Array.isArray(data.monthly_sales_all) ? data.monthly_sales_all : []);
         setAnnualHistory((data.annual_history || []).filter((item: AnnualHistoryEntry) => item.year < (data.current_year_detail?.year || 9999)));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando balances');
+        setError(getFriendlyApiError(err, 'Error cargando balances'));
       }
     };
     void load();

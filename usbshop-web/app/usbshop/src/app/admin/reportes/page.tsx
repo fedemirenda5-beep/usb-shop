@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { getArgentinaNowDateInput } from '@/lib/datetime';
 import styles from './reportes.module.css';
 
@@ -103,9 +103,7 @@ export default function ReportesPage() {
     const loadOverview = async () => {
       try {
         setError('');
-        await loadRuntimeConfig();
-        const overviewRes = await fetch(`${getApiBaseUrl()}/admin/reports/overview`, {
-          credentials: 'include',
+        const overviewRes = await fetchApiResponse('/admin/reports/overview', {
           cache: 'no-store',
         });
         if (!overviewRes.ok) throw new Error('No se pudieron cargar los reportes');
@@ -123,7 +121,7 @@ export default function ReportesPage() {
         setDailyDate((current) => current || fallbackDate);
       } catch (err) {
         if (!active) return;
-        setError(err instanceof Error ? err.message : 'Error cargando reportes');
+        setError(getFriendlyApiError(err, 'Error cargando reportes'));
       }
     };
 
@@ -145,9 +143,7 @@ export default function ReportesPage() {
           setLoadingDaily(true);
           setError('');
         }
-        await loadRuntimeConfig();
-        const dailyRes = await fetch(`${getApiBaseUrl()}/admin/reports/daily?report_date=${dailyDate}`, {
-          credentials: 'include',
+        const dailyRes = await fetchApiResponse(`/admin/reports/daily?report_date=${dailyDate}`, {
           cache: 'no-store',
         });
         if (!dailyRes.ok) throw new Error('No se pudo cargar el reporte diario');
@@ -156,7 +152,7 @@ export default function ReportesPage() {
         setDailyReport(dailyData || null);
       } catch (err) {
         if (!active) return;
-        setError(err instanceof Error ? err.message : 'Error cargando reporte diario');
+        setError(getFriendlyApiError(err, 'Error cargando reporte diario'));
       } finally {
         if (active) {
           setLoadingDaily(false);

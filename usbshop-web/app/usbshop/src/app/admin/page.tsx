@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { formatArgentinaDate } from '@/lib/datetime';
 import { ADMIN_MODULES } from './adminModules';
 import { canAccessAdminModule, canViewProfitMetrics } from './adminPermissions';
@@ -50,9 +50,9 @@ export default function AdminDashboard() {
   useEffect(() => {
     const load = async () => {
       try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/reports/overview`, {
-          credentials: 'include',
+        setError('');
+        const res = await fetchApiResponse('/admin/reports/overview', {
+          cache: 'no-store',
         });
         if (!res.ok) throw new Error('No se pudo cargar el escritorio');
         const data: OverviewResponse = await res.json();
@@ -60,7 +60,7 @@ export default function AdminDashboard() {
         setTopDebtors(data.top_debtors || []);
         setLowStock(data.low_stock || []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando el escritorio');
+        setError(getFriendlyApiError(err, 'Error cargando el escritorio'));
       }
     };
     load();

@@ -403,6 +403,9 @@ DB_IS_POSTGRES = DB_URL.lower().startswith("postgres")
 LOGGER = _setup_logging()
 _TABLE_EXISTS_CACHE: dict[tuple[bool, str], bool] = {}
 _COLUMN_EXISTS_CACHE: dict[tuple[bool, str, str], bool] = {}
+_ADMIN_OVERVIEW_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_ADMIN_OVERVIEW_CACHE_TTL", "15") or "15"))
+_ADMIN_OVERVIEW_CACHE_LOCK = threading.Lock()
+_ADMIN_OVERVIEW_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 
 app = FastAPI(title="USB Shop API", version="1.0.0")
 
@@ -503,6 +506,25 @@ def _require_admin(session_token: Optional[str]) -> dict:
 
 def _require_full_admin(session_token: Optional[str]) -> dict:
     return _require_roles(session_token, {ROLE_ADMIN})
+
+
+def _get_admin_overview_cache(role: str) -> Optional[dict[str, Any]]:
+    now = time.time()
+    with _ADMIN_OVERVIEW_CACHE_LOCK:
+        cached = _ADMIN_OVERVIEW_CACHE.get(role)
+        if not cached:
+            return None
+        expires_at, payload = cached
+        if expires_at <= now:
+            _ADMIN_OVERVIEW_CACHE.pop(role, None)
+            return None
+        return payload
+
+
+def _set_admin_overview_cache(role: str, payload: dict[str, Any]) -> dict[str, Any]:
+    with _ADMIN_OVERVIEW_CACHE_LOCK:
+        _ADMIN_OVERVIEW_CACHE[role] = (time.time() + _ADMIN_OVERVIEW_CACHE_TTL_SECONDS, payload)
+    return payload
 
 
 def _ensure_users_table(conn: DBConn) -> None:
@@ -5913,6 +5935,10 @@ def admin_reports_overview(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     session_payload = _require_admin(session_token)
+    session_role = str(session_payload.get("role") or "").strip().lower() or ROLE_STAFF
+    cached_response = _get_admin_overview_cache(session_role)
+    if cached_response is not None:
+        return cached_response
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
@@ -6526,7 +6552,7 @@ def admin_reports_overview(
             },
         }
         if str(session_payload.get("role") or "").strip().lower() == ROLE_STAFF:
-            return {
+            return _set_admin_overview_cache(session_role, {
                 "summary": {
                     "products": len(products),
                     "active_customers": len(customer_names),
@@ -6554,8 +6580,8 @@ def admin_reports_overview(
                 "current_year_detail": None,
                 "annual_history": [],
                 "year_projection": None,
-            }
-        return response
+            })
+        return _set_admin_overview_cache(session_role, response)
     finally:
         conn.close()
 

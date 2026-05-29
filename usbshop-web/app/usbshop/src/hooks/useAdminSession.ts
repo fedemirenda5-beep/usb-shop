@@ -16,15 +16,53 @@ type SessionSnapshot = {
   isVerified: boolean;
 };
 
+const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const CONFIG_TIMEOUT_MS = 5000;
 const SESSION_REQUEST_TIMEOUT_MS = 10000;
 
-const emptySnapshot = (): SessionSnapshot => ({
-  user: null,
-  isLoading: true,
-  error: null,
-  isVerified: false,
-});
+const isBrowser = typeof window !== 'undefined';
+
+const restoreSnapshot = (): SessionSnapshot => {
+  if (!isBrowser) {
+    return {
+      user: null,
+      isLoading: true,
+      error: null,
+      isVerified: false,
+    };
+  }
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) {
+      return {
+        user: null,
+        isLoading: true,
+        error: null,
+        isVerified: false,
+      };
+    }
+    const parsed = JSON.parse(raw) as { user?: AdminUser | null } | null;
+    const user =
+      parsed?.user &&
+      typeof parsed.user.username === 'string' &&
+      typeof parsed.user.role === 'string'
+        ? parsed.user
+        : null;
+    return {
+      user,
+      isLoading: user ? false : true,
+      error: null,
+      isVerified: false,
+    };
+  } catch {
+    return {
+      user: null,
+      isLoading: true,
+      error: null,
+      isVerified: false,
+    };
+  }
+};
 
 const getFriendlySessionError = (err: unknown, fallback: string) => {
   if (!(err instanceof Error)) {
@@ -77,7 +115,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
   }
 };
 
-let sessionSnapshot: SessionSnapshot = emptySnapshot();
+let sessionSnapshot: SessionSnapshot = restoreSnapshot();
 let sessionRequest: Promise<AdminUser | null> | null = null;
 const listeners = new Set<(snapshot: SessionSnapshot) => void>();
 
@@ -85,8 +123,29 @@ const emitSnapshot = () => {
   listeners.forEach((listener) => listener(sessionSnapshot));
 };
 
+const persistSnapshot = (snapshot: SessionSnapshot) => {
+  if (!isBrowser) {
+    return;
+  }
+  try {
+    if (!snapshot.user) {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        user: snapshot.user,
+      })
+    );
+  } catch {
+    return;
+  }
+};
+
 const updateSnapshot = (next: Partial<SessionSnapshot>) => {
   sessionSnapshot = { ...sessionSnapshot, ...next };
+  persistSnapshot(sessionSnapshot);
   emitSnapshot();
 };
 
@@ -115,13 +174,16 @@ const fetchSession = async (): Promise<AdminUser | null> => {
 };
 
 const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => {
+  if (!force && sessionSnapshot.user && !sessionSnapshot.error) {
+    return sessionSnapshot.user;
+  }
   if (!force && sessionRequest) {
     return sessionRequest;
   }
 
   updateSnapshot({
     isLoading: sessionSnapshot.user ? false : true,
-    error: null,
+    error: force ? null : sessionSnapshot.error,
     isVerified: false,
   });
   sessionRequest = (async () => {
@@ -131,8 +193,9 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
       return user;
     } catch (err) {
       const message = getFriendlySessionError(err, 'Error verificando sesion');
-      updateSnapshot({ user: null, isLoading: false, error: message, isVerified: true });
-      return null;
+      const fallbackUser = sessionSnapshot.user;
+      updateSnapshot({ user: fallbackUser, isLoading: false, error: message, isVerified: true });
+      return fallbackUser;
     } finally {
       sessionRequest = null;
     }
@@ -188,6 +251,7 @@ export function useAdminSession() {
       console.error('Error during logout:', err);
     } finally {
       sessionSnapshot = { user: null, isLoading: false, error: null, isVerified: true };
+      persistSnapshot(sessionSnapshot);
       emitSnapshot();
       router.push('/login');
     }

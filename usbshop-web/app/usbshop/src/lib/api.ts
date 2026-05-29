@@ -42,6 +42,7 @@ const DEFAULT_API_BASE_URL = (() => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 })();
 const DEFAULT_ORDER_SECRET = process.env.NEXT_PUBLIC_ORDER_SECRET || "";
+const DEFAULT_API_TIMEOUT_MS = 12_000;
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
 let runtimeConfigLoaded = false;
@@ -225,6 +226,70 @@ export function resolveImageUrls(
   return Array.from(new Set(resolved));
 }
 
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("La API demoro demasiado en responder");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+};
+
+export const getFriendlyApiError = (error: unknown, fallback: string): string => {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+  const message = error.message.trim();
+  if (!message) {
+    return fallback;
+  }
+  if (message === "Failed to fetch" || message.includes("NetworkError")) {
+    return "No se pudo conectar con la API. Revisa la conexion e intenta nuevamente.";
+  }
+  if (message.includes("demoro demasiado") || message.includes("timed out")) {
+    return "La API demoro demasiado en responder. Intenta nuevamente.";
+  }
+  return message;
+};
+
+export async function fetchApiResponse(path: string, init?: RequestInit, timeoutMs = DEFAULT_API_TIMEOUT_MS): Promise<Response> {
+  await withTimeout(loadRuntimeConfig(), 5000, "No se pudo cargar la configuracion");
+  const url = `${getApiBaseUrl()}${path}`;
+  return fetchWithTimeout(
+    url,
+    {
+      ...init,
+      credentials: "include",
+    },
+    timeoutMs
+  );
+}
+
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers || {});
   const hasBody = init?.body !== undefined && init.body !== null;
@@ -235,11 +300,11 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   }
   const url = `${getApiBaseUrl()}${path}`;
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       ...init,
       credentials: "include",
       headers,
-    });
+    }, DEFAULT_API_TIMEOUT_MS);
     if (!response.ok) {
       throw new Error(`API request failed (${response.status} ${response.statusText}) ${url}`);
     }

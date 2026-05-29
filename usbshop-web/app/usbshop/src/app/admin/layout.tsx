@@ -24,13 +24,13 @@ const getCurrentModule = (pathname: string | null) => {
 };
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-  const { user, logout, isLoading, error, refreshSession } = useAdminSession();
+  const { user, logout, isLoading, error, refreshSession, isVerified } = useAdminSession();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (!isLoading && isVerified && !user && !error) {
       const targetPath =
         typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
           ? `${window.location.pathname}${window.location.search || ''}`
@@ -39,7 +39,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             : '/admin';
       router.replace(`/login?from=${encodeURIComponent(targetPath)}`);
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, isVerified, error, pathname, router]);
 
   useEffect(() => {
     if (!user) return;
