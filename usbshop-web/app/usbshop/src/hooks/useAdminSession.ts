@@ -19,6 +19,7 @@ type SessionSnapshot = {
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const CONFIG_TIMEOUT_MS = 5000;
 const SESSION_REQUEST_TIMEOUT_MS = 10000;
+const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -117,6 +118,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
 
 let sessionSnapshot: SessionSnapshot = restoreSnapshot();
 let sessionRequest: Promise<AdminUser | null> | null = null;
+let lastSessionCheckAt = 0;
 const listeners = new Set<(snapshot: SessionSnapshot) => void>();
 
 const emitSnapshot = () => {
@@ -174,7 +176,7 @@ const fetchSession = async (): Promise<AdminUser | null> => {
 };
 
 const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => {
-  if (!force && sessionSnapshot.user && !sessionSnapshot.error) {
+  if (!force && sessionSnapshot.isVerified && !sessionSnapshot.error) {
     return sessionSnapshot.user;
   }
   if (!force && sessionRequest) {
@@ -189,9 +191,11 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
   sessionRequest = (async () => {
     try {
       const user = await fetchSession();
+      lastSessionCheckAt = Date.now();
       updateSnapshot({ user, isLoading: false, error: null, isVerified: true });
       return user;
     } catch (err) {
+      lastSessionCheckAt = Date.now();
       const message = getFriendlySessionError(err, 'Error verificando sesion');
       const fallbackUser = sessionSnapshot.user;
       updateSnapshot({ user: fallbackUser, isLoading: false, error: message, isVerified: true });
@@ -212,6 +216,34 @@ export function useAdminSession() {
 
   useEffect(() => {
     void ensureSessionLoaded();
+  }, []);
+
+  useEffect(() => {
+    if (!isBrowser) {
+      return;
+    }
+
+    const revalidateSession = () => {
+      const now = Date.now();
+      if (sessionRequest || now - lastSessionCheckAt < SESSION_REVALIDATE_INTERVAL_MS) {
+        return;
+      }
+      void ensureSessionLoaded(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        revalidateSession();
+      }
+    };
+
+    window.addEventListener('focus', revalidateSession);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', revalidateSession);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
