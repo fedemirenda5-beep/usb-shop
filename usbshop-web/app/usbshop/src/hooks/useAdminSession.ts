@@ -18,8 +18,10 @@ type SessionSnapshot = {
 
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const CONFIG_TIMEOUT_MS = 5000;
-const SESSION_REQUEST_TIMEOUT_MS = 10000;
+const SESSION_REQUEST_TIMEOUT_MS = 15000;
 const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
+const SESSION_REQUEST_ATTEMPTS = 2;
+const SESSION_RETRY_DELAY_MS = 700;
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -98,6 +100,11 @@ const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: 
   }
 };
 
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
@@ -114,6 +121,35 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
   } finally {
     clearTimeout(timeoutHandle);
   }
+};
+
+const isRetryableSessionError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.trim().toLowerCase();
+  return (
+    message.includes('tardo demasiado') ||
+    message.includes('timed out') ||
+    message === 'failed to fetch' ||
+    message.includes('networkerror')
+  );
+};
+
+const fetchWithRetry = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= SESSION_REQUEST_ATTEMPTS; attempt += 1) {
+    try {
+      return await fetchWithTimeout(url, init, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= SESSION_REQUEST_ATTEMPTS || !isRetryableSessionError(error)) {
+        throw error;
+      }
+      await wait(SESSION_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('No se pudo verificar la sesion');
 };
 
 let sessionSnapshot: SessionSnapshot = restoreSnapshot();
@@ -161,7 +197,7 @@ const subscribe = (listener: (snapshot: SessionSnapshot) => void) => {
 
 const fetchSession = async (): Promise<AdminUser | null> => {
   await withTimeout(loadRuntimeConfig(), CONFIG_TIMEOUT_MS, 'No se pudo cargar la configuracion');
-  const res = await fetchWithTimeout(`${getApiBaseUrl()}/auth/me`, {
+  const res = await fetchWithRetry(`${getApiBaseUrl()}/auth/me`, {
     credentials: 'include',
   }, SESSION_REQUEST_TIMEOUT_MS);
 

@@ -42,8 +42,10 @@ const DEFAULT_API_BASE_URL = (() => {
   return process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 })();
 const DEFAULT_ORDER_SECRET = process.env.NEXT_PUBLIC_ORDER_SECRET || "";
-const DEFAULT_API_TIMEOUT_MS = 12_000;
+const DEFAULT_API_TIMEOUT_MS = 18_000;
 const RUNTIME_CONFIG_TIMEOUT_MS = 3_000;
+const DEFAULT_API_RETRY_ATTEMPTS = 2;
+const DEFAULT_API_RETRY_DELAY_MS = 700;
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
 let runtimeConfigLoaded = false;
@@ -244,6 +246,11 @@ const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: 
   }
 };
 
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
@@ -260,6 +267,40 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
   } finally {
     clearTimeout(timeoutHandle);
   }
+};
+
+const isRetryableApiError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.trim().toLowerCase();
+  return (
+    message.includes("demoro demasiado") ||
+    message.includes("timed out") ||
+    message === "failed to fetch" ||
+    message.includes("networkerror")
+  );
+};
+
+const fetchWithRetry = async (
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  attempts = DEFAULT_API_RETRY_ATTEMPTS
+): Promise<Response> => {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fetchWithTimeout(url, init, timeoutMs);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= attempts || !isRetryableApiError(error)) {
+        throw error;
+      }
+      await wait(DEFAULT_API_RETRY_DELAY_MS * attempt);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("API request failed");
 };
 
 export const getFriendlyApiError = (error: unknown, fallback: string): string => {
@@ -282,7 +323,7 @@ export const getFriendlyApiError = (error: unknown, fallback: string): string =>
 export async function fetchApiResponse(path: string, init?: RequestInit, timeoutMs = DEFAULT_API_TIMEOUT_MS): Promise<Response> {
   await withTimeout(loadRuntimeConfig(), 5000, "No se pudo cargar la configuracion");
   const url = `${getApiBaseUrl()}${path}`;
-  return fetchWithTimeout(
+  return fetchWithRetry(
     url,
     {
       ...init,
@@ -302,7 +343,7 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   }
   const url = `${getApiBaseUrl()}${path}`;
   try {
-    const response = await fetchWithTimeout(url, {
+    const response = await fetchWithRetry(url, {
       ...init,
       credentials: "include",
       headers,
