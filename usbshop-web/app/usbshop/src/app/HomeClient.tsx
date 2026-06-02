@@ -1022,14 +1022,13 @@ export default function HomeClient({
       .slice(0, 8);
   }, [products, featuredSource]);
 
-  const flashOfferProduct = useMemo(() => {
+  const flashOfferProducts = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
     return [...source]
       .filter((product) => (product.stock ?? 0) > 0 && getFlashOfferTimeLeft(product) > 0)
-      .sort((a, b) => getFlashOfferTimeLeft(a) - getFlashOfferTimeLeft(b))[0] ?? null;
+      .sort((a, b) => getFlashOfferTimeLeft(a) - getFlashOfferTimeLeft(b))
+      .slice(0, 2);
   }, [products, featuredSource, flashNow]);
-
-  const flashOfferTimeLeft = getFlashOfferTimeLeft(flashOfferProduct);
 
   const filteredWeeklyOffers = useMemo(() => {
     return weeklyOffers.filter((product) => {
@@ -1284,40 +1283,47 @@ export default function HomeClient({
       </div>
       {showCategoryStripBeforeProducts ? categoryStrip : null}
 
-      {!isSearching && !selectedCategory && flashOfferProduct && flashOfferTimeLeft > 0 ? (
-        <section className="flash-offer">
-          <div className="flash-offer__content">
-            <div className="flash-offer__copy">
-              <p className="section-kicker flash-offer__kicker">Oferta relampago</p>
-              <h2>{flashOfferProduct.name}</h2>
-              <p className="flash-offer__subtitle">Precio especial por tiempo limitado.</p>
-            </div>
-            <div className="flash-offer__price" aria-label="Precio de oferta">
-              {flashOfferProduct.originalPrice && flashOfferProduct.originalPrice > flashOfferProduct.price ? (
-                <span>${flashOfferProduct.originalPrice.toLocaleString("es-AR")}</span>
-              ) : null}
-              <strong>${flashOfferProduct.price.toLocaleString("es-AR")}</strong>
-            </div>
-            <div className="flash-offer__timer" aria-label="Tiempo restante">
-              <span>Termina en</span>
-              <strong>{formatFlashTimeLeft(flashOfferTimeLeft)}</strong>
-            </div>
-            <button
-              type="button"
-              className="button button--lime flash-offer__button"
-              onClick={() => addItem(flashOfferProduct)}
-            >
-              Agregar oferta
-            </button>
-          </div>
-          <ProductCard
-            product={{ ...applyBadge(flashOfferProduct, "offer"), badge: "Relampago" }}
-            imageRefreshKey={imageRefreshKey}
-            imagePriority="high"
-            inCart={cart[flashOfferProduct.id]?.qty ?? 0}
-            onAdd={() => addItem(flashOfferProduct)}
-            onView={() => handleOpenQuickView(flashOfferProduct)}
-          />
+      {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
+        <section className="flash-offers">
+          {flashOfferProducts.map((product, index) => {
+            const flashOfferTimeLeft = getFlashOfferTimeLeft(product);
+            return (
+              <article key={`flash-offer-${product.id}`} className="flash-offer">
+                <div className="flash-offer__content">
+                  <div className="flash-offer__copy">
+                    <p className="section-kicker flash-offer__kicker">Oferta relampago</p>
+                    <h2>{product.name}</h2>
+                    <p className="flash-offer__subtitle">Precio especial por tiempo limitado.</p>
+                  </div>
+                  <div className="flash-offer__price" aria-label="Precio de oferta">
+                    {product.originalPrice && product.originalPrice > product.price ? (
+                      <span>${product.originalPrice.toLocaleString("es-AR")}</span>
+                    ) : null}
+                    <strong>${product.price.toLocaleString("es-AR")}</strong>
+                  </div>
+                  <div className="flash-offer__timer" aria-label="Tiempo restante">
+                    <span>Termina en</span>
+                    <strong>{formatFlashTimeLeft(flashOfferTimeLeft)}</strong>
+                  </div>
+                  <button
+                    type="button"
+                    className="button button--lime flash-offer__button"
+                    onClick={() => addItem(product)}
+                  >
+                    Agregar oferta
+                  </button>
+                </div>
+                <ProductCard
+                  product={{ ...applyBadge(product, "offer"), badge: "Relampago" }}
+                  imageRefreshKey={imageRefreshKey}
+                  imagePriority={index === 0 ? "high" : "auto"}
+                  inCart={cart[product.id]?.qty ?? 0}
+                  onAdd={() => addItem(product)}
+                  onView={() => handleOpenQuickView(product)}
+                />
+              </article>
+            );
+          })}
         </section>
       ) : null}
 

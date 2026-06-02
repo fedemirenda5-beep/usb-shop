@@ -982,9 +982,16 @@ a:focus-visible {
   cursor: not-allowed;
 }
 
-.flash-offer {
+.flash-offers {
   margin: 18px auto 0;
   max-width: 1180px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.flash-offer {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(220px, 280px);
   gap: 14px;
@@ -1905,6 +1912,10 @@ input.button {
     align-items: start;
   }
 
+  .flash-offers {
+    gap: 18px;
+  }
+
   .flash-offer {
     grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.95fr);
     gap: 18px;
@@ -2075,10 +2086,14 @@ input.button {
     padding: 22px;
   }
 
+  .flash-offers {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
   .flash-offer {
     grid-template-columns: 1fr;
     padding: 12px;
-    max-width: none;
   }
 
   .flash-offer__content {
