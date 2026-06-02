@@ -986,14 +986,14 @@ a:focus-visible {
   margin: 18px auto 0;
   max-width: 1180px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 16px;
   align-items: stretch;
 }
 
 .flash-offer {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(220px, 280px);
+  grid-template-columns: 1fr;
   gap: 14px;
   align-items: stretch;
   padding: 14px;
@@ -1039,9 +1039,9 @@ a:focus-visible {
 
 .flash-offer__content {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 1fr;
   gap: 12px;
-  align-items: center;
+  align-items: start;
   color: #fff7ed;
 }
 
@@ -1095,7 +1095,7 @@ a:focus-visible {
 .flash-offer__timer {
   display: grid;
   gap: 4px;
-  justify-items: end;
+  justify-items: start;
   align-content: center;
   min-height: 84px;
   padding: 12px 14px;
@@ -1154,6 +1154,8 @@ a:focus-visible {
 .flash-offer__button {
   min-height: 46px;
   padding-inline: 20px;
+  width: 100%;
+  justify-content: center;
   font-family: var(--font-head);
   font-size: 13px;
   letter-spacing: 0.04em;
@@ -1913,6 +1915,7 @@ input.button {
   }
 
   .flash-offers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
   }
 
@@ -1951,6 +1954,7 @@ input.button {
     justify-self: end;
     align-self: end;
     min-width: 220px;
+    width: auto;
   }
 
   .flash-offer h2 {
@@ -2087,17 +2091,14 @@ input.button {
   }
 
   .flash-offers {
-    grid-template-columns: 1fr;
     max-width: none;
   }
 
   .flash-offer {
-    grid-template-columns: 1fr;
     padding: 12px;
   }
 
   .flash-offer__content {
-    grid-template-columns: 1fr;
     align-items: start;
   }
 
