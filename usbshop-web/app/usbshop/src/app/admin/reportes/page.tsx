@@ -263,7 +263,7 @@ export default function ReportesPage() {
             <>
               <div className={styles.dailyKpiGrid}>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Venta del día</span><strong>{money(dailyReport.summary.sales)}</strong></article>
-                <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Ganancia del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
+                <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Margen del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
                 <article className={styles.kpi}><span>Fecha</span><strong>{dailyReport.date}</strong></article>
                 <article className={styles.kpi}><span>Comprobantes</span><strong>{integer(dailyReport.summary.invoice_count)}</strong></article>
                 <article className={styles.kpi}><span>Ticket promedio</span><strong>{money(dailyReport.summary.avg_ticket)}</strong></article>
