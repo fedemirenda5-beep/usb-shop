@@ -593,6 +593,39 @@ def _ensure_bootstrap_admin(conn: DBConn) -> None:
     _ensure_bootstrap_user(conn, "USB_STAFF_USERNAME", "USB_STAFF_PASSWORD", ROLE_STAFF)
 
 
+def _normalize_user_role(value: Any) -> str:
+    role = str(value or "").strip().lower()
+    if role not in {ROLE_ADMIN, ROLE_STAFF}:
+        raise HTTPException(status_code=400, detail="Rol invalido")
+    return role
+
+
+def _normalize_username(value: Any) -> str:
+    username = str(value or "").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="El usuario es obligatorio")
+    return username
+
+
+def _normalize_password(value: Any, *, required: bool) -> Optional[str]:
+    password = str(value or "")
+    if not password.strip():
+        if required:
+            raise HTTPException(status_code=400, detail="La clave es obligatoria")
+        return None
+    return password
+
+
+def _serialize_admin_user(row: Any) -> dict[str, Any]:
+    return {
+        "id": int(_row_get(row, "id") or 0),
+        "username": str(_row_get(row, "username") or "").strip(),
+        "role": str(_row_get(row, "role") or "").strip().lower(),
+        "active": bool(int(_row_get(row, "active", 1) or 0)),
+        "created_at": _row_get(row, "created_at"),
+    }
+
+
 def _pick_price(row: Any) -> float:
     price_list_1 = row["price_list_1"] or 0
     price = row["price"] or 0
@@ -2392,6 +2425,20 @@ class SellerPayload(BaseModel):
     is_active: bool = True
 
 
+class AdminUserCreatePayload(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=240)
+    role: str = Field(min_length=1, max_length=32)
+    active: bool = True
+
+
+class AdminUserUpdatePayload(BaseModel):
+    username: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    password: Optional[str] = Field(default=None, min_length=1, max_length=240)
+    role: Optional[str] = Field(default=None, min_length=1, max_length=32)
+    active: Optional[bool] = None
+
+
 @app.get("/health")
 def health() -> dict:
     db_label = "postgres" if DB_IS_POSTGRES else str(DB_PATH)
@@ -3248,7 +3295,128 @@ def auth_users() -> list[dict[str, str]]:
         }
         for row in rows
         if str(row["username"] or "").strip()
-    ]
+    ] 
+
+
+@app.get("/admin/users")
+def admin_users(session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> list[dict[str, Any]]:
+    _require_full_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_users_table(conn)
+        _ensure_bootstrap_admin(conn)
+        rows = conn.execute(
+            """
+            SELECT id, username, role, active, created_at
+            FROM users
+            ORDER BY LOWER(TRIM(username)) ASC, id ASC
+            """
+        ).fetchall()
+        return [_serialize_admin_user(row) for row in rows]
+    finally:
+        conn.close()
+
+
+@app.post("/admin/users")
+def admin_create_user(
+    payload: AdminUserCreatePayload,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
+    _require_full_admin(session_token)
+    username = _normalize_username(payload.username)
+    password = _normalize_password(payload.password, required=True)
+    role = _normalize_user_role(payload.role)
+    active = 1 if payload.active else 0
+    username_key = username.lower()
+    conn = _connect()
+    try:
+        _ensure_users_table(conn)
+        existing = conn.execute(
+            "SELECT id FROM users WHERE LOWER(TRIM(username)) = ?",
+            (username_key,),
+        ).fetchone()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Ya existe un usuario con ese nombre")
+        conn.execute(
+            """
+            INSERT INTO users (username, password_hash, role, active)
+            VALUES (?, ?, ?, ?)
+            """,
+            (username, _hash_password(password or ""), role, active),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id, username, role, active, created_at FROM users WHERE LOWER(TRIM(username)) = ?",
+            (username_key,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=500, detail="No se pudo crear el usuario")
+        return _serialize_admin_user(row)
+    finally:
+        conn.close()
+
+
+@app.put("/admin/users/{user_id}")
+def admin_update_user(
+    user_id: int,
+    payload: AdminUserUpdatePayload,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
+    session_payload = _require_full_admin(session_token)
+    current_username = str(session_payload.get("username") or "").strip().lower()
+    conn = _connect()
+    try:
+        _ensure_users_table(conn)
+        existing = conn.execute(
+            "SELECT id, username, role, active, created_at FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        next_username = _normalize_username(payload.username) if payload.username is not None else str(existing["username"] or "").strip()
+        next_role = _normalize_user_role(payload.role) if payload.role is not None else str(existing["role"] or "").strip().lower()
+        next_active = int(payload.active) if payload.active is not None else int(existing["active"] or 0)
+        next_password = _normalize_password(payload.password, required=False)
+
+        existing_username = str(existing["username"] or "").strip()
+        existing_username_key = existing_username.lower()
+        next_username_key = next_username.lower()
+
+        if next_username_key != existing_username_key:
+            duplicate = conn.execute(
+                "SELECT id FROM users WHERE LOWER(TRIM(username)) = ? AND id <> ?",
+                (next_username_key, user_id),
+            ).fetchone()
+            if duplicate is not None:
+                raise HTTPException(status_code=409, detail="Ya existe un usuario con ese nombre")
+
+        if existing_username_key == current_username:
+            if next_active != 1:
+                raise HTTPException(status_code=400, detail="No puedes desactivar tu propio usuario")
+            if next_role != ROLE_ADMIN:
+                raise HTTPException(status_code=400, detail="No puedes quitarte el rol admin")
+
+        updates: list[str] = ["username = ?", "role = ?", "active = ?"]
+        params: list[Any] = [next_username, next_role, next_active]
+        if next_password is not None:
+            updates.append("password_hash = ?")
+            params.append(_hash_password(next_password))
+        params.append(user_id)
+        conn.execute(
+            f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
+            tuple(params),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id, username, role, active, created_at FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=500, detail="No se pudo actualizar el usuario")
+        return _serialize_admin_user(row)
+    finally:
+        conn.close()
 
 
 @app.post("/auth/logout")

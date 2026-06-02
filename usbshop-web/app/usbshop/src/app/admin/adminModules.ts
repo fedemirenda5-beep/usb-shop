@@ -9,7 +9,8 @@ export type AdminModuleId =
   | 'comprobantes'
   | 'cuentas-corrientes'
   | 'balances'
-  | 'reportes';
+  | 'reportes'
+  | 'usuarios';
 
 export type AdminModule = {
   id: AdminModuleId;
@@ -96,6 +97,13 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/admin/reportes',
     navLabel: 'Reportes',
     dashboardLabel: 'Analisis detallado y rankings',
+  },
+  {
+    id: 'usuarios',
+    title: 'Usuarios',
+    href: '/admin/usuarios',
+    navLabel: 'Usuarios',
+    dashboardLabel: 'Altas, claves y permisos del panel admin',
   },
 ];
 
