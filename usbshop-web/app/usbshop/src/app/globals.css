@@ -1353,9 +1353,18 @@ a:focus-visible {
   color: var(--lime);
 }
 
+.product-price--offer {
+  font-size: 21px;
+  font-weight: 800;
+  color: #b9ff4f;
+  letter-spacing: -0.02em;
+  text-shadow: 0 8px 20px rgba(132, 204, 22, 0.18);
+}
+
 .product-price--before {
-  color: var(--muted);
+  color: #8c98ac;
   font-size: 12px;
+  font-weight: 700;
   text-decoration: line-through;
   margin-bottom: 2px;
 }

@@ -83,6 +83,8 @@ const toComparableTimestamp = (product: Product) => {
 };
 const compareByNewest = (a: Product, b: Product) =>
   toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
+const hasDiscountedPrice = (product: Product) =>
+  Number(product.originalPrice || 0) > Number(product.price || 0);
 const getFlashOfferTimeLeft = (product?: Product | null) => {
   const endsAt = product?.flashOffer?.endsAt;
   if (!endsAt) {
@@ -937,7 +939,7 @@ export default function HomeClient({
     if (context === "top") {
       badge = "Recomendado";
     } else if (context === "offer") {
-      badge = "Oferta";
+      badge = product.flashOffer ? "Relampago" : "Oferta";
     } else if ((product.stock ?? 0) > 0 && (product.stock ?? 0) <= 3) {
       badge = "Stock bajo";
     } else if (newestIds.has(product.id)) {
@@ -977,14 +979,47 @@ export default function HomeClient({
 
   const weeklyOffers = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
-    const offers = source.filter((product) => product.isOffer && (product.stock ?? 0) > 0);
+    const offers = source
+      .filter((product) => {
+        if ((product.stock ?? 0) <= 0) {
+          return false;
+        }
+        return product.isOffer || hasDiscountedPrice(product) || getFlashOfferTimeLeft(product) > 0;
+      })
+      .sort((a, b) => {
+        const flashDelta = Number(getFlashOfferTimeLeft(b) > 0) - Number(getFlashOfferTimeLeft(a) > 0);
+        if (flashDelta !== 0) {
+          return flashDelta;
+        }
+        const discountA = Math.max(0, Number(a.originalPrice || 0) - Number(a.price || 0));
+        const discountB = Math.max(0, Number(b.originalPrice || 0) - Number(b.price || 0));
+        if (discountB !== discountA) {
+          return discountB - discountA;
+        }
+        return compareByNewest(a, b);
+      });
     if (offers.length > 0) {
-      return offers.slice(0, 4);
+      return offers.slice(0, 8);
     }
     return [...source]
       .filter((product) => (product.stock ?? 0) > 0)
       .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
       .slice(0, 4);
+  }, [products, featuredSource]);
+
+  const discountedProducts = useMemo(() => {
+    const source = products.length > 0 ? products : featuredSource;
+    return [...source]
+      .filter((product) => (product.stock ?? 0) > 0 && hasDiscountedPrice(product))
+      .sort((a, b) => {
+        const discountA = Math.max(0, Number(a.originalPrice || 0) - Number(a.price || 0));
+        const discountB = Math.max(0, Number(b.originalPrice || 0) - Number(b.price || 0));
+        if (discountB !== discountA) {
+          return discountB - discountA;
+        }
+        return compareByNewest(a, b);
+      })
+      .slice(0, 8);
   }, [products, featuredSource]);
 
   const flashOfferProduct = useMemo(() => {
@@ -1004,6 +1039,15 @@ export default function HomeClient({
       return matchesSearch(product);
     });
   }, [weeklyOffers, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
+
+  const filteredDiscountedProducts = useMemo(() => {
+    return discountedProducts.filter((product) => {
+      if (!matchesSelectedCategory(product)) {
+        return false;
+      }
+      return matchesSearch(product);
+    });
+  }, [discountedProducts, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
 
   const addItem = (product: Product) => {
     setCart((prev) => {
@@ -1274,6 +1318,47 @@ export default function HomeClient({
             onAdd={() => addItem(flashOfferProduct)}
             onView={() => handleOpenQuickView(flashOfferProduct)}
           />
+        </section>
+      ) : null}
+
+      {!isSearching ? (
+        <section id="bajaron-de-precio" className="section">
+          <div className="section-header">
+            <div>
+              <p className="section-kicker">Bajaron de precio</p>
+              <h2 className="section-title">Productos con precio actualizado</h2>
+            </div>
+            <a className="button button--ghost" href="#catalogo">
+              Ver catalogo completo
+            </a>
+          </div>
+          <div className="product-grid stagger">
+            {filteredDiscountedProducts.length > 0 ? (
+              filteredDiscountedProducts.map((product, index) => (
+                <ProductCard
+                  key={`discount-${product.id}`}
+                  product={{
+                    ...applyBadge(product, "offer"),
+                    badge: product.flashOffer ? "Relampago" : "Bajo de precio",
+                  }}
+                  imageRefreshKey={imageRefreshKey}
+                  imagePriority={index < 2 ? "high" : "auto"}
+                  inCart={cart[product.id]?.qty ?? 0}
+                  onAdd={() => addItem(product)}
+                  onView={() => handleOpenQuickView(product)}
+                  style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+                />
+              ))
+            ) : isLoadingProducts ? (
+              skeletonCards.slice(0, 4).map((card) => (
+                <div key={`discount-skeleton-${card}`} className="product-card product-skeleton" />
+              ))
+            ) : (
+              <div className="empty-state empty-state--wide">
+                No hay productos con baja de precio en este momento.
+              </div>
+            )}
+          </div>
         </section>
       ) : null}
 

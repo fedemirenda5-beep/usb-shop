@@ -143,6 +143,7 @@ function ProductCard({
 }: CardProps) {
   const stock = Number.isFinite(product.stock) ? Number(product.stock) : 0;
   const isOut = stock <= 0;
+  const hasDiscount = Boolean(product.originalPrice && product.originalPrice > product.price);
   const badge = isOut
     ? "Sin stock"
     : product.badge ?? (product.flashOffer ? "Relampago" : product.isFeatured ? "Destacado" : undefined);
@@ -360,10 +361,10 @@ function ProductCard({
         {product.description ? (
           <p className="product-description">{product.description}</p>
         ) : null}
-        {product.originalPrice && product.originalPrice > product.price ? (
+        {hasDiscount ? (
           <p className="product-price product-price--before">${product.originalPrice.toLocaleString("es-AR")}</p>
         ) : null}
-        <p className="product-price">${product.price.toLocaleString("es-AR")}</p>
+        <p className={`product-price${hasDiscount ? " product-price--offer" : ""}`}>${product.price.toLocaleString("es-AR")}</p>
       </div>
       <div className="product-actions">
         {badge ? <span className="product-badge">{badge}</span> : <span />}

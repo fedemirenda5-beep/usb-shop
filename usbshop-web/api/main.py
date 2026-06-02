@@ -599,8 +599,12 @@ def _pick_price(row: Any) -> float:
     return float(price_list_1) if price_list_1 > 0 else float(price)
 
 
+def _base_price(row: Any) -> float:
+    return float(row["price"] or 0)
+
+
 def _pick_price_by_list(row: Any, price_list: int) -> float:
-    base_price = float(row["price"] or 0)
+    base_price = _base_price(row)
     if price_list == 1:
         price_list_1 = float(row["price_list_1"] or 0)
         return price_list_1 if price_list_1 > 0 else base_price
@@ -2676,7 +2680,7 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
             "name": row["name"],
             "sku": row["sku"],
             "price": _storefront_price(row),
-            "originalPrice": _pick_price(row),
+            "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
             "cost": float(row["cost"] or 0),
             "stock": int(row["stock"] or 0),
@@ -3126,7 +3130,7 @@ def featured_products(limit: int = 6) -> list[dict]:
             "name": row["name"],
             "sku": row["sku"],
             "price": _storefront_price(row),
-            "originalPrice": _pick_price(row),
+            "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
             "stock": int(row["stock"] or 0),
             "category": row["category"] or "General",
