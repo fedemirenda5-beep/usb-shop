@@ -208,15 +208,22 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
   return sessionRequest;
 };
 
-export function useAdminSession() {
+type UseAdminSessionOptions = {
+  skipInitialCheck?: boolean;
+};
+
+export function useAdminSession(options?: UseAdminSessionOptions) {
   const router = useRouter();
   const [state, setState] = useState<SessionSnapshot>(sessionSnapshot);
+  const skipInitialCheck = options?.skipInitialCheck === true;
 
   useEffect(() => subscribe(setState), []);
 
   useEffect(() => {
-    void ensureSessionLoaded();
-  }, []);
+    if (!skipInitialCheck) {
+      void ensureSessionLoaded();
+    }
+  }, [skipInitialCheck]);
 
   useEffect(() => {
     if (!isBrowser) {

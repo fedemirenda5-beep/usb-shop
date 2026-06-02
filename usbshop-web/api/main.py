@@ -3221,6 +3221,32 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     return {"username": row["username"], "role": row["role"]}
 
 
+@app.get("/auth/users")
+def auth_users() -> list[dict[str, str]]:
+    conn = _connect()
+    try:
+        _ensure_users_table(conn)
+        _ensure_bootstrap_admin(conn)
+        rows = conn.execute(
+            """
+            SELECT username, role
+            FROM users
+            WHERE COALESCE(active, 1) = 1
+            ORDER BY LOWER(TRIM(username)) ASC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+    return [
+        {
+            "username": str(row["username"] or "").strip(),
+            "role": str(row["role"] or "").strip(),
+        }
+        for row in rows
+        if str(row["username"] or "").strip()
+    ]
+
+
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
     if response is not None:

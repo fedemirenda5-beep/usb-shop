@@ -3,11 +3,21 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { fetchApiResponse } from '@/lib/api';
 import styles from './login.module.css';
+
+type LoginUserOption = {
+  username: string;
+  role: string;
+};
+
+const LAST_LOGIN_USERNAME_KEY = 'usbshop_last_login_username';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading, error, isAuthenticated, user, isVerified } = useAdminSession();
+  const { login, isLoading, error } = useAdminSession({ skipInitialCheck: true });
+  const [userOptions, setUserOptions] = useState<LoginUserOption[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -25,17 +35,62 @@ export default function LoginPage() {
   }, []);
 
   useEffect(() => {
-    if (isVerified && isAuthenticated && user) {
-      router.replace(targetPath);
+    if (typeof window === 'undefined' || !username.trim()) {
+      return;
     }
-  }, [isAuthenticated, isVerified, user, router, targetPath]);
+    window.localStorage.setItem(LAST_LOGIN_USERNAME_KEY, username.trim());
+  }, [username]);
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        setUsersLoading(true);
+        const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 5000);
+        if (!res.ok) {
+          throw new Error('No se pudo cargar la lista de usuarios');
+        }
+        const data = (await res.json()) as LoginUserOption[];
+        setUserOptions(Array.isArray(data) ? data : []);
+        setUsername((current) => {
+          if (current) {
+            return current;
+          }
+          if (!Array.isArray(data) || data.length === 0) {
+            return '';
+          }
+          const savedUsername =
+            typeof window !== 'undefined' ? window.localStorage.getItem(LAST_LOGIN_USERNAME_KEY)?.trim() || '' : '';
+          if (savedUsername && data.some((option) => option.username === savedUsername)) {
+            return savedUsername;
+          }
+          return data.length === 1 ? data[0].username : '';
+        });
+      } catch (err) {
+        if (err instanceof Error) {
+          setLocalError(err.message);
+        } else {
+          setLocalError('No se pudo cargar la lista de usuarios');
+        }
+      } finally {
+        setUsersLoading(false);
+      }
+    };
+    void loadUsers();
+  }, []);
+
+  const selectedUser = userOptions.find((option) => option.username === username) || null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError('');
 
-    if (!username.trim() || !password.trim()) {
-      setLocalError('Usuario y contrasena requeridos');
+    if (!username.trim()) {
+      setLocalError('Selecciona un usuario');
+      return;
+    }
+
+    if (!password.trim()) {
+      setLocalError('Contrasena requerida');
       return;
     }
 
@@ -50,23 +105,33 @@ export default function LoginPage() {
       <div className={styles.card}>
         <div className={styles.header}>
           <h1>Admin - USB Shop</h1>
-          <p>Ingresa con tu usuario y contrasena para abrir el panel.</p>
+          <p>Selecciona el usuario, ingresa la contrasena y confirma con el boton para abrir el panel.</p>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.field}>
             <label htmlFor="username">Usuario</label>
-            <input
+            <select
               id="username"
-              type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Tu usuario"
-              disabled={isLoading}
-              autoComplete="username"
+              disabled={isLoading || usersLoading}
               className={styles.input}
-            />
+            >
+              <option value="">{usersLoading ? 'Cargando usuarios...' : 'Selecciona un usuario'}</option>
+              {userOptions.map((option) => (
+                <option key={option.username} value={option.username}>
+                  {option.username}
+                </option>
+              ))}
+            </select>
           </div>
+
+          {selectedUser ? (
+            <div className={styles.footer}>
+              <p>Perfil: {selectedUser.role}</p>
+            </div>
+          ) : null}
 
           <div className={styles.field}>
             <label htmlFor="password">Contrasena</label>
@@ -76,7 +141,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Tu contrasena"
-              disabled={isLoading}
+              disabled={isLoading || usersLoading}
               autoComplete="current-password"
               className={styles.input}
             />
@@ -84,7 +149,7 @@ export default function LoginPage() {
 
           {(localError || error) && <div className={styles.error}>{localError || error}</div>}
 
-          <button type="submit" disabled={isLoading} className={styles.button}>
+          <button type="submit" disabled={isLoading || usersLoading || !username} className={styles.button}>
             {isLoading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>

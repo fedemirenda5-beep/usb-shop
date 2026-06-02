@@ -43,6 +43,7 @@ const DEFAULT_API_BASE_URL = (() => {
 })();
 const DEFAULT_ORDER_SECRET = process.env.NEXT_PUBLIC_ORDER_SECRET || "";
 const DEFAULT_API_TIMEOUT_MS = 12_000;
+const RUNTIME_CONFIG_TIMEOUT_MS = 3_000;
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
 let runtimeConfigLoaded = false;
@@ -85,39 +86,40 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     return runtimeConfigPromise;
   }
   runtimeConfigPromise = (async () => {
-    let shouldMarkLoaded = false;
     try {
       const host = window.location.hostname;
       const configUrl = getRuntimeConfigUrl();
-      const response = await fetch(configUrl, { cache: "no-store" });
+      const controller = new AbortController();
+      const timeoutHandle = window.setTimeout(() => controller.abort(), RUNTIME_CONFIG_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(configUrl, { cache: "no-store", signal: controller.signal });
+      } finally {
+        window.clearTimeout(timeoutHandle);
+      }
       if (!response.ok) {
-        shouldMarkLoaded = true;
         return null;
       }
       const data = (await response.json()) as { apiBaseUrl?: string; orderSecret?: string };
       if (!data || typeof data.apiBaseUrl !== "string") {
-        shouldMarkLoaded = true;
         return null;
       }
       const apiBaseUrl = data.apiBaseUrl.trim();
       if (!apiBaseUrl) {
-        shouldMarkLoaded = true;
         return null;
       }
       if (isLocalLikeHost(host) && /^https?:\/\//i.test(apiBaseUrl)) {
-        shouldMarkLoaded = true;
         return runtimeApiBaseUrl;
       }
       setRuntimeApiBaseUrl(apiBaseUrl);
       if (typeof data.orderSecret === "string") {
         setRuntimeOrderSecret(data.orderSecret);
       }
-      shouldMarkLoaded = true;
       return apiBaseUrl;
     } catch {
       return null;
     } finally {
-      runtimeConfigLoaded = shouldMarkLoaded;
+      runtimeConfigLoaded = true;
       runtimeConfigPromise = null;
     }
   })();
