@@ -1915,77 +1915,84 @@ input.button {
   }
 
   .flash-offers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
   }
 
   .flash-offer {
-    grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.95fr);
-    gap: 18px;
-    padding: 18px 20px;
-    align-items: center;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px;
+    align-items: stretch;
   }
 
   .flash-offer__content {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
     grid-template-areas:
-      "copy price timer"
-      "copy cta cta";
-    gap: 12px 18px;
+      "copy copy"
+      "price timer"
+      "cta cta";
+    gap: 12px;
     align-items: stretch;
   }
 
   .flash-offer__copy {
     grid-area: copy;
-    align-content: center;
-    max-width: 46ch;
+    align-content: start;
+    max-width: none;
   }
 
   .flash-offer__price {
     grid-area: price;
+    min-width: 0;
   }
 
   .flash-offer__timer {
     grid-area: timer;
+    min-width: 0;
   }
 
   .flash-offer__content > .flash-offer__button {
     grid-area: cta;
-    justify-self: end;
+    justify-self: stretch;
     align-self: end;
-    min-width: 220px;
-    width: auto;
+    min-width: 0;
+    width: 100%;
   }
 
   .flash-offer h2 {
-    font-size: clamp(28px, 2.4vw, 40px);
-    line-height: 0.92;
+    font-size: clamp(22px, 1.8vw, 30px);
+    line-height: 0.98;
   }
 
   .flash-offer__subtitle {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .flash-offer__price strong {
-    font-size: 30px;
+    font-size: 24px;
   }
 
   .flash-offer__timer strong {
-    font-size: 22px;
+    min-width: 0;
+    width: 100%;
+    font-size: 18px;
+    letter-spacing: 0.08em;
   }
 
   .flash-offer .product-card {
-    grid-template-columns: 144px minmax(0, 1fr);
+    grid-template-columns: 112px minmax(0, 1fr);
     grid-template-rows: auto auto 1fr;
-    column-gap: 14px;
+    column-gap: 12px;
     row-gap: 8px;
     align-items: start;
-    padding: 14px;
+    padding: 12px;
   }
 
   .flash-offer .product-media {
     grid-row: 1 / span 3;
     aspect-ratio: 1 / 1;
-    min-height: 144px;
+    min-height: 112px;
   }
 
   .flash-offer .product-meta,
@@ -1995,19 +2002,16 @@ input.button {
 
   .flash-offer .product-meta {
     gap: 6px;
-    font-size: 10px;
+    font-size: 9px;
   }
 
   .flash-offer .product-title {
-    font-size: 16px;
-    line-height: 1.14;
+    font-size: 14px;
+    line-height: 1.12;
   }
 
   .flash-offer .product-description {
-    display: block;
-    margin-top: 4px;
-    font-size: 12px;
-    line-height: 1.35;
+    display: none;
   }
 
   .flash-offer .product-price--before {
@@ -2015,25 +2019,31 @@ input.button {
   }
 
   .flash-offer .product-price {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .flash-offer .product-actions {
     grid-column: 2;
     align-self: end;
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
   }
 
   .flash-offer .product-badge {
     padding: 3px 8px;
     font-size: 9px;
+    align-self: flex-start;
   }
 
   .flash-offer .product-buttons {
+    width: 100%;
     gap: 6px;
+    justify-content: stretch;
   }
 
   .flash-offer .product-buttons .button {
+    width: 100%;
     padding-inline: 12px;
     min-height: 36px;
   }
