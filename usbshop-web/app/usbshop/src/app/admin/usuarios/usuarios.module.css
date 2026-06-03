@@ -235,6 +235,23 @@
   justify-self: start;
 }
 
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.deleteButton {
+  min-height: 42px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+  background: rgba(254, 226, 226, 0.95);
+  color: #991b1b;
+}
+
 .errorBox,
 .successBox,
 .empty {
@@ -283,7 +300,8 @@
   }
 
   .primaryButton,
-  .secondaryButton {
+  .secondaryButton,
+  .deleteButton {
     width: 100%;
     justify-content: center;
   }

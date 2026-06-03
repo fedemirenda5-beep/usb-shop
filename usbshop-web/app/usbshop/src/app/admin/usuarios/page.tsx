@@ -44,6 +44,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -139,6 +140,41 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleDelete = async (target: AdminUser) => {
+    const isCurrentUser = target.username.trim().toLowerCase() === (user?.username || '').trim().toLowerCase();
+    if (isCurrentUser) {
+      setError('No puedes eliminar tu propio usuario.');
+      setSuccess('');
+      return;
+    }
+    const confirmed = window.confirm(`Vas a eliminar el usuario "${target.username}". Esta accion no se puede deshacer.`);
+    if (!confirmed) {
+      return;
+    }
+    try {
+      setDeletingId(target.id);
+      setError('');
+      setSuccess('');
+      const res = await fetch(`${getApiBaseUrl()}/admin/users/${target.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error(await parseError(res, 'No se pudo eliminar el usuario'));
+      }
+      if (editingId === target.id) {
+        setEditingId(null);
+        setForm(emptyForm);
+      }
+      await loadUsers();
+      setSuccess('Usuario eliminado.');
+    } catch (err) {
+      setError(getFriendlyApiError(err, 'No se pudo eliminar el usuario'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -185,9 +221,20 @@ export default function AdminUsersPage() {
                     <span className={styles.roleBadge}>{item.role}</span>
                     {isCurrentUser ? <span className={styles.selfBadge}>Tu usuario</span> : null}
                   </div>
-                  <button type="button" className={styles.editButton} onClick={() => startEdit(item)}>
-                    Editar
-                  </button>
+                  <div className={styles.cardActions}>
+                    <button type="button" className={styles.editButton} onClick={() => startEdit(item)} disabled={saving || deletingId === item.id}>
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.deleteButton}
+                      onClick={() => void handleDelete(item)}
+                      disabled={saving || deletingId === item.id || isCurrentUser}
+                      title={isCurrentUser ? 'No puedes eliminar tu propio usuario' : 'Eliminar usuario'}
+                    >
+                      {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                    </button>
+                  </div>
                 </article>
               );
             })}

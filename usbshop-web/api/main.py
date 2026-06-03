@@ -3435,6 +3435,34 @@ def admin_update_user(
         conn.close()
 
 
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
+    session_payload = _require_full_admin(session_token)
+    current_username = str(session_payload.get("username") or "").strip().lower()
+    conn = _connect()
+    try:
+        _ensure_users_table(conn)
+        existing = conn.execute(
+            "SELECT id, username FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        existing_username = str(existing["username"] or "").strip().lower()
+        if existing_username == current_username:
+            raise HTTPException(status_code=400, detail="No puedes eliminar tu propio usuario")
+
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        return {"status": "ok"}
+    finally:
+        conn.close()
+
+
 @app.post("/auth/logout")
 def auth_logout(response: Response, request: Request) -> dict:
     if response is not None:
