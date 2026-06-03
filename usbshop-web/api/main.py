@@ -3252,7 +3252,8 @@ def set_featured(
 
 @app.post("/auth/login")
 def auth_login(request: Request, response: Response, payload: dict = Body(...)) -> dict:
-    username = str(payload.get("username") or "").strip()
+    username = _normalize_username(payload.get("username"))
+    username_key = username.lower()
     password = str(payload.get("password") or "")
     if not username or not password:
         raise HTTPException(status_code=400, detail="Credenciales incompletas")
@@ -3260,15 +3261,27 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     try:
         _ensure_users_table(conn)
         _ensure_bootstrap_admin(conn)
-        row = conn.execute(
-            "SELECT id, username, password_hash, role, active FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
+        rows = conn.execute(
+            """
+            SELECT id, username, password_hash, role, active
+            FROM users
+            WHERE LOWER(TRIM(username)) = ?
+            ORDER BY CASE WHEN TRIM(username) = ? THEN 0 ELSE 1 END, id ASC
+            """,
+            (username_key, username),
+        ).fetchall()
     finally:
         conn.close()
-    if row is None or not int(row["active"] or 0):
-        raise HTTPException(status_code=401, detail="Credenciales invalidas")
-    if row["password_hash"] != _hash_password(password):
+    password_hash = _hash_password(password)
+    row = next(
+        (
+            item
+            for item in rows
+            if int(item["active"] or 0) and str(item["password_hash"] or "") == password_hash
+        ),
+        None,
+    )
+    if row is None:
         raise HTTPException(status_code=401, detail="Credenciales invalidas")
     payload_data = {
         "username": row["username"],
@@ -3307,14 +3320,21 @@ def auth_users() -> list[dict[str, str]]:
         ).fetchall()
     finally:
         conn.close()
-    return [
-        {
-            "username": str(row["username"] or "").strip(),
-            "role": str(row["role"] or "").strip(),
-        }
-        for row in rows
-        if str(row["username"] or "").strip()
-    ] 
+    seen: set[str] = set()
+    payload: list[dict[str, str]] = []
+    for row in rows:
+        normalized_username = str(row["username"] or "").strip()
+        normalized_key = normalized_username.lower()
+        if not normalized_username or normalized_key in seen:
+            continue
+        seen.add(normalized_key)
+        payload.append(
+            {
+                "username": normalized_username,
+                "role": str(row["role"] or "").strip(),
+            }
+        )
+    return payload
 
 
 @app.get("/admin/users")
