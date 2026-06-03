@@ -256,6 +256,10 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
   useEffect(() => subscribe(setState), []);
 
   useEffect(() => {
+    if (skipInitialCheck && !sessionSnapshot.user && sessionSnapshot.isLoading) {
+      updateSnapshot({ isLoading: false, error: null });
+      return;
+    }
     if (!skipInitialCheck) {
       void ensureSessionLoaded();
     }
