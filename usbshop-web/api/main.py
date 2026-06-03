@@ -579,11 +579,14 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
     password = os.getenv(password_env) or ""
     if not username or not password:
         return
+    username = _normalize_username(username)
+    username_key = username.lower()
     password_hash = _hash_password(password)
-    row = conn.execute(
-        "SELECT id FROM users WHERE username = ?",
-        (username,),
-    ).fetchone()
+    rows = conn.execute(
+        "SELECT id FROM users WHERE LOWER(TRIM(username)) = ? ORDER BY id ASC",
+        (username_key,),
+    ).fetchall()
+    row = rows[0] if rows else None
     if row is None:
         conn.execute(
             """
@@ -596,10 +599,10 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
         conn.execute(
             """
             UPDATE users
-            SET password_hash = ?, role = ?, active = 1
-            WHERE username = ?
+            SET username = ?, password_hash = ?, role = ?, active = 1
+            WHERE id = ?
             """,
-            (password_hash, role, username),
+            (username, password_hash, role, int(row["id"])),
         )
     conn.commit()
 
