@@ -111,20 +111,23 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.field}>
             <label htmlFor="username">Usuario</label>
-            <select
+            <input
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              disabled={isLoading || usersLoading}
+              disabled={isLoading}
               className={styles.input}
-            >
-              <option value="">{usersLoading ? 'Cargando usuarios...' : 'Selecciona un usuario'}</option>
+              placeholder={usersLoading ? 'Cargando usuarios...' : 'Escribe o selecciona un usuario'}
+              list="login-user-options"
+              autoComplete="username"
+            />
+            <datalist id="login-user-options">
               {userOptions.map((option) => (
                 <option key={option.username} value={option.username}>
                   {option.username}
                 </option>
               ))}
-            </select>
+            </datalist>
           </div>
 
           {selectedUser ? (
@@ -149,7 +152,7 @@ export default function LoginPage() {
 
           {(localError || error) && <div className={styles.error}>{localError || error}</div>}
 
-          <button type="submit" disabled={isLoading || usersLoading || !username} className={styles.button}>
+          <button type="submit" disabled={isLoading || !username.trim()} className={styles.button}>
             {isLoading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
