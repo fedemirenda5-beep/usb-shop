@@ -1327,47 +1327,6 @@ export default function HomeClient({
         </section>
       ) : null}
 
-      {!isSearching ? (
-        <section id="bajaron-de-precio" className="section">
-          <div className="section-header">
-            <div>
-              <p className="section-kicker">Bajaron de precio</p>
-              <h2 className="section-title">Productos con precio actualizado</h2>
-            </div>
-            <a className="button button--ghost" href="#catalogo">
-              Ver catalogo completo
-            </a>
-          </div>
-          <div className="product-grid stagger">
-            {filteredDiscountedProducts.length > 0 ? (
-              filteredDiscountedProducts.map((product, index) => (
-                <ProductCard
-                  key={`discount-${product.id}`}
-                  product={{
-                    ...applyBadge(product, "offer"),
-                    badge: product.flashOffer ? "Relampago" : "Bajo de precio",
-                  }}
-                  imageRefreshKey={imageRefreshKey}
-                  imagePriority={index < 2 ? "high" : "auto"}
-                  inCart={cart[product.id]?.qty ?? 0}
-                  onAdd={() => addItem(product)}
-                  onView={() => handleOpenQuickView(product)}
-                  style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-                />
-              ))
-            ) : isLoadingProducts ? (
-              skeletonCards.slice(0, 4).map((card) => (
-                <div key={`discount-skeleton-${card}`} className="product-card product-skeleton" />
-              ))
-            ) : (
-              <div className="empty-state empty-state--wide">
-                No hay productos con baja de precio en este momento.
-              </div>
-            )}
-          </div>
-        </section>
-      ) : null}
-
       {!isSearching && !selectedCategory ? (
       <section id="novedades" className="section">
         <div className="section-header">
@@ -1412,6 +1371,47 @@ export default function HomeClient({
           )}
         </div>
       </section>
+      ) : null}
+
+      {!isSearching ? (
+        <section id="bajaron-de-precio" className="section">
+          <div className="section-header">
+            <div>
+              <p className="section-kicker">Bajaron de precio</p>
+              <h2 className="section-title">Productos con precio actualizado</h2>
+            </div>
+            <a className="button button--ghost" href="#catalogo">
+              Ver catalogo completo
+            </a>
+          </div>
+          <div className="product-grid stagger">
+            {filteredDiscountedProducts.length > 0 ? (
+              filteredDiscountedProducts.map((product, index) => (
+                <ProductCard
+                  key={`discount-${product.id}`}
+                  product={{
+                    ...applyBadge(product, "offer"),
+                    badge: product.flashOffer ? "Relampago" : "Bajo de precio",
+                  }}
+                  imageRefreshKey={imageRefreshKey}
+                  imagePriority={index < 2 ? "high" : "auto"}
+                  inCart={cart[product.id]?.qty ?? 0}
+                  onAdd={() => addItem(product)}
+                  onView={() => handleOpenQuickView(product)}
+                  style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+                />
+              ))
+            ) : isLoadingProducts ? (
+              skeletonCards.slice(0, 4).map((card) => (
+                <div key={`discount-skeleton-${card}`} className="product-card product-skeleton" />
+              ))
+            ) : (
+              <div className="empty-state empty-state--wide">
+                No hay productos con baja de precio en este momento.
+              </div>
+            )}
+          </div>
+        </section>
       ) : null}
 
       {!showCategoryStripBeforeProducts ? categoryStrip : null}
