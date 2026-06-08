@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { fetchApiResponse } from '@/lib/api';
@@ -22,6 +23,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
   const [targetPath, setTargetPath] = useState('/admin');
+  const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -80,6 +82,14 @@ export default function LoginPage() {
 
   const selectedUser = userOptions.find((option) => option.username === username) || null;
 
+  const handleUsernameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    event.preventDefault();
+    passwordInputRef.current?.focus();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError('');
@@ -90,7 +100,7 @@ export default function LoginPage() {
     }
 
     if (!password.trim()) {
-      setLocalError('Contrasena requerida');
+      passwordInputRef.current?.focus();
       return;
     }
 
@@ -120,6 +130,8 @@ export default function LoginPage() {
               placeholder={usersLoading ? 'Cargando usuarios...' : 'Escribe o selecciona un usuario'}
               list="login-user-options"
               autoComplete="username"
+              enterKeyHint="next"
+              onKeyDown={handleUsernameKeyDown}
             />
             <datalist id="login-user-options">
               {userOptions.map((option) => (
@@ -146,13 +158,15 @@ export default function LoginPage() {
               placeholder="Tu contrasena"
               disabled={isLoading || usersLoading}
               autoComplete="current-password"
+              enterKeyHint="done"
               className={styles.input}
+              ref={passwordInputRef}
             />
           </div>
 
           {(localError || error) && <div className={styles.error}>{localError || error}</div>}
 
-          <button type="submit" disabled={isLoading || !username.trim()} className={styles.button}>
+          <button type="submit" disabled={isLoading || !username.trim() || !password.trim()} className={styles.button}>
             {isLoading ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
