@@ -284,6 +284,8 @@ export default function HomeClient({
   const productsRequestRef = useRef(0);
   const isFetchingMoreRef = useRef(false);
   const hasMoreProductsRef = useRef(true);
+  const quickViewHistoryActiveRef = useRef(false);
+  const quickViewClosingFromHistoryRef = useRef(false);
   const [orderName, setOrderName] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
@@ -391,6 +393,15 @@ export default function HomeClient({
   };
 
   const handleCloseQuickView = () => {
+    if (
+      typeof window !== "undefined" &&
+      quickViewHistoryActiveRef.current &&
+      window.history.state?.usbshopQuickView
+    ) {
+      quickViewClosingFromHistoryRef.current = true;
+      window.history.back();
+      return;
+    }
     setQuickView(null);
   };
 
@@ -740,6 +751,60 @@ export default function HomeClient({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
+  }, [quickView]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handlePopState = () => {
+      if (!quickViewHistoryActiveRef.current) {
+        return;
+      }
+      quickViewHistoryActiveRef.current = false;
+      setQuickView(null);
+      window.setTimeout(() => {
+        quickViewClosingFromHistoryRef.current = false;
+      }, 0);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!quickView) {
+      if (quickViewClosingFromHistoryRef.current) {
+        return;
+      }
+      if (quickViewHistoryActiveRef.current && window.history.state?.usbshopQuickView) {
+        quickViewHistoryActiveRef.current = false;
+        window.history.back();
+      }
+      return;
+    }
+
+    const nextState = {
+      ...(window.history.state && typeof window.history.state === "object"
+        ? window.history.state
+        : {}),
+      usbshopQuickView: true,
+      usbshopQuickViewProductId: quickView.id,
+    };
+
+    if (quickViewHistoryActiveRef.current) {
+      window.history.replaceState(nextState, "", window.location.href);
+      return;
+    }
+
+    quickViewClosingFromHistoryRef.current = false;
+    quickViewHistoryActiveRef.current = true;
+    window.history.pushState(nextState, "", window.location.href);
   }, [quickView]);
 
   const cartItems = useMemo(() => Object.values(cart), [cart]);
