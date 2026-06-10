@@ -5462,8 +5462,6 @@ def admin_create_invoice(
 ) -> dict:
     _require_admin(session_token)
     customer_id = int(payload.get("customer_id") or 0)
-    if customer_id <= 0:
-        raise HTTPException(status_code=400, detail="Cliente requerido")
     items = payload.get("items")
     if not isinstance(items, list) or not items:
         raise HTTPException(status_code=400, detail="Agrega items al comprobante")
@@ -5486,6 +5484,67 @@ def admin_create_invoice(
         _ensure_invoice_payment_method_column(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
+        if customer_id <= 0 and document_type == "PRESUPUESTO" and order_id:
+            web_order = conn.execute(
+                """
+                SELECT customer_name, customer_phone, customer_email
+                FROM web_orders
+                WHERE id = ?
+                """,
+                (order_id,),
+            ).fetchone()
+            if web_order is None:
+                raise HTTPException(status_code=404, detail="Pedido web no encontrado para generar el presupuesto")
+            customer_name = str(web_order["customer_name"] or "").strip()
+            if not customer_name:
+                raise HTTPException(status_code=400, detail="El pedido web no tiene nombre de cliente")
+            existing_customer = conn.execute(
+                """
+                SELECT id
+                FROM customers
+                WHERE deleted_at IS NULL
+                  AND COALESCE(is_active, 1) = 1
+                  AND (
+                    (? <> '' AND LOWER(TRIM(email)) = LOWER(TRIM(?)))
+                    OR (? <> '' AND REPLACE(REPLACE(REPLACE(REPLACE(TRIM(phone), ' ', ''), '-', ''), '(', ''), ')', '') =
+                                   REPLACE(REPLACE(REPLACE(REPLACE(TRIM(?), ' ', ''), '-', ''), '(', ''), ')', ''))
+                    OR LOWER(TRIM(name)) = LOWER(TRIM(?))
+                  )
+                ORDER BY id ASC
+                LIMIT 1
+                """,
+                (
+                    str(web_order["customer_email"] or "").strip(),
+                    str(web_order["customer_email"] or "").strip(),
+                    str(web_order["customer_phone"] or "").strip(),
+                    str(web_order["customer_phone"] or "").strip(),
+                    customer_name,
+                ),
+            ).fetchone()
+            if existing_customer is not None:
+                customer_id = int(existing_customer["id"] if isinstance(existing_customer, dict) else existing_customer[0])
+            else:
+                created_customer_at = created_at
+                insert_customer_sql = """
+                    INSERT INTO customers (name, email, phone, created_at, sale_mode, is_active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                """
+                insert_customer_params = (
+                    customer_name,
+                    str(web_order["customer_email"] or "").strip() or None,
+                    str(web_order["customer_phone"] or "").strip() or None,
+                    created_customer_at,
+                    sale_mode_input or "CONTADO",
+                )
+                if DB_IS_POSTGRES:
+                    created_customer = conn.execute(f"{insert_customer_sql} RETURNING id", insert_customer_params).fetchone()
+                    customer_id = int(created_customer["id"] if isinstance(created_customer, dict) else created_customer[0])
+                else:
+                    conn.execute(insert_customer_sql, insert_customer_params)
+                    created_customer = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+                    customer_id = int(created_customer["id"] if isinstance(created_customer, dict) else created_customer[0])
+        if customer_id <= 0:
+            raise HTTPException(status_code=400, detail="Cliente requerido")
         customer = conn.execute(
             """
             SELECT id, sale_mode

@@ -308,6 +308,8 @@ export default function GenerarComprobantePage() {
     return 'La factura descuenta stock y, si la operación es por cuenta corriente, genera deuda del cliente.';
   }, [form.document_type]);
 
+  const canSubmitWithoutCustomer = form.document_type === 'PRESUPUESTO' && Boolean(form.order_id);
+
   const getProductPriceByList = (product: ProductOption, priceList: string) => {
     if (priceList === '1') return Number(product.price_list_1 || product.price || 0);
     if (priceList === '2') return Number(product.price_list_2 || product.price || 0);
@@ -473,13 +475,19 @@ export default function GenerarComprobantePage() {
                     )}
                   </div>
                 ) : null}
-                <input type="hidden" value={form.customer_id} required readOnly />
+                <input type="hidden" value={form.customer_id} required={!canSubmitWithoutCustomer} readOnly />
                 {selectedCustomer ? (
                   <small className={styles.customerSelected}>
                     Cliente seleccionado: {selectedCustomer.name} {selectedCustomer.cuit ? `· ${selectedCustomer.cuit}` : ''}
                   </small>
                 ) : null}
-                <small className={styles.fieldHint}>{filteredCustomerOptions.length} cliente{filteredCustomerOptions.length === 1 ? '' : 's'} encontrado{filteredCustomerOptions.length === 1 ? '' : 's'}</small>
+                <small className={styles.fieldHint}>
+                  {selectedCustomer
+                    ? `${filteredCustomerOptions.length} cliente${filteredCustomerOptions.length === 1 ? '' : 's'} encontrado${filteredCustomerOptions.length === 1 ? '' : 's'}`
+                    : canSubmitWithoutCustomer
+                      ? 'Si no seleccionas un cliente, se crea uno basico automaticamente con los datos del pedido web.'
+                      : `${filteredCustomerOptions.length} cliente${filteredCustomerOptions.length === 1 ? '' : 's'} encontrado${filteredCustomerOptions.length === 1 ? '' : 's'}`}
+                </small>
               </label>
               <label>
                 Tipo de comprobante
@@ -770,7 +778,11 @@ export default function GenerarComprobantePage() {
                 setShowSpecialDiscountEditor(false);
                 setForm({ order_id: '', customer_id: '', document_type: 'FACTURA', sale_mode: 'CONTADO', seller_id: '', price_list: '0', payment_method: 'EFECTIVO', created_at: nowInputValue(), due_date: '', notes: '', special_discount_percent: '0', items: [] });
               }}>Limpiar</button>
-              <button type="submit" className={styles.createButton} disabled={creating || !form.customer_id || form.items.length === 0}>
+              <button
+                type="submit"
+                className={styles.createButton}
+                disabled={creating || (!form.customer_id && !canSubmitWithoutCustomer) || form.items.length === 0}
+              >
                 {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
               </button>
             </div>
