@@ -41,6 +41,10 @@ type DailyProduct = { product_id: number; name: string; quantity: number; sales:
 type DailyCustomer = { customer_id: number; name: string; invoice_count: number; sales: number; avg_ticket: number };
 type DailyReport = {
   date: string;
+  start_date?: string;
+  end_date?: string;
+  is_range?: boolean;
+  label?: string;
   summary: {
     sales: number;
     margin: number;
@@ -69,6 +73,21 @@ const shiftDateInput = (value: string, deltaDays: number) => {
   base.setUTCDate(base.getUTCDate() + deltaDays);
   return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}-${String(base.getUTCDate()).padStart(2, '0')}`;
 };
+const getWeekRange = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return { start: value, end: value };
+  const [, year, month, day] = match;
+  const base = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  const weekDay = base.getUTCDay();
+  const offsetToMonday = weekDay === 0 ? -6 : 1 - weekDay;
+  const monday = new Date(base);
+  monday.setUTCDate(base.getUTCDate() + offsetToMonday);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const format = (date: Date) =>
+    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  return { start: format(monday), end: format(sunday) };
+};
 
 const buildLinePath = (points: number[], width: number, height: number) => {
   if (points.length === 0) return '';
@@ -92,6 +111,7 @@ export default function ReportesPage() {
   const [lowStock, setLowStock] = useState<LowStock[]>([]);
   const [yearProjection, setYearProjection] = useState<YearProjection | null>(null);
   const [dailyDate, setDailyDate] = useState('');
+  const [dailyEndDate, setDailyEndDate] = useState('');
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
   const [error, setError] = useState('');
   const [loadingDaily, setLoadingDaily] = useState(true);
@@ -119,6 +139,7 @@ export default function ReportesPage() {
         setYearProjection(data.year_projection || null);
         const fallbackDate = toDateInput(data?.summary?.latest_invoice_at) || todayInput();
         setDailyDate((current) => current || fallbackDate);
+        setDailyEndDate((current) => current || fallbackDate);
       } catch (err) {
         if (!active) return;
         setError(getFriendlyApiError(err, 'Error cargando reportes'));
@@ -133,7 +154,11 @@ export default function ReportesPage() {
   }, [refreshTick]);
 
   useEffect(() => {
-    if (!dailyDate) return;
+    if (!dailyDate || !dailyEndDate) return;
+    if (dailyDate > dailyEndDate) {
+      setDailyEndDate(dailyDate);
+      return;
+    }
 
     let active = true;
 
@@ -143,7 +168,7 @@ export default function ReportesPage() {
           setLoadingDaily(true);
           setError('');
         }
-        const dailyRes = await fetchApiResponse(`/admin/reports/daily?report_date=${dailyDate}`, {
+        const dailyRes = await fetchApiResponse(`/admin/reports/daily?start_date=${dailyDate}&end_date=${dailyEndDate}`, {
           cache: 'no-store',
         });
         if (!dailyRes.ok) throw new Error('No se pudo cargar el reporte diario');
@@ -165,7 +190,7 @@ export default function ReportesPage() {
     return () => {
       active = false;
     };
-  }, [dailyDate, refreshTick]);
+  }, [dailyDate, dailyEndDate, refreshTick]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -234,21 +259,53 @@ export default function ReportesPage() {
                 <button
                   type="button"
                   className={styles.navButton}
-                  onClick={() => setDailyDate((current) => shiftDateInput(current || todayInput(), -1))}
+                  onClick={() => {
+                    setDailyDate((current) => shiftDateInput(current || todayInput(), -1));
+                    setDailyEndDate((current) => shiftDateInput(current || todayInput(), -1));
+                  }}
                 >
                   Dia anterior
                 </button>
                 <button
                   type="button"
                   className={styles.navButton}
-                  onClick={() => setDailyDate((current) => shiftDateInput(current || todayInput(), 1))}
+                  onClick={() => {
+                    setDailyDate((current) => shiftDateInput(current || todayInput(), 1));
+                    setDailyEndDate((current) => shiftDateInput(current || todayInput(), 1));
+                  }}
                 >
                   Dia siguiente
+                </button>
+                <button
+                  type="button"
+                  className={styles.navButton}
+                  onClick={() => {
+                    const end = todayInput();
+                    setDailyDate(shiftDateInput(end, -6));
+                    setDailyEndDate(end);
+                  }}
+                >
+                  Ultimos 7 dias
+                </button>
+                <button
+                  type="button"
+                  className={styles.navButton}
+                  onClick={() => {
+                    const { start, end } = getWeekRange(dailyDate || todayInput());
+                    setDailyDate(start);
+                    setDailyEndDate(end);
+                  }}
+                >
+                  Esta semana
                 </button>
               </div>
               <label className={styles.dateFilter}>
                 <span>Ver día</span>
                 <input type="date" value={dailyDate} onChange={(event) => setDailyDate(event.target.value)} />
+              </label>
+              <label className={styles.dateFilter}>
+                <span>Hasta</span>
+                <input type="date" value={dailyEndDate} onChange={(event) => setDailyEndDate(event.target.value)} />
               </label>
               <button
                 type="button"
@@ -264,7 +321,7 @@ export default function ReportesPage() {
               <div className={styles.dailyKpiGrid}>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Venta del día</span><strong>{money(dailyReport.summary.sales)}</strong></article>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Margen del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
-                <article className={styles.kpi}><span>Fecha</span><strong>{dailyReport.date}</strong></article>
+                <article className={styles.kpi}><span>Periodo</span><strong>{dailyReport.label || dailyReport.date}</strong></article>
                 <article className={styles.kpi}><span>Comprobantes</span><strong>{integer(dailyReport.summary.invoice_count)}</strong></article>
                 <article className={styles.kpi}><span>Ticket promedio</span><strong>{money(dailyReport.summary.avg_ticket)}</strong></article>
               </div>
@@ -272,7 +329,7 @@ export default function ReportesPage() {
                 <div className={styles.list}>
                   <div className={styles.subheading}>Comprobantes del día</div>
                   {dailyReport.invoices.length === 0 ? (
-                    <div className={styles.empty}>No hubo comprobantes en esa fecha.</div>
+                    <div className={styles.empty}>No hubo comprobantes en ese periodo.</div>
                   ) : (
                     dailyReport.invoices.map((item) => (
                       <div key={item.id} className={styles.listRow}>
@@ -288,7 +345,7 @@ export default function ReportesPage() {
                 <div className={styles.list}>
                   <div className={styles.subheading}>Productos vendidos</div>
                   {dailyReport.products.length === 0 ? (
-                    <div className={styles.empty}>Sin productos vendidos en esa fecha.</div>
+                    <div className={styles.empty}>Sin productos vendidos en ese periodo.</div>
                   ) : (
                     dailyReport.products.slice(0, 8).map((item) => (
                       <div key={item.product_id} className={styles.listRow}>

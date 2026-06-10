@@ -7207,15 +7207,33 @@ def admin_reports_overview(
 @app.get("/admin/reports/daily")
 def admin_reports_daily(
     report_date: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     _require_full_admin(session_token)
     target_date = _argentina_now().date()
+    range_start = None
+    range_end = None
     if report_date:
         try:
             target_date = datetime.strptime(report_date, "%Y-%m-%d").date()
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Fecha invalida. Usa YYYY-MM-DD.") from exc
+    if start_date:
+        try:
+            range_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Fecha inicial invalida. Usa YYYY-MM-DD.") from exc
+    if end_date:
+        try:
+            range_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Fecha final invalida. Usa YYYY-MM-DD.") from exc
+    if range_start and range_end and range_start > range_end:
+        raise HTTPException(status_code=400, detail="La fecha inicial no puede ser mayor a la final")
+    effective_start = range_start or target_date
+    effective_end = range_end or target_date
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
@@ -7233,7 +7251,7 @@ def admin_reports_daily(
         customer_summary: dict[int, dict[str, Any]] = {}
         for row in invoices:
             created_date = _argentina_date_for_filter(row["created_at"])
-            if created_date != target_date:
+            if created_date is None or created_date < effective_start or created_date > effective_end:
                 continue
             document_type = str(row["document_type"] or "").strip().upper()
             if document_type == "PRESUPUESTO":
@@ -7342,6 +7360,10 @@ def admin_reports_daily(
         invoice_count = len(selected_invoices)
         return {
             "date": target_date.isoformat(),
+            "start_date": effective_start.isoformat(),
+            "end_date": effective_end.isoformat(),
+            "is_range": effective_start != effective_end,
+            "label": effective_start.isoformat() if effective_start == effective_end else f"{effective_start.isoformat()} al {effective_end.isoformat()}",
             "summary": {
                 "sales": total_sales,
                 "margin": round(total_margin, 2),
