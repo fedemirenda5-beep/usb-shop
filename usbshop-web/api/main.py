@@ -5477,7 +5477,7 @@ def admin_create_invoice(
     order_id = int(payload.get("order_id") or 0) or None
     created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
     seller_id = int(payload.get("seller_id") or 0) or None
-    if seller_id is None:
+    if seller_id is None and document_type != "PRESUPUESTO":
         raise HTTPException(status_code=400, detail="Vendedor requerido")
 
     conn = _connect()
@@ -5499,18 +5499,19 @@ def admin_create_invoice(
 
         seller = None
         commission_amount = 0.0
-        seller = conn.execute(
-            """
-            SELECT id, name, commission_percent, is_active
-            FROM sellers
-            WHERE id = ?
-            """,
-            (seller_id,),
-        ).fetchone()
-        if seller is None:
-            raise HTTPException(status_code=404, detail="Vendedor no encontrado")
-        if not bool(seller["is_active"]):
-            raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
+        if seller_id is not None:
+            seller = conn.execute(
+                """
+                SELECT id, name, commission_percent, is_active
+                FROM sellers
+                WHERE id = ?
+                """,
+                (seller_id,),
+            ).fetchone()
+            if seller is None:
+                raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+            if not bool(seller["is_active"]):
+                raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
 
         affects_stock = document_type in {"FACTURA", "NOTA_CREDITO"}
         creates_cc_movement = document_type in {"FACTURA", "NOTA_CREDITO"}
@@ -5575,7 +5576,7 @@ def admin_create_invoice(
             raise HTTPException(status_code=400, detail="El descuento especial no puede superar el subtotal")
         total = round(subtotal_total - special_discount, 2)
         sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
-        commission_percent = float(seller["commission_percent"] or 0)
+        commission_percent = float(seller["commission_percent"] or 0) if seller is not None else 0.0
         commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
         if DB_IS_POSTGRES:
             # Serialize manual external_ref generation to avoid duplicate values

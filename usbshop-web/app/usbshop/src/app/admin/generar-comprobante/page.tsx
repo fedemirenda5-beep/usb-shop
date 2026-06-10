@@ -389,7 +389,7 @@ export default function GenerarComprobantePage() {
         customer_id: Number(form.customer_id),
         document_type: form.document_type,
         sale_mode: form.sale_mode,
-        seller_id: Number(form.seller_id),
+        seller_id: form.seller_id ? Number(form.seller_id) : null,
         price_list: Number(form.price_list || 0),
         payment_method: form.payment_method || null,
         created_at: formatInputDateTime(form.created_at),
@@ -502,15 +502,25 @@ export default function GenerarComprobantePage() {
               </label>
               <label>
                 Vendedor
-                <select value={form.seller_id} onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))} required>
-                  <option value="" disabled>Selecciona un vendedor</option>
+                <select
+                  value={form.seller_id}
+                  onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))}
+                  required={form.document_type !== 'PRESUPUESTO'}
+                >
+                  <option value="" disabled={form.document_type !== 'PRESUPUESTO'}>Selecciona un vendedor</option>
                   {sellers.map((seller) => (
                     <option key={seller.id} value={seller.id}>
                       {seller.name} - {seller.commission_percent}%
                     </option>
                   ))}
                 </select>
-                <small className={styles.fieldHint}>{selectedSeller ? `Comision estimada: ${money(commissionPreview)}` : 'El vendedor es obligatorio para emitir el comprobante'}</small>
+                <small className={styles.fieldHint}>
+                  {selectedSeller
+                    ? `Comision estimada: ${money(commissionPreview)}`
+                    : form.document_type === 'PRESUPUESTO'
+                      ? 'En presupuestos el vendedor es opcional. Al facturarlo despues, si queres, podes asignarlo ahi.'
+                      : 'El vendedor es obligatorio para emitir el comprobante'}
+                </small>
               </label>
               <label>
                 Lista de precios
