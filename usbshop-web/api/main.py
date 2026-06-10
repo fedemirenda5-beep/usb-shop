@@ -2909,7 +2909,7 @@ def admin_list_orders(
 ) -> list[dict]:
     _require_admin(session_token)
     status_value = (status or "PENDING").strip().upper()
-    if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "ALL"}:
+    if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "BUDGETED", "ALL"}:
         status_value = "PENDING"
 
     conn = _connect()
@@ -5670,14 +5670,15 @@ def admin_create_invoice(
                 ),
             )
 
-        if order_id and document_type == "FACTURA":
+        if order_id and document_type in {"FACTURA", "PRESUPUESTO"}:
+            next_order_status = "CONFIRMED" if document_type == "FACTURA" else "BUDGETED"
             conn.execute(
                 """
                 UPDATE web_orders
-                   SET status = 'CONFIRMED', confirmed_at = ?, confirmed_invoice_id = ?
+                   SET status = ?, confirmed_at = ?, confirmed_invoice_id = ?
                  WHERE id = ?
                 """,
-                (datetime.utcnow().isoformat(), str(invoice_id), order_id),
+                (next_order_status, datetime.utcnow().isoformat(), str(invoice_id), order_id),
             )
 
         conn.commit()
@@ -5931,6 +5932,15 @@ def admin_confirm_invoice(
             """,
             (confirmation_created_at, invoice_id),
         )
+        if _has_table(conn, "web_orders") and _has_column(conn, "web_orders", "confirmed_invoice_id"):
+            conn.execute(
+                """
+                UPDATE web_orders
+                   SET status = 'CONFIRMED', confirmed_at = ?
+                 WHERE confirmed_invoice_id = ?
+                """,
+                (confirmation_created_at, invoice_id),
+            )
         conn.commit()
         return {
             "id": int(invoice["id"]),
@@ -7996,7 +8006,7 @@ def admin_list_orders_detailed(
     _require_admin(session_token)
     
     status_value = (status or "PENDING").strip().upper()
-    if status_value not in {"PENDING", "CONFIRMED", "CANCELLED"}:
+    if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "BUDGETED"}:
         status_value = "PENDING"
     
     conn = _connect()

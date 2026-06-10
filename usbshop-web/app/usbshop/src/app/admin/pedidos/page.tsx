@@ -22,7 +22,7 @@ interface Order {
   customer_email: string;
   notes: string;
   total: number;
-  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED';
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'BUDGETED';
   created_at: string;
   confirmed_at: string | null;
   confirmed_invoice_id: string | null;
@@ -32,6 +32,7 @@ interface Order {
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
   PENDING: { bg: 'rgba(249, 115, 22, 0.12)', text: '#c2410c', label: 'Pendiente' },
   CONFIRMED: { bg: 'rgba(34, 197, 94, 0.12)', text: '#15803d', label: 'Procesada' },
+  BUDGETED: { bg: 'rgba(59, 130, 246, 0.12)', text: '#1d4ed8', label: 'Presupuestada' },
   CANCELLED: { bg: 'rgba(220, 38, 38, 0.12)', text: '#b91c1c', label: 'Cancelada' },
 };
 
