@@ -140,12 +140,14 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     image_path: '',
     image_urls: [],
   };
+  const basePrice = toDecimalString(source.price);
+  const fallbackListPrice = initialData ? basePrice : '';
   return {
     name: source.name,
     sku: source.sku,
-    price: toDecimalString(source.price),
-    price_list_1: source.price_list_1 ? toDecimalString(source.price_list_1) : '',
-    price_list_2: source.price_list_2 ? toDecimalString(source.price_list_2) : '',
+    price: basePrice,
+    price_list_1: source.price_list_1 ? toDecimalString(source.price_list_1) : fallbackListPrice,
+    price_list_2: source.price_list_2 ? toDecimalString(source.price_list_2) : fallbackListPrice,
     cost: toDecimalString(source.cost),
     stock: toIntegerString(source.stock),
     category_id: source.category_id ? String(source.category_id) : '',
@@ -180,6 +182,7 @@ export function ProductForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const previewUrlsRef = useRef<Array<string | null>>([]);
+  const lastBasePriceRef = useRef(formData.price);
 
   useEffect(() => {
     previewUrlsRef.current = localPreviewUrls;
@@ -215,6 +218,19 @@ export function ProductForm({
         ...prev,
         [name]: nextValue,
       } as ProductFormState;
+
+      if (name === 'price') {
+        const previousBasePrice = lastBasePriceRef.current;
+        const shouldSyncList1 = !prev.price_list_1.trim() || prev.price_list_1 === previousBasePrice;
+        const shouldSyncList2 = !prev.price_list_2.trim() || prev.price_list_2 === previousBasePrice;
+        if (shouldSyncList1) {
+          next.price_list_1 = nextValue;
+        }
+        if (shouldSyncList2) {
+          next.price_list_2 = nextValue;
+        }
+        lastBasePriceRef.current = nextValue;
+      }
 
       if (name === 'flash_offer_price') {
         return next;
