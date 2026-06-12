@@ -2444,6 +2444,10 @@ class SellerPayload(BaseModel):
     is_active: bool = True
 
 
+class InvoiceSellerAssignmentPayload(BaseModel):
+    seller_id: int = Field(..., ge=1)
+
+
 class AdminUserCreatePayload(BaseModel):
     username: str = Field(min_length=1, max_length=120)
     password: str = Field(min_length=1, max_length=240)
@@ -5886,6 +5890,70 @@ def admin_invoice_detail(
                 "payments_total": round(total_payments, 2),
                 "balance_due": balance_due,
             },
+        }
+    finally:
+        conn.close()
+
+
+@app.put("/admin/invoices/{invoice_id}/seller")
+def admin_update_invoice_seller(
+    invoice_id: int,
+    payload: InvoiceSellerAssignmentPayload,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
+        _ensure_sellers_table(conn)
+        invoice = conn.execute(
+            """
+            SELECT id, total, document_type, seller_id
+            FROM invoices
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        ).fetchone()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+
+        seller = conn.execute(
+            """
+            SELECT id, name, commission_percent, is_active
+            FROM sellers
+            WHERE id = ?
+            """,
+            (int(payload.seller_id),),
+        ).fetchone()
+        if seller is None:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+        if not bool(seller["is_active"]):
+            raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
+
+        current_seller_id = int(invoice["seller_id"] or 0)
+        next_seller_id = int(seller["id"] or 0)
+        commission_percent = float(seller["commission_percent"] or 0)
+        commission_amount = round((float(invoice["total"] or 0) * commission_percent) / 100, 2)
+
+        conn.execute(
+            """
+            UPDATE invoices
+               SET seller_id = ?, commission_amount = ?
+             WHERE id = ?
+            """,
+            (next_seller_id, commission_amount, invoice_id),
+        )
+        conn.commit()
+        return {
+            "status": "ok",
+            "invoice_id": int(invoice["id"]),
+            "document_type": str(invoice["document_type"] or "").strip(),
+            "previous_seller_id": current_seller_id if current_seller_id > 0 else None,
+            "seller_id": next_seller_id,
+            "seller_name": str(seller["name"] or "").strip(),
+            "seller_commission_percent": round(commission_percent, 2),
+            "commission_amount": commission_amount,
         }
     finally:
         conn.close()

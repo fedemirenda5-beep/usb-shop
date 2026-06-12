@@ -69,6 +69,13 @@ type InvoiceDetail = {
   };
 };
 
+type SellerOption = {
+  id: number;
+  name: string;
+  commission_percent: number;
+  is_active: boolean;
+};
+
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
@@ -110,6 +117,11 @@ export default function ComprobantesPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
   const [pendingConfirmInvoice, setPendingConfirmInvoice] = useState<Invoice | null>(null);
+  const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
+  const [sellerDraftId, setSellerDraftId] = useState('');
+  const [sellerSaving, setSellerSaving] = useState(false);
+  const [sellerActionError, setSellerActionError] = useState('');
+  const [sellerActionMessage, setSellerActionMessage] = useState('');
   const detailRequestRef = useRef(0);
 
   const syncInvoiceRow = (invoice: InvoiceDetail['invoice']) => {
@@ -184,11 +196,19 @@ export default function ComprobantesPage() {
     if (data.length > 0) setSelectedId((current: number | null) => current ?? data[0].id);
   }
 
+  async function loadSellerOptions() {
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' });
+    if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
+    const data = (await res.json()) as SellerOption[];
+    setSellerOptions(data.filter((item) => item.is_active));
+  }
+
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        await loadInvoices();
+        await Promise.all([loadInvoices(), loadSellerOptions()]);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando comprobantes');
       } finally {
@@ -206,6 +226,12 @@ export default function ComprobantesPage() {
     void openInvoice(invoiceId, 'view');
   }, [searchParams]);
 
+  useEffect(() => {
+    setSellerDraftId(detail?.invoice.seller_id ? String(detail.invoice.seller_id) : '');
+    setSellerActionError('');
+    setSellerActionMessage('');
+  }, [detail?.invoice.id, detail?.invoice.seller_id]);
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
     if (!needle) return items;
@@ -214,12 +240,50 @@ export default function ComprobantesPage() {
     );
   }, [items, search]);
 
+  const selectedSellerOption = useMemo(
+    () => sellerOptions.find((item) => item.id === Number(sellerDraftId || 0)) || null,
+    [sellerDraftId, sellerOptions]
+  );
+
   const requestDeleteInvoice = (invoice: Invoice) => {
     setPendingDeleteInvoice(invoice);
   };
 
   const requestConfirmInvoice = (invoice: Invoice) => {
     setPendingConfirmInvoice(invoice);
+  };
+
+  const saveSellerAssignment = async () => {
+    if (!detail?.invoice?.id) return;
+    const nextSellerId = Number(sellerDraftId);
+    if (!Number.isInteger(nextSellerId) || nextSellerId <= 0) {
+      setSellerActionError('Selecciona un vendedor valido.');
+      return;
+    }
+    if (nextSellerId === Number(detail.invoice.seller_id || 0)) {
+      setSellerActionError('El comprobante ya esta asignado a ese vendedor.');
+      return;
+    }
+    try {
+      setSellerSaving(true);
+      setSellerActionError('');
+      setSellerActionMessage('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${detail.invoice.id}/seller`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seller_id: nextSellerId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo actualizar el vendedor');
+      await loadDetail(detail.invoice.id);
+      setSellerActionMessage('Vendedor reasignado y comision actualizada.');
+    } catch (err) {
+      setSellerActionError(err instanceof Error ? err.message : 'No se pudo actualizar el vendedor');
+    } finally {
+      setSellerSaving(false);
+    }
   };
 
   const openBudgetForInvoice = (invoice: Invoice) => {
@@ -549,11 +613,49 @@ export default function ComprobantesPage() {
                           <div className={styles.metaRow}><span>Numero</span><strong>#{detail.invoice.id}</strong></div>
                           <div className={styles.metaRow}><span>Fecha de emision</span><strong>{formatDate(detail.invoice.created_at)}</strong></div>
                           <div className={styles.metaRow}><span>Vendedor</span><strong>{detail.invoice.seller_name || '-'}</strong></div>
+                          <div className={styles.metaRow}><span>Comision</span><strong>{money(Number(detail.invoice.commission_amount || 0))}</strong></div>
                           <div className={styles.metaRow}><span>Modo de venta</span><strong>{detail.invoice.sale_mode || '-'}</strong></div>
                           <div className={styles.metaRow}><span>Lista de precios</span><strong>{getPriceListLabel(detail.invoice.price_list)}</strong></div>
                           {Number(detail.invoice.special_discount || 0) > 0 ? (
                             <div className={styles.metaRow}><span>Descuento especial</span><strong>-{money(Number(detail.invoice.special_discount || 0))}</strong></div>
                           ) : null}
+                        </div>
+                        <div className={styles.sellerEditor}>
+                          <div className={styles.sellerEditorHeader}>
+                            <strong>Reasignar vendedor</strong>
+                            <span>Actualiza la venta y recalcula la comision guardada en el comprobante.</span>
+                          </div>
+                          <div className={styles.sellerEditorControls}>
+                            <select
+                              value={sellerDraftId}
+                              onChange={(event) => setSellerDraftId(event.target.value)}
+                              disabled={sellerSaving || sellerOptions.length === 0}
+                            >
+                              <option value="">Seleccionar vendedor</option>
+                              {sellerOptions.map((seller) => (
+                                <option key={seller.id} value={seller.id}>
+                                  {seller.name} - {seller.commission_percent}%
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className={styles.confirmButton}
+                              disabled={sellerSaving || !sellerDraftId}
+                              onClick={() => {
+                                void saveSellerAssignment();
+                              }}
+                            >
+                              {sellerSaving ? 'Guardando...' : 'Guardar vendedor'}
+                            </button>
+                          </div>
+                          {selectedSellerOption ? (
+                            <div className={styles.sellerEditorHint}>
+                              Nueva comision estimada: {money((Number(detail.invoice.total || 0) * Number(selectedSellerOption.commission_percent || 0)) / 100)}
+                            </div>
+                          ) : null}
+                          {sellerActionError ? <div className={styles.inlineError}>{sellerActionError}</div> : null}
+                          {sellerActionMessage ? <div className={styles.inlineSuccess}>{sellerActionMessage}</div> : null}
                         </div>
                       </div>
                     </div>

@@ -85,6 +85,16 @@
 .metaRow:last-child { border-bottom: 0; padding-bottom: 0; }
 .metaRow span { color: #475569; text-transform: uppercase; letter-spacing: 0.05em; font-size: 10px; }
 .metaRow strong { color: #0f172a; text-align: right; font-size: 12px; }
+.sellerEditor { display: grid; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #cbd5e1; }
+.sellerEditorHeader { display: grid; gap: 4px; }
+.sellerEditorHeader strong { color: #0f172a; font-size: 13px; }
+.sellerEditorHeader span { color: #475569; font-size: 11px; line-height: 1.4; }
+.sellerEditorControls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.sellerEditorControls select { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; }
+.sellerEditorHint { color: #0f766e; font-size: 12px; font-weight: 600; }
+.inlineError, .inlineSuccess { padding: 10px 12px; border-radius: 10px; font-size: 12px; }
+.inlineError { background: rgba(220,38,38,.1); color: #b91c1c; border: 1px solid rgba(220,38,38,.2); }
+.inlineSuccess { background: rgba(15,118,110,.1); color: #0f766e; border: 1px solid rgba(15,118,110,.2); }
 .notesBox { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid #0b0b0b; background: #f0fdfa; }
 .notesBox p { margin: 0; color: #0b0b0b; line-height: 1.45; font-size: 12px; }
 .documentTableWrap { border: 1px solid #0b0b0b; border-radius: 12px; overflow: hidden; background: white; }
@@ -202,6 +212,7 @@
   .headerSplitPanel { grid-template-columns: 1fr; }
   .headerSplitColumn:first-child { padding: 12px 14px; }
   .headerSplitColumn + .headerSplitColumn { border-left: 0; border-top: 1px solid #0b0b0b; padding: 12px 14px; }
+  .sellerEditorControls { grid-template-columns: 1fr; }
   .modalOverlay { padding: 12px; }
   .detailModal { max-height: calc(100vh - 24px); padding: 12px; }
   .confirmOverlay { padding: 12px; }
