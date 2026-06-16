@@ -7306,17 +7306,21 @@ def admin_reports_daily(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_sellers_table(conn)
         invoices = conn.execute(
             """
-            SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type, c.name AS customer_name
+            SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type,
+                   i.seller_id, i.commission_amount, c.name AS customer_name, s.name AS seller_name
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
+            LEFT JOIN sellers s ON s.id = i.seller_id
             ORDER BY i.created_at ASC, i.id ASC
             """
         ).fetchall()
         selected_invoices: list[dict[str, Any]] = []
         invoice_ids: list[int] = []
         customer_summary: dict[int, dict[str, Any]] = {}
+        seller_summary: dict[int, dict[str, Any]] = {}
         for row in invoices:
             created_date = _argentina_date_for_filter(row["created_at"])
             if created_date is None or created_date < effective_start or created_date > effective_end:
@@ -7351,6 +7355,25 @@ def admin_reports_daily(
             )
             customer_entry["invoice_count"] += 1
             customer_entry["sales"] = round(float(customer_entry["sales"]) + total, 2)
+
+            seller_id = int(row["seller_id"] or 0)
+            if seller_id > 0:
+                seller_entry = seller_summary.setdefault(
+                    seller_id,
+                    {
+                        "seller_id": seller_id,
+                        "name": row["seller_name"] or f"Vendedor {seller_id}",
+                        "sales": 0.0,
+                        "commission": 0.0,
+                        "invoice_count": 0,
+                    },
+                )
+                seller_entry["invoice_count"] += 1
+                seller_entry["sales"] = round(float(seller_entry["sales"]) + total, 2)
+                seller_entry["commission"] = round(
+                    float(seller_entry["commission"]) + (float(row["commission_amount"] or 0) * sign),
+                    2,
+                )
 
         product_rows: list[dict[str, Any]] = []
         if invoice_ids:
@@ -7423,8 +7446,20 @@ def admin_reports_daily(
             ],
             key=lambda item: (-item["sales"], item["name"].lower()),
         )[:20]
+        sellers = sorted(
+            [
+                {
+                    **payload,
+                    "sales": round(float(payload["sales"]), 2),
+                    "commission": round(float(payload["commission"]), 2),
+                }
+                for payload in seller_summary.values()
+            ],
+            key=lambda item: (-item["commission"], item["name"].lower()),
+        )[:20]
 
         total_sales = round(sum(float(item["total"]) for item in selected_invoices), 2)
+        total_commissions = round(sum(float(item["commission"]) for item in sellers), 2)
         invoice_count = len(selected_invoices)
         return {
             "date": target_date.isoformat(),
@@ -7435,11 +7470,13 @@ def admin_reports_daily(
             "summary": {
                 "sales": total_sales,
                 "margin": round(total_margin, 2),
+                "commissions": total_commissions,
                 "invoice_count": invoice_count,
                 "avg_ticket": round(total_sales / invoice_count, 2) if invoice_count else 0.0,
             },
             "products": products,
             "customers": customers,
+            "sellers": sellers,
             "invoices": selected_invoices,
         }
     finally:

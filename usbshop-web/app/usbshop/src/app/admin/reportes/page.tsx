@@ -39,6 +39,7 @@ type YearProjection = {
 type DailyInvoice = { id: number; customer_id: number; customer_name: string; total: number; created_at: string; document_type?: string | null };
 type DailyProduct = { product_id: number; name: string; quantity: number; sales: number; avg_price: number };
 type DailyCustomer = { customer_id: number; name: string; invoice_count: number; sales: number; avg_ticket: number };
+type DailySeller = { seller_id: number; name: string; sales: number; commission: number; invoice_count: number };
 type DailyReport = {
   date: string;
   start_date?: string;
@@ -48,11 +49,13 @@ type DailyReport = {
   summary: {
     sales: number;
     margin: number;
+    commissions?: number;
     invoice_count: number;
     avg_ticket: number;
   };
   products: DailyProduct[];
   customers: DailyCustomer[];
+  sellers: DailySeller[];
   invoices: DailyInvoice[];
 };
 
@@ -87,6 +90,17 @@ const getWeekRange = (value: string) => {
   const format = (date: Date) =>
     `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
   return { start: format(monday), end: format(sunday) };
+};
+const getMonthRange = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return { start: value, end: value };
+  const [, year, month] = match;
+  const monthIndex = Number(month) - 1;
+  const first = new Date(Date.UTC(Number(year), monthIndex, 1));
+  const last = new Date(Date.UTC(Number(year), monthIndex + 1, 0));
+  const format = (date: Date) =>
+    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  return { start: format(first), end: format(last) };
 };
 
 const buildLinePath = (points: number[], width: number, height: number) => {
@@ -298,6 +312,17 @@ export default function ReportesPage() {
                 >
                   Esta semana
                 </button>
+                <button
+                  type="button"
+                  className={styles.navButton}
+                  onClick={() => {
+                    const { start, end } = getMonthRange(dailyDate || todayInput());
+                    setDailyDate(start);
+                    setDailyEndDate(end);
+                  }}
+                >
+                  Este mes
+                </button>
               </div>
               <label className={styles.dateFilter}>
                 <span>Ver día</span>
@@ -321,6 +346,7 @@ export default function ReportesPage() {
               <div className={styles.dailyKpiGrid}>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Venta del día</span><strong>{money(dailyReport.summary.sales)}</strong></article>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}><span>Margen del día</span><strong>{money(dailyReport.summary.margin)}</strong></article>
+                <article className={styles.kpi}><span>Comisiones</span><strong>{money(dailyReport.summary.commissions || 0)}</strong></article>
                 <article className={styles.kpi}><span>Periodo</span><strong>{dailyReport.label || dailyReport.date}</strong></article>
                 <article className={styles.kpi}><span>Comprobantes</span><strong>{integer(dailyReport.summary.invoice_count)}</strong></article>
                 <article className={styles.kpi}><span>Ticket promedio</span><strong>{money(dailyReport.summary.avg_ticket)}</strong></article>
@@ -354,6 +380,22 @@ export default function ReportesPage() {
                           <span>{integer(item.quantity)} unidades · Promedio {money(item.avg_price)}</span>
                         </div>
                         <em>{money(item.sales)}</em>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className={styles.list}>
+                  <div className={styles.subheading}>Comisiones por vendedor</div>
+                  {dailyReport.sellers.length === 0 ? (
+                    <div className={styles.empty}>No hay comisiones de vendedores en ese periodo.</div>
+                  ) : (
+                    dailyReport.sellers.map((item) => (
+                      <div key={item.seller_id} className={styles.listRow}>
+                        <div>
+                          <strong>{item.name}</strong>
+                          <span>{integer(item.invoice_count)} comprobantes · Venta {money(item.sales)}</span>
+                        </div>
+                        <em>{money(item.commission)}</em>
                       </div>
                     ))
                   )}
