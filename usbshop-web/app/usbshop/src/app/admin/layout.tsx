@@ -28,6 +28,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const currentModule = getCurrentModule(pathname);
+  const visibleModules = NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id));
+  const quickMobileModules = visibleModules.slice(0, 4);
 
   useEffect(() => {
     if (!isLoading && isVerified && !user && !error) {
@@ -43,11 +46,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   useEffect(() => {
     if (!user) return;
-    const currentModule = getCurrentModule(pathname);
-    const restricted =
-      currentModule && !canAccessAdminModule(user.role, currentModule.id)
-        ? currentModule
-        : null;
+    const restricted = currentModule && !canAccessAdminModule(user.role, currentModule.id) ? currentModule : null;
     if (restricted) {
       router.replace('/admin');
     }
@@ -118,7 +117,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           >
             Dashboard
           </Link>
-          {NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id)).map((module) => (
+          {visibleModules.map((module) => (
             <Link
               key={module.id}
               href={module.href}
@@ -154,7 +153,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             onClick={() => setSidebarOpen(!sidebarOpen)}
             aria-label="Abrir menu"
           >
-            Menu
+            <span className={styles.hamburgerIcon} aria-hidden="true">|||</span>
+            <span className={styles.hamburgerLabel}>Menu</span>
           </button>
           <div className={styles.navbarTitle}>
             <strong>USB Shop</strong>
@@ -172,6 +172,41 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </div>
           </div>
         </header>
+
+        <div className={styles.mobileAccessBar}>
+          <div className={styles.mobileAccessHeader}>
+            <div className={styles.mobileAccessCurrent}>
+              <span>Panel actual</span>
+              <strong>{currentModule?.title ?? 'Dashboard'}</strong>
+            </div>
+            <button
+              type="button"
+              className={styles.mobileMenuButton}
+              onClick={() => setSidebarOpen(true)}
+            >
+              Ver menu
+            </button>
+          </div>
+          <div className={styles.mobileQuickNav} aria-label="Accesos rapidos del admin">
+            <Link
+              href="/admin"
+              className={`${styles.mobileQuickLink} ${pathname === '/admin' ? styles.mobileQuickLinkActive : ''}`}
+            >
+              Dashboard
+            </Link>
+            {quickMobileModules.map((module) => (
+              <Link
+                key={module.id}
+                href={module.href}
+                className={`${styles.mobileQuickLink} ${
+                  pathname === module.href || pathname?.startsWith(`${module.href}/`) ? styles.mobileQuickLinkActive : ''
+                }`}
+              >
+                {module.navLabel}
+              </Link>
+            ))}
+          </div>
+        </div>
 
         <main className={styles.content}>
           <div className={styles.contentInner}>{children}</div>
