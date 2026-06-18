@@ -1919,6 +1919,10 @@ input.button {
     gap: 18px;
   }
 
+  .flash-offers > .flash-offer:only-child {
+    grid-column: 1 / -1;
+  }
+
   .flash-offer {
     grid-template-columns: 1fr;
     gap: 16px;
