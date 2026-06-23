@@ -16,9 +16,10 @@ const LAST_LOGIN_USERNAME_KEY = 'usbshop_last_login_username';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isLoading, error } = useAdminSession({ skipInitialCheck: true });
+  const { login, error } = useAdminSession({ skipInitialCheck: true });
   const [userOptions, setUserOptions] = useState<LoginUserOption[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -92,6 +93,9 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) {
+      return;
+    }
     setLocalError('');
 
     if (!username.trim()) {
@@ -104,9 +108,14 @@ export default function LoginPage() {
       return;
     }
 
-    const success = await login(username, password);
-    if (success) {
-      router.replace(targetPath);
+    try {
+      setSubmitting(true);
+      const success = await login(username, password);
+      if (success) {
+        router.replace(targetPath);
+      }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -125,7 +134,7 @@ export default function LoginPage() {
               id="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              disabled={isLoading}
+              disabled={submitting}
               className={styles.input}
               placeholder={usersLoading ? 'Cargando usuarios...' : 'Escribe o selecciona un usuario'}
               list="login-user-options"
@@ -156,7 +165,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Tu contrasena"
-              disabled={isLoading || usersLoading}
+              disabled={submitting || usersLoading}
               autoComplete="current-password"
               enterKeyHint="done"
               className={styles.input}
@@ -166,8 +175,8 @@ export default function LoginPage() {
 
           {(localError || error) && <div className={styles.error}>{localError || error}</div>}
 
-          <button type="submit" disabled={isLoading || !username.trim() || !password.trim()} className={styles.button}>
-            {isLoading ? 'Ingresando...' : 'Ingresar'}
+          <button type="submit" disabled={submitting || !username.trim() || !password.trim()} className={styles.button}>
+            {submitting ? 'Ingresando...' : 'Ingresar'}
           </button>
         </form>
 

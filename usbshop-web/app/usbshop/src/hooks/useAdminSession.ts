@@ -266,6 +266,9 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
   }, [skipInitialCheck]);
 
   useEffect(() => {
+    if (skipInitialCheck) {
+      return;
+    }
     if (!isBrowser) {
       return;
     }
@@ -291,7 +294,7 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
       window.removeEventListener('focus', revalidateSession);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [skipInitialCheck]);
 
   const login = useCallback(async (username: string, password: string) => {
     updateSnapshot({ isLoading: true, error: null });
