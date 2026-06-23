@@ -334,6 +334,7 @@ export async function fetchApiResponse(path: string, init?: RequestInit, timeout
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+  await withTimeout(loadRuntimeConfig(), 5000, "No se pudo cargar la configuracion");
   const headers = new Headers(init?.headers || {});
   const hasBody = init?.body !== undefined && init.body !== null;
   const isFormData =

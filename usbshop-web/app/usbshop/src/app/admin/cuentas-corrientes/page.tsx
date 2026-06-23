@@ -359,8 +359,7 @@ export default function CuentasCorrientesPage() {
     resetMovementForm();
     const loadSelectedCustomer = async () => {
       try {
-        await loadDetail(selectedId);
-        await loadInvoices(selectedId);
+        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
       } catch (err) {
         setError(getErrorMessage(err, 'Error cargando el detalle'));
       }
@@ -1169,7 +1168,7 @@ export default function CuentasCorrientesPage() {
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
-      {!detailOnly ? (
+      {isMobileLayout && !detailOnly ? (
         <>
           <section className={styles.mobilePicker}>
             <div className={styles.mobilePickerHeader}>
@@ -1252,6 +1251,11 @@ export default function CuentasCorrientesPage() {
             </div>
           </section>
 
+        </>
+      ) : null}
+
+      {!isMobileLayout && !detailOnly ? (
+        <>
           <section className={styles.desktopToolbar}>
             <div className={styles.searchBar}>
               <span>Buscar</span>

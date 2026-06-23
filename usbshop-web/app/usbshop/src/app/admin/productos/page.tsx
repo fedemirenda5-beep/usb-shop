@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -173,6 +173,7 @@ export default function ProductosPage() {
   const [categoryDraft, setCategoryDraft] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryError, setCategoryError] = useState('');
+  const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -256,7 +257,7 @@ export default function ProductosPage() {
   }, [isMobileLayout]);
 
   const filteredProducts = useMemo(() => {
-    const tokens = buildSearchTokens(search);
+    const tokens = buildSearchTokens(deferredSearch);
     return products.filter((product) => {
       if (categoryFilter && String(product.category_id || '') !== categoryFilter) {
         return false;
@@ -272,7 +273,7 @@ export default function ProductosPage() {
       );
       return tokens.every((token) => haystack.includes(token));
     });
-  }, [products, search, categoryFilter, onlyOutOfStock]);
+  }, [products, deferredSearch, categoryFilter, onlyOutOfStock]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
 
@@ -736,7 +737,7 @@ export default function ProductosPage() {
         </label>
       </div>
 
-      {!detailOnly ? (
+      {isMobileLayout && !detailOnly ? (
         <section className={styles.mobilePicker}>
           <div className={styles.mobilePickerHeader}>
             <div>
@@ -753,7 +754,7 @@ export default function ProductosPage() {
                 <p>No hay productos para ese filtro</p>
               </div>
             ) : (
-              filteredProducts.map((product) => {
+              visibleProducts.map((product) => {
                 const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const storefrontPrice = getStorefrontPrice(product);
                 return (
@@ -795,7 +796,7 @@ export default function ProductosPage() {
         </span>
       </div>
 
-      {!isMobileLayout || !detailOnly ? <div className={styles.tableWrapper}>
+      {!isMobileLayout ? <div className={styles.tableWrapper}>
         {loading ? (
           <div className={styles.loading}>Cargando...</div>
         ) : visibleProducts.length === 0 ? (
