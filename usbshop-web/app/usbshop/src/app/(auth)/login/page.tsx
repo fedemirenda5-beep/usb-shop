@@ -132,6 +132,7 @@ export default function LoginPage() {
             <label htmlFor="username">Usuario</label>
             <input
               id="username"
+              name="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               disabled={submitting}
@@ -139,6 +140,9 @@ export default function LoginPage() {
               placeholder={usersLoading ? 'Cargando usuarios...' : 'Escribe o selecciona un usuario'}
               list="login-user-options"
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               enterKeyHint="next"
               onKeyDown={handleUsernameKeyDown}
             />
@@ -161,12 +165,16 @@ export default function LoginPage() {
             <label htmlFor="password">Contrasena</label>
             <input
               id="password"
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Tu contrasena"
-              disabled={submitting || usersLoading}
+              disabled={submitting}
               autoComplete="current-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               enterKeyHint="done"
               className={styles.input}
               ref={passwordInputRef}
