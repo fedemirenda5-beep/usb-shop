@@ -13,3 +13,6 @@ export const canAccessAdminModule = (role: AdminRole | null | undefined, moduleI
 
 export const canViewProfitMetrics = (role: AdminRole | null | undefined) =>
   (role || '').toLowerCase() !== 'staff';
+
+export const canViewSellerCommissionBreakdown = (role: AdminRole | null | undefined) =>
+  (role || '').toLowerCase() === 'admin';

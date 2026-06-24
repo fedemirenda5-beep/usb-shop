@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { canViewProfitMetrics } from '../adminPermissions';
+import { canViewProfitMetrics, canViewSellerCommissionBreakdown } from '../adminPermissions';
 import styles from './vendedores.module.css';
 
 type Seller = {
@@ -32,6 +32,19 @@ type SellerMonthlySummary = {
   profit: number | null;
   commission: number;
   invoice_count: number;
+};
+
+type SellerRangeSummary = {
+  seller_id: number;
+  sales_day: number;
+  commission_day: number;
+  invoice_count_day: number;
+  sales_week: number;
+  commission_week: number;
+  invoice_count_week: number;
+  sales_month: number;
+  commission_month: number;
+  invoice_count_month: number;
 };
 
 type SellerMonthlyInvoiceItem = {
@@ -131,6 +144,32 @@ const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
+const toDateInput = (value?: string | null) => {
+  const match = String(value || '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+};
+const getWeekRange = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return { start: value, end: value };
+  const [, year, month, day] = match;
+  const base = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  const weekDay = base.getUTCDay();
+  const offsetToMonday = weekDay === 0 ? -6 : 1 - weekDay;
+  const monday = new Date(base);
+  monday.setUTCDate(base.getUTCDate() + offsetToMonday);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const format = (date: Date) =>
+    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  return { start: format(monday), end: format(sunday) };
+};
+const isDateWithinRange = (value: string, start: string, end: string) => value >= start && value <= end;
+const formatShortDate = (value: string) => {
+  const parsed = new Date(`${value}T12:00:00Z`);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', timeZone: ARGENTINA_TZ });
+};
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -158,9 +197,12 @@ export default function VendedoresPage() {
   const hasExplicitPeriod = Boolean(searchParams.get('period'));
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
+  const canViewCommissionBreakdown = canViewSellerCommissionBreakdown(user?.role);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<SellerMonthlySummary[]>([]);
   const [monthlyPeriod, setMonthlyPeriod] = useState(searchParams.get('period') || '');
+  const [referenceDate, setReferenceDate] = useState(searchParams.get('date') || getArgentinaNowDateInput());
+  const [rangeSummary, setRangeSummary] = useState<SellerRangeSummary[]>([]);
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -178,7 +220,13 @@ export default function VendedoresPage() {
     () => new Map(monthlySummary.map((item) => [item.seller_id, item])),
     [monthlySummary]
   );
+  const rangeSummaryMap = useMemo(
+    () => new Map(rangeSummary.map((item) => [item.seller_id, item])),
+    [rangeSummary]
+  );
   const selectedSellerSummary = selectedSeller ? monthlySummaryMap.get(selectedSeller.id) ?? null : null;
+  const selectedSellerRangeSummary = selectedSeller ? rangeSummaryMap.get(selectedSeller.id) ?? null : null;
+  const weekRange = useMemo(() => getWeekRange(referenceDate), [referenceDate]);
   const formattedMonthlyPeriod = useMemo(() => {
     if (!monthlyPeriod) return 'ultimo periodo con ventas';
     const [year, month] = monthlyPeriod.split('-');
@@ -209,6 +257,75 @@ export default function VendedoresPage() {
       return b.invoice_id - a.invoice_id;
     });
   }, [sellerDetail?.items]);
+
+  const buildRangeSummaryFromInvoices = (
+    invoices: InvoiceListItem[],
+    sellerList: Seller[],
+    baseDate: string
+  ): SellerRangeSummary[] => {
+    const monthKey = baseDate.slice(0, 7);
+    const range = getWeekRange(baseDate);
+    const summaryMap = new Map<number, SellerRangeSummary>();
+
+    sellerList.forEach((seller) => {
+      summaryMap.set(seller.id, {
+        seller_id: seller.id,
+        sales_day: 0,
+        commission_day: 0,
+        invoice_count_day: 0,
+        sales_week: 0,
+        commission_week: 0,
+        invoice_count_week: 0,
+        sales_month: 0,
+        commission_month: 0,
+        invoice_count_month: 0,
+      });
+    });
+
+    invoices.forEach((item) => {
+      const sellerId = Number(item.seller_id || 0);
+      if (sellerId <= 0) return;
+      const documentType = String(item.document_type || '').trim().toUpperCase();
+      if (documentType === 'PRESUPUESTO') return;
+      const dateKey = toDateInput(item.created_at);
+      if (!dateKey) return;
+      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
+      const salesValue = roundMoney(Number(item.total || 0) * sign);
+      const commissionValue = roundMoney(Number(item.commission_amount || 0) * sign);
+      const current = summaryMap.get(sellerId) ?? {
+        seller_id: sellerId,
+        sales_day: 0,
+        commission_day: 0,
+        invoice_count_day: 0,
+        sales_week: 0,
+        commission_week: 0,
+        invoice_count_week: 0,
+        sales_month: 0,
+        commission_month: 0,
+        invoice_count_month: 0,
+      };
+      if (dateKey === baseDate) {
+        current.sales_day = roundMoney(current.sales_day + salesValue);
+        current.commission_day = roundMoney(current.commission_day + commissionValue);
+        current.invoice_count_day += 1;
+      }
+      if (isDateWithinRange(dateKey, range.start, range.end)) {
+        current.sales_week = roundMoney(current.sales_week + salesValue);
+        current.commission_week = roundMoney(current.commission_week + commissionValue);
+        current.invoice_count_week += 1;
+      }
+      if (dateKey.slice(0, 7) === monthKey) {
+        current.sales_month = roundMoney(current.sales_month + salesValue);
+        current.commission_month = roundMoney(current.commission_month + commissionValue);
+        current.invoice_count_month += 1;
+      }
+      summaryMap.set(sellerId, current);
+    });
+
+    return sellerList
+      .map((seller) => summaryMap.get(seller.id))
+      .filter((item): item is SellerRangeSummary => Boolean(item));
+  };
 
   const buildMonthlySummaryFromInvoices = async (): Promise<{
     period: string;
@@ -517,6 +634,31 @@ export default function VendedoresPage() {
     }
   };
 
+  const loadRangeSummary = async (silent = false) => {
+    try {
+      if (!silent) {
+        setSummaryLoading(true);
+      }
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=500`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.detail || 'No se pudo cargar el corte de comisiones');
+      }
+      const invoices = Array.isArray(data) ? (data as InvoiceListItem[]) : [];
+      setRangeSummary(buildRangeSummaryFromInvoices(invoices, sellers, referenceDate));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Error cargando comisiones por dia y semana'));
+    } finally {
+      if (!silent) {
+        setSummaryLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       void loadSellers(search);
@@ -527,6 +669,14 @@ export default function VendedoresPage() {
   useEffect(() => {
     void loadMonthlySummary();
   }, [monthlyPeriod]);
+
+  useEffect(() => {
+    if (!canViewCommissionBreakdown || sellers.length === 0) {
+      setRangeSummary([]);
+      return;
+    }
+    void loadRangeSummary();
+  }, [canViewCommissionBreakdown, sellers, referenceDate]);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -541,12 +691,17 @@ export default function VendedoresPage() {
     } else {
       params.delete('seller');
     }
+    if (canViewCommissionBreakdown && referenceDate) {
+      params.set('date', referenceDate);
+    } else {
+      params.delete('date');
+    }
     const nextQuery = params.toString();
     const currentQuery = searchParams.toString();
     if (nextQuery !== currentQuery) {
       router.replace(nextQuery ? `/admin/vendedores?${nextQuery}` : '/admin/vendedores');
     }
-  }, [monthlyPeriod, router, searchParams]);
+  }, [canViewCommissionBreakdown, monthlyPeriod, referenceDate, router, searchParams]);
 
   useEffect(() => {
     if (!detailSellerId) {
@@ -592,16 +747,25 @@ export default function VendedoresPage() {
         return;
       }
       void loadMonthlySummary(true);
+      if (canViewCommissionBreakdown) {
+        void loadRangeSummary(true);
+      }
     }, 30000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void loadMonthlySummary(true);
+        if (canViewCommissionBreakdown) {
+          void loadRangeSummary(true);
+        }
       }
     };
 
     const handleFocus = () => {
       void loadMonthlySummary(true);
+      if (canViewCommissionBreakdown) {
+        void loadRangeSummary(true);
+      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -611,7 +775,7 @@ export default function VendedoresPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [canViewCommissionBreakdown]);
 
   const handleSellerFormChange = (
     e: React.ChangeEvent<HTMLInputElement>
@@ -834,6 +998,16 @@ export default function VendedoresPage() {
           <p>Padron comercial unificado con ventas, comisiones y ganancia por vendedor.</p>
         </div>
         <div className={styles.headerActions}>
+          {canViewCommissionBreakdown ? (
+            <label className={styles.periodField}>
+              <span>Fecha base</span>
+              <input
+                type="date"
+                value={referenceDate}
+                onChange={(e) => setReferenceDate(e.target.value)}
+              />
+            </label>
+          ) : null}
           <label className={styles.periodField}>
             <span>Periodo</span>
             <input
@@ -863,6 +1037,11 @@ export default function VendedoresPage() {
         <div className={styles.tableMeta}>
           <span>{sellers.length} vendedores{search ? ` para "${search}"` : ''} en {formattedMonthlyPeriod}</span>
         </div>
+        {canViewCommissionBreakdown ? (
+          <div className={styles.boardHint}>
+            Corte rapido: dia {formatShortDate(referenceDate)} y semana {formatShortDate(weekRange.start)} al {formatShortDate(weekRange.end)}.
+          </div>
+        ) : null}
         <div className={styles.boardHint}>Doble click sobre un vendedor para abrir el detalle mensual del periodo seleccionado.</div>
         <div className={styles.tableWrap}>
           {loading ? (
@@ -876,6 +1055,9 @@ export default function VendedoresPage() {
                   <th>ID</th>
                   <th>Vendedor</th>
                   <th>Comision</th>
+                  {canViewCommissionBreakdown ? <th>Com. dia</th> : null}
+                  {canViewCommissionBreakdown ? <th>Com. semana</th> : null}
+                  {canViewCommissionBreakdown ? <th>Com. mes</th> : null}
                   <th>Venta mes</th>
                   {canViewProfit ? <th>Ganancia empresa</th> : null}
                   <th>Comprobantes</th>
@@ -887,6 +1069,7 @@ export default function VendedoresPage() {
               <tbody>
                 {sellers.map((seller) => {
                   const sellerSummary = monthlySummaryMap.get(seller.id);
+                  const sellerRange = rangeSummaryMap.get(seller.id);
                   return (
                     <tr
                       key={seller.id}
@@ -902,6 +1085,9 @@ export default function VendedoresPage() {
                         </span>
                       </td>
                       <td>{formatPercent(seller.commission_percent)}</td>
+                      {canViewCommissionBreakdown ? <td>{money(sellerRange?.commission_day || 0)}</td> : null}
+                      {canViewCommissionBreakdown ? <td>{money(sellerRange?.commission_week || 0)}</td> : null}
+                      {canViewCommissionBreakdown ? <td>{money(sellerRange?.commission_month || sellerSummary?.commission || 0)}</td> : null}
                       <td>{money(sellerSummary?.sales || 0)}</td>
                       {canViewProfit ? <td>{money(sellerSummary?.profit || 0)}</td> : null}
                       <td>{sellerSummary?.invoice_count || 0}</td>
@@ -975,6 +1161,51 @@ export default function VendedoresPage() {
           </div>
         )}
       </section>
+
+      {canViewCommissionBreakdown ? (
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h3>Comisiones por dia y semana</h3>
+              <p>{`Base ${formatShortDate(referenceDate)}. Semana del ${formatShortDate(weekRange.start)} al ${formatShortDate(weekRange.end)}.`}</p>
+            </div>
+          </div>
+
+          {summaryLoading ? (
+            <div className={styles.empty}>Calculando comisiones...</div>
+          ) : sellers.length === 0 ? (
+            <div className={styles.empty}>No hay vendedores para mostrar.</div>
+          ) : (
+            <div className={styles.monthlySummaryGrid}>
+              {sellers.map((seller) => {
+                const sellerRange = rangeSummaryMap.get(seller.id);
+                return (
+                  <article key={`range-${seller.id}`} className={styles.summaryCard}>
+                    <div className={styles.summaryHeader}>
+                      <strong>{seller.name}</strong>
+                      <span>{formatPercent(seller.commission_percent)}</span>
+                    </div>
+                    <div className={styles.summaryMetrics}>
+                      <div>
+                        <span>Comision del dia</span>
+                        <strong>{money(sellerRange?.commission_day || 0)}</strong>
+                      </div>
+                      <div>
+                        <span>Comision semana</span>
+                        <strong>{money(sellerRange?.commission_week || 0)}</strong>
+                      </div>
+                      <div>
+                        <span>Comprobantes semana</span>
+                        <strong>{sellerRange?.invoice_count_week || 0}</strong>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section className={styles.main}>
         {showSellerForm ? (
@@ -1058,13 +1289,25 @@ export default function VendedoresPage() {
                 <span>Venta del mes</span>
                 <strong>{money(selectedSellerSummary?.sales || 0)}</strong>
               </div>
+              {canViewCommissionBreakdown ? (
+                <div className={styles.detailItem}>
+                  <span>Comision del dia</span>
+                  <strong>{money(selectedSellerRangeSummary?.commission_day || 0)}</strong>
+                </div>
+              ) : null}
+              {canViewCommissionBreakdown ? (
+                <div className={styles.detailItem}>
+                  <span>Comision de la semana</span>
+                  <strong>{money(selectedSellerRangeSummary?.commission_week || 0)}</strong>
+                </div>
+              ) : null}
               <div className={styles.detailItem}>
                 <span>Comprobantes del mes</span>
                 <strong>{selectedSellerSummary?.invoice_count || 0}</strong>
               </div>
               <div className={styles.detailItem}>
                 <span>Comision acumulada</span>
-                <strong>{money(selectedSellerSummary?.commission || 0)}</strong>
+                <strong>{money(canViewCommissionBreakdown ? (selectedSellerRangeSummary?.commission_month || selectedSellerSummary?.commission || 0) : (selectedSellerSummary?.commission || 0))}</strong>
               </div>
               {canViewProfit && selectedSellerSummary && selectedSellerSummary.profit !== null ? (
                 <div className={styles.detailItem}>
