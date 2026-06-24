@@ -69,8 +69,8 @@ const PRODUCTS_PAGE_SIZE = 60;
 const CATALOG_PAGE_SIZE = 12;
 const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
-const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v9";
-const FEATURED_CACHE_KEY = "usbshop_featured_cache_v9";
+const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v10";
+const FEATURED_CACHE_KEY = "usbshop_featured_cache_v10";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
@@ -595,7 +595,7 @@ export default function HomeClient({
 
   const fetchProductsPage = async (offset: number) => {
     const result = await fetchWithRetry<Product[]>(
-      `/products?limit=${PRODUCTS_PAGE_SIZE}&offset=${offset}`
+      `/products?sort=newest&limit=${PRODUCTS_PAGE_SIZE}&offset=${offset}`
     );
     const normalized = result.data.map((item) => normalizeProduct(item, result.baseUrl));
     return { ...result, normalized };

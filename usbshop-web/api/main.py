@@ -2663,7 +2663,12 @@ def sync_backoffice_table(
 
 
 @app.get("/products")
-def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> list[dict]:
+def list_products(
+    limit: int = 50,
+    offset: int = 0,
+    q: Optional[str] = None,
+    sort: Optional[str] = None,
+) -> list[dict]:
     conn = _connect()
     try:
         _ensure_product_images_table(conn)
@@ -2735,7 +2740,18 @@ def list_products(limit: int = 50, offset: int = 0, q: Optional[str] = None) -> 
             query += " AND (p.name LIKE ? OR p.sku LIKE ?)" if conditions else " WHERE (p.name LIKE ? OR p.sku LIKE ?)"
             like = f"%{q}%"
             params.extend([like, like])
-        order_by = "LOWER(p.name) ASC, p.id ASC"
+        sort_key = str(sort or "").strip().lower()
+        if sort_key in {"", "newest"}:
+            if has_created_at and has_updated_at:
+                order_by = "COALESCE(p.created_at, p.updated_at) DESC, p.id DESC"
+            elif has_created_at:
+                order_by = "p.created_at DESC, p.id DESC"
+            elif has_updated_at:
+                order_by = "p.updated_at DESC, p.id DESC"
+            else:
+                order_by = "p.id DESC"
+        else:
+            order_by = "LOWER(p.name) ASC, p.id ASC"
         query += f" ORDER BY {order_by} LIMIT ? OFFSET ?"
         params.extend([max(1, int(limit)), max(0, int(offset))])
         rows = conn.execute(query, params).fetchall()
