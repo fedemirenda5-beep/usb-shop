@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductCard from "@/components/ProductCard";
 import {
@@ -65,7 +65,7 @@ const fallbackCategories = [
   "Oficina",
   "Vapers",
 ];
-const PRODUCTS_PAGE_SIZE = 2000;
+const PRODUCTS_PAGE_SIZE = 60;
 const CATALOG_PAGE_SIZE = 12;
 const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
@@ -85,7 +85,7 @@ const compareByNewest = (a: Product, b: Product) =>
   toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
 const hasDiscountedPrice = (product: Product) =>
   Number(product.originalPrice || 0) > Number(product.price || 0);
-const getFlashOfferTimeLeft = (product?: Product | null) => {
+const getFlashOfferTimeLeftAt = (product: Product | null | undefined, now: number) => {
   const endsAt = product?.flashOffer?.endsAt;
   if (!endsAt) {
     return 0;
@@ -94,8 +94,10 @@ const getFlashOfferTimeLeft = (product?: Product | null) => {
   if (!Number.isFinite(parsed)) {
     return 0;
   }
-  return Math.max(0, parsed - Date.now());
+  return Math.max(0, parsed - now);
 };
+const getFlashOfferTimeLeft = (product?: Product | null) =>
+  getFlashOfferTimeLeftAt(product, Date.now());
 const formatFlashTimeLeft = (ms: number) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
   const days = Math.floor(totalSeconds / 86400);
@@ -244,6 +246,25 @@ const getProductPlaceholderLabel = (value?: string | null) => {
     .join("");
 };
 
+const FlashOfferTimer = memo(function FlashOfferTimer({ product }: { product: Product }) {
+  const [timeLeft, setTimeLeft] = useState(() => getFlashOfferTimeLeft(product));
+
+  useEffect(() => {
+    setTimeLeft(getFlashOfferTimeLeft(product));
+    const timer = window.setInterval(() => {
+      setTimeLeft(getFlashOfferTimeLeft(product));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [product.id, product.flashOffer?.endsAt]);
+
+  return (
+    <div className="flash-offer__timer" aria-label="Tiempo restante">
+      <span>Termina en</span>
+      <strong>{formatFlashTimeLeft(timeLeft)}</strong>
+    </div>
+  );
+});
+
 export default function HomeClient({
   initialProducts,
   initialFeatured,
@@ -294,7 +315,6 @@ export default function HomeClient({
   const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
   const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
-  const [flashNow, setFlashNow] = useState(() => Date.now());
   const isPublic =
     typeof window !== "undefined" &&
     !["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -316,11 +336,6 @@ export default function HomeClient({
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
-  }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setFlashNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -1093,7 +1108,7 @@ export default function HomeClient({
       .filter((product) => (product.stock ?? 0) > 0 && getFlashOfferTimeLeft(product) > 0)
       .sort((a, b) => getFlashOfferTimeLeft(a) - getFlashOfferTimeLeft(b))
       .slice(0, 2);
-  }, [products, featuredSource, flashNow]);
+  }, [products, featuredSource]);
 
   const filteredWeeklyOffers = useMemo(() => {
     return weeklyOffers.filter((product) => {
@@ -1351,7 +1366,6 @@ export default function HomeClient({
       {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
         <section className="flash-offers">
           {flashOfferProducts.map((product, index) => {
-            const flashOfferTimeLeft = getFlashOfferTimeLeft(product);
             return (
               <article key={`flash-offer-${product.id}`} className="flash-offer">
                 <div className="flash-offer__content">
@@ -1366,10 +1380,7 @@ export default function HomeClient({
                     ) : null}
                     <strong>${product.price.toLocaleString("es-AR")}</strong>
                   </div>
-                  <div className="flash-offer__timer" aria-label="Tiempo restante">
-                    <span>Termina en</span>
-                    <strong>{formatFlashTimeLeft(flashOfferTimeLeft)}</strong>
-                  </div>
+                  <FlashOfferTimer product={product} />
                   <button
                     type="button"
                     className="button button--lime flash-offer__button"
