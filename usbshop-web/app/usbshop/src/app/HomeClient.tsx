@@ -392,6 +392,7 @@ export default function HomeClient({
     }
     window.requestAnimationFrame(() => {
       const target =
+        (category ? document.getElementById("selected-category-results") : null) ||
         document.getElementById("featured-grid") ||
         document.getElementById("category-strip") ||
         document.getElementById("catalogo");
@@ -1473,7 +1474,7 @@ export default function HomeClient({
       </section>
       ) : null}
 
-      {!isSearching ? (
+      {!isSearching && !selectedCategory ? (
         <section id="bajaron-de-precio" className="section">
           <div className="section-header">
             <div>
@@ -1516,7 +1517,7 @@ export default function HomeClient({
 
       {!showCategoryStripBeforeProducts ? categoryStrip : null}
 
-      {!isSearching && (
+      {!isSearching && !selectedCategory && (
         <section id="ofertas" className="section">
         <div className="section-header">
           <div>
@@ -1554,21 +1555,24 @@ export default function HomeClient({
       </section>
       )}
 
-        <section id="destacados" className="section">
+        <section
+          id={selectedCategory ? "selected-category-results" : "destacados"}
+          className="section"
+        >
           <div className="section-header">
             <div>
               <p className="section-kicker">
                 {isSearching
                   ? "Resultados"
                   : selectedCategory
-                  ? "Categoria"
+                  ? "Rubro"
                   : "Explorar"}
               </p>
               <h2 className="section-title">
                 {isSearching
                   ? `${filteredProducts.length} productos encontrados`
                   : selectedCategory
-                  ? selectedCategory
+                  ? `${selectedCategory}: productos disponibles`
                   : "Productos destacados"}
               </h2>
             </div>
