@@ -146,7 +146,6 @@ export default function Navbar({
                 <div className="navbar-note-flag">
                   <span className="navbar-note-flag-sun" />
                 </div>
-                <span className="navbar-note-ball" />
               </div>
             ) : null}
             <div className="navbar-note-copy">
