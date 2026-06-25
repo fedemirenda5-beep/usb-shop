@@ -40,6 +40,7 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
   const year = now.getFullYear();
   const currentTime = now.getTime();
   const dayMs = 24 * 60 * 60 * 1000;
+  const campaignLeadDays = 7;
   const withinWindow = (target: Date, daysBefore: number, daysAfter: number) => {
     const deltaDays = Math.floor((currentTime - target.getTime()) / dayMs);
     return deltaDays >= -daysBefore && deltaDays <= daysAfter;
@@ -47,7 +48,10 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
 
   const worldCupStart = new Date(2026, 5, 11);
   const worldCupEnd = new Date(2026, 6, 19);
-  if (currentTime >= worldCupStart.getTime() && currentTime <= worldCupEnd.getTime()) {
+  if (
+    currentTime >= worldCupStart.getTime() - campaignLeadDays * dayMs &&
+    currentTime <= worldCupEnd.getTime()
+  ) {
     return {
       variant: "worldcup",
       eyebrow: "Modo Mundial",
@@ -57,7 +61,7 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
   }
 
   const fathersDay = getNthWeekdayOfMonth(year, 5, 0, 3);
-  if (withinWindow(fathersDay, 14, 2)) {
+  if (withinWindow(fathersDay, campaignLeadDays, 2)) {
     return {
       variant: "standard",
       eyebrow: "Dia del Padre",
@@ -67,7 +71,7 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
   }
 
   const childrensDay = getNthWeekdayOfMonth(year, 7, 0, 3);
-  if (withinWindow(childrensDay, 21, 2)) {
+  if (withinWindow(childrensDay, campaignLeadDays, 2)) {
     return {
       variant: "standard",
       eyebrow: "Dia del Nino",
@@ -77,7 +81,7 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
   }
 
   const mothersDay = getNthWeekdayOfMonth(year, 9, 0, 3);
-  if (withinWindow(mothersDay, 21, 2)) {
+  if (withinWindow(mothersDay, campaignLeadDays, 2)) {
     return {
       variant: "standard",
       eyebrow: "Dia de la Madre",
@@ -86,9 +90,9 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
     };
   }
 
-  const christmasStart = new Date(year, 11, 1);
+  const christmasStart = new Date(year, 11, 25);
   const christmasEnd = new Date(year, 11, 26);
-  if (currentTime >= christmasStart.getTime() && currentTime <= christmasEnd.getTime()) {
+  if (withinWindow(christmasStart, campaignLeadDays, 1)) {
     return {
       variant: "standard",
       eyebrow: "Navidad USB Shop",
