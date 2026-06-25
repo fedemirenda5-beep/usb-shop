@@ -342,16 +342,33 @@ a:focus-visible {
   flex: 1 1 320px;
   max-width: 460px;
   margin: 0 auto;
-  padding: 9px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.92));
-  color: #475569;
+  padding: 10px 16px 11px;
+  border-radius: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  background:
+    linear-gradient(135deg, rgba(227, 240, 255, 0.98), rgba(241, 245, 249, 0.94)),
+    linear-gradient(90deg, rgba(116, 192, 252, 0.08), rgba(132, 204, 22, 0.1));
+  color: #334155;
+  text-align: left;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  display: grid;
+  gap: 2px;
+}
+
+.navbar-note-kicker {
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #2563eb;
+}
+
+.navbar-note-text {
   font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  text-align: center;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  line-height: 1.35;
+  color: #334155;
 }
 
 .cart-pill {
@@ -2121,7 +2138,7 @@ input.button {
   }
 
   .navbar-note {
-    display: none;
+    display: grid;
   }
 
   .hero {
@@ -2174,7 +2191,15 @@ input.button {
     flex-basis: 100%;
     max-width: none;
     margin: 0;
-    padding: 8px 12px;
+    padding: 9px 12px 10px;
+  }
+
+  .navbar-note-kicker {
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+
+  .navbar-note-text {
     font-size: 11px;
   }
 
