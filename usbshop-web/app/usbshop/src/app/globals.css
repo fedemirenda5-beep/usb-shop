@@ -2311,6 +2311,7 @@ input.button {
 
   .navbar-note {
     order: 3;
+    grid-column: 1 / -1;
     flex-basis: 100%;
     max-width: none;
     width: 100%;
