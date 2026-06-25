@@ -456,22 +456,38 @@ a:focus-visible {
   height: 26px;
   border-radius: 999px;
   background:
-    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95), rgba(234, 242, 255, 0.95) 58%, rgba(191, 219, 254, 0.92) 100%);
-  border: 1px solid rgba(59, 130, 246, 0.18);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.12);
+    radial-gradient(circle at 50% 42%, #111827 0 15%, transparent 16%),
+    radial-gradient(circle at 23% 32%, #111827 0 11%, transparent 12%),
+    radial-gradient(circle at 77% 32%, #111827 0 11%, transparent 12%),
+    radial-gradient(circle at 31% 73%, #111827 0 10%, transparent 11%),
+    radial-gradient(circle at 69% 73%, #111827 0 10%, transparent 11%),
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.98) 62%, rgba(209, 213, 219, 0.96) 100%);
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  box-shadow:
+    0 10px 18px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .navbar-note-ball::before,
 .navbar-note-ball::after {
   content: "";
   position: absolute;
-  inset: 7px;
-  border-radius: 999px;
-  border: 1px solid rgba(59, 130, 246, 0.26);
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.navbar-note-ball::before {
+  background:
+    linear-gradient(63deg, transparent 47%, rgba(17, 24, 39, 0.45) 48%, rgba(17, 24, 39, 0.45) 52%, transparent 53%),
+    linear-gradient(-63deg, transparent 47%, rgba(17, 24, 39, 0.45) 48%, rgba(17, 24, 39, 0.45) 52%, transparent 53%);
+  opacity: 0.65;
 }
 
 .navbar-note-ball::after {
-  inset: 3px 10px;
+  inset: 3px;
+  border-radius: inherit;
+  box-shadow: inset -2px -2px 0 rgba(15, 23, 42, 0.08);
 }
 
 .navbar-note--standard {
