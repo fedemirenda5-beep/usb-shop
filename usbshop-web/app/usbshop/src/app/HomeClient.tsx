@@ -35,6 +35,12 @@ type Product = {
   } | null;
 };
 
+type Category = {
+  id: number;
+  name: string;
+  product_count?: number;
+};
+
 type CartItem = {
   product: Product;
   qty: number;
@@ -76,6 +82,20 @@ const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
 const normalizeLabel = (value: string | null | undefined) =>
   (value || "").trim().toLowerCase();
+const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const category of [...preferred, ...fallback]) {
+    const trimmed = String(category || "").trim();
+    const normalized = normalizeLabel(trimmed);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    next.push(trimmed);
+    seen.add(normalized);
+  }
+  return next;
+};
 const toComparableTimestamp = (product: Product) => {
   const raw = product.created_at || product.updated_at || "";
   const parsed = raw ? Date.parse(raw) : NaN;
@@ -280,6 +300,7 @@ export default function HomeClient({
   const [products, setProducts] = useState<Product[]>(() =>
     (initialProducts ?? []).map((item) => normalizeProductWithBase(item, initialBase))
   );
+  const [categories, setCategories] = useState<Category[]>([]);
   const [imageRefreshKey, setImageRefreshKey] = useState(0);
   const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE_SIZE);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -612,6 +633,27 @@ export default function HomeClient({
 
   useEffect(() => {
     let active = true;
+    const loadCategories = async () => {
+      try {
+        const result = await fetchWithRetry<Category[]>("/categories");
+        if (!active || !Array.isArray(result.data)) {
+          return;
+        }
+        setCategories(result.data);
+      } catch {
+        if (active) {
+          setCategories([]);
+        }
+      }
+    };
+    void loadCategories();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     const requestId = featuredRequestRef.current + 1;
     featuredRequestRef.current = requestId;
     const loadFeatured = async () => {
@@ -834,35 +876,17 @@ export default function HomeClient({
 
   const orderedCategories = useMemo(() => {
     const source = products.length > 0 ? products : featured;
-    const seen = new Set<string>();
-    const next: string[] = [];
-    for (const category of fallbackCategories) {
-      const normalized = normalizeLabel(category);
-      if (!normalized || seen.has(normalized)) {
-        continue;
-      }
-      const exists = source.some((product) => normalizeLabel(product.category) === normalized);
-      if (exists) {
-        next.push(category);
-        seen.add(normalized);
-      }
-    }
-    const remaining = Array.from(
+    const sourceCategories = Array.from(
       new Set(
         source
           .map((product) => (product.category || "General").trim())
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b, "es"));
-    for (const category of remaining) {
-      const normalized = normalizeLabel(category);
-      if (!seen.has(normalized)) {
-        next.push(category);
-        seen.add(normalized);
-      }
-    }
-    return next;
-  }, [products, featured]);
+    const apiCategories = categories.map((category) => category.name).filter(Boolean);
+    const preferred = apiCategories.length > 0 ? apiCategories : fallbackCategories;
+    return collectOrderedCategories(preferred, sourceCategories);
+  }, [categories, products, featured]);
   const categoryRank = useMemo(
     () => new Map(orderedCategories.map((category, index) => [normalizeLabel(category), index])),
     [orderedCategories]

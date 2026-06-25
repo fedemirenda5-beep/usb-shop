@@ -2790,6 +2790,42 @@ def list_products(
     ]
 
 
+@app.get("/categories")
+def list_categories() -> list[dict]:
+    conn = _connect()
+    try:
+        if not _has_table(conn, "categories"):
+            return []
+        has_deleted_at = _has_column(conn, "products", "deleted_at")
+        has_is_active = _has_column(conn, "products", "is_active")
+        join_conditions = ["p.category_id = c.id"]
+        if has_deleted_at:
+            join_conditions.append("p.deleted_at IS NULL")
+        if has_is_active:
+            join_conditions.append("p.is_active = 1")
+        rows = conn.execute(
+            f"""
+            SELECT c.id, c.name, COUNT(p.id) AS product_count
+            FROM categories c
+            LEFT JOIN products p ON {" AND ".join(join_conditions)}
+            GROUP BY c.id, c.name
+            HAVING COUNT(p.id) > 0
+            ORDER BY LOWER(c.name) ASC, c.id ASC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [
+        {
+            "id": int(row["id"]),
+            "name": row["name"],
+            "product_count": int(row["product_count"] or 0),
+        }
+        for row in rows
+    ]
+
+
 @app.post("/orders")
 def create_order(payload: OrderPayload) -> dict:
     if not payload.items:

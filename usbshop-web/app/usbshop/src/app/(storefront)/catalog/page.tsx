@@ -17,6 +17,12 @@ type Product = {
   description?: string | null;
 };
 
+type Category = {
+  id: number;
+  name: string;
+  product_count?: number;
+};
+
 const fallbackCategories = [
   "Cables y cargadores",
   "Celulares",
@@ -37,6 +43,20 @@ const fallbackCategories = [
 
 const normalizeLabel = (value: string | null | undefined) =>
   (value || "").trim().toLowerCase();
+const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const category of [...preferred, ...fallback]) {
+    const trimmed = String(category || "").trim();
+    const normalized = normalizeLabel(trimmed);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    next.push(trimmed);
+    seen.add(normalized);
+  }
+  return next;
+};
 const PRODUCTS_CACHE_KEY = "usbshop_catalog_cache_v1";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const INITIAL_PAGE_SIZE = 60;
@@ -93,6 +113,7 @@ const toComparableTimestamp = (product: Product) => {
 
 export default function CatalogPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -179,6 +200,19 @@ export default function CatalogPage() {
 
   useEffect(() => {
     let active = true;
+    const loadCategories = async () => {
+      try {
+        await loadRuntimeConfig();
+        const data = await fetchJson<Category[]>("/categories", { cache: "no-store" });
+        if (active && Array.isArray(data)) {
+          setCategories(data);
+        }
+      } catch {
+        if (active) {
+          setCategories([]);
+        }
+      }
+    };
     const loadProducts = async (offset = 0, mode: "replace" | "append" = "replace") => {
       let hadCachedData = false;
       try {
@@ -226,6 +260,7 @@ export default function CatalogPage() {
         }
       }
     };
+    void loadCategories();
     loadProducts(0, "replace").catch(() => {
       if (active) {
         setProducts([]);
@@ -238,25 +273,18 @@ export default function CatalogPage() {
 
   const filtered = useMemo(() => {
     const value = query.trim().toLowerCase();
-    const orderedCategories = [
-      ...fallbackCategories.filter((category) =>
-        products.some((product) => normalizeLabel(product.category) === normalizeLabel(category))
-      ),
-      ...Array.from(
-        new Set(
-          products
-            .map((product) => (product.category || "General").trim())
-            .filter(Boolean)
-        )
+    const sourceCategories = Array.from(
+      new Set(
+        products
+          .map((product) => (product.category || "General").trim())
+          .filter(Boolean)
       )
-        .filter(
-          (category) =>
-            !fallbackCategories.some(
-              (fallback) => normalizeLabel(fallback) === normalizeLabel(category)
-            )
-        )
-        .sort((a, b) => a.localeCompare(b, "es")),
-    ];
+    ).sort((a, b) => a.localeCompare(b, "es"));
+    const apiCategories = categories.map((category) => category.name).filter(Boolean);
+    const orderedCategories = collectOrderedCategories(
+      apiCategories.length > 0 ? apiCategories : fallbackCategories,
+      sourceCategories
+    );
     const categoryRank = new Map(
       orderedCategories.map((category, index) => [normalizeLabel(category), index])
     );
@@ -278,7 +306,7 @@ export default function CatalogPage() {
         })
       : products;
     return [...source].sort(compareByCategoryThenNewest);
-  }, [products, query]);
+  }, [categories, products, query]);
 
   const skeletonCards = useMemo(() => Array.from({ length: 12 }, (_, idx) => idx), []);
 
