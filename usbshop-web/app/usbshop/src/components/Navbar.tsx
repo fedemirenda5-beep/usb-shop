@@ -136,6 +136,13 @@ export default function Navbar({
           <div className={`navbar-note navbar-note--${campaignBanner.variant}`}>
             {campaignBanner.variant === "worldcup" ? (
               <div className="navbar-note-visual" aria-hidden="true">
+                <div className="navbar-note-confetti">
+                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--1" />
+                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--2" />
+                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--3" />
+                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--4" />
+                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--5" />
+                </div>
                 <div className="navbar-note-flag">
                   <span className="navbar-note-flag-sun" />
                 </div>
