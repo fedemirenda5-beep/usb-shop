@@ -1329,7 +1329,12 @@ export default function HomeClient({
   const showCategoryStripBeforeProducts = !isMobileLayout || isSearching || Boolean(selectedCategory);
   const categoryStrip = (
     <div className="category-strip category-strip--hero" id="category-strip">
-      <div className="category-strip-title">Categorias</div>
+      <div className="category-strip-header">
+        <div className="category-strip-title">Rubros</div>
+        <div className="category-strip-meta">
+          {availableCategories.length + 1} filtros para explorar mas rapido
+        </div>
+      </div>
       <div className="category-strip-list">
         <button
           type="button"
