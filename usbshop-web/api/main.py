@@ -8531,20 +8531,28 @@ def admin_create_category(
             )
             conn.commit()
         
-        # Verificar si ya existe
-        row = conn.execute(
-            "SELECT id FROM categories WHERE name = ?",
-            (name,),
-        ).fetchone()
+        # Verificar si ya existe, ignorando mayusculas y acentos.
+        normalized_name = _normalize_search_text(name)
+        existing = next(
+            (
+                category
+                for category in conn.execute("SELECT id, name FROM categories").fetchall()
+                if _normalize_search_text(category["name"] if isinstance(category, dict) else category[1]) == normalized_name
+            ),
+            None,
+        )
         
-        if row:
+        if existing:
             raise HTTPException(status_code=409, detail="Categoría ya existe")
         
-        conn.execute(
-            "INSERT INTO categories (name) VALUES (?)",
-            (name,),
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                "INSERT INTO categories (name) VALUES (?)",
+                (name,),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=409, detail="Categoría ya existe")
         
         row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
         category_id = int(row["id"] if isinstance(row, dict) else row[0])
@@ -8582,20 +8590,29 @@ def admin_update_category(
         if not row:
             raise HTTPException(status_code=404, detail="Categoría no encontrada")
         
-        # Verificar unicidad
-        existing = conn.execute(
-            "SELECT id FROM categories WHERE name = ? AND id != ?",
-            (name, category_id),
-        ).fetchone()
+        # Verificar unicidad, ignorando mayusculas y acentos.
+        normalized_name = _normalize_search_text(name)
+        existing = next(
+            (
+                category
+                for category in conn.execute("SELECT id, name FROM categories").fetchall()
+                if int(category["id"] if isinstance(category, dict) else category[0]) != category_id
+                and _normalize_search_text(category["name"] if isinstance(category, dict) else category[1]) == normalized_name
+            ),
+            None,
+        )
         
         if existing:
             raise HTTPException(status_code=409, detail="El nombre ya existe")
         
-        conn.execute(
-            "UPDATE categories SET name = ? WHERE id = ?",
-            (name, category_id),
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                "UPDATE categories SET name = ? WHERE id = ?",
+                (name, category_id),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=409, detail="El nombre ya existe")
         
         return {"id": category_id, "name": name}
     finally:

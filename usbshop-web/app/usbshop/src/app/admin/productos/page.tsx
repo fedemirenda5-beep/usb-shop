@@ -42,6 +42,13 @@ interface Category {
   name: string;
 }
 
+const normalizeCategoryName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 const calculateMargin = (cost: number, price: number) => {
   if (!Number.isFinite(cost) || cost <= 0 || !Number.isFinite(price)) {
     return null;
@@ -173,6 +180,7 @@ export default function ProductosPage() {
   const [categoryDraft, setCategoryDraft] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryError, setCategoryError] = useState('');
+  const [categorySaving, setCategorySaving] = useState(false);
   const deferredSearch = useDeferredValue(search);
 
   useEffect(() => {
@@ -443,7 +451,16 @@ export default function ProductosPage() {
       setCategoryError('Nombre de rubro requerido');
       return;
     }
+    const duplicatedCategory = categories.find(
+      (category) =>
+        category.id !== editingCategoryId && normalizeCategoryName(category.name) === normalizeCategoryName(name)
+    );
+    if (duplicatedCategory) {
+      setCategoryError('Ese rubro ya existe');
+      return;
+    }
     try {
+      setCategorySaving(true);
       setCategoryError('');
       await loadRuntimeConfig();
       const url = editingCategoryId
@@ -461,6 +478,8 @@ export default function ProductosPage() {
       resetCategoryEditor();
     } catch (err) {
       setCategoryError(err instanceof Error ? err.message : 'Error guardando rubro');
+    } finally {
+      setCategorySaving(false);
     }
   };
 
@@ -1072,23 +1091,36 @@ export default function ProductosPage() {
 
             {categoryError ? <div className={styles.error}>{categoryError}</div> : null}
 
-            <div className={styles.categoryEditor}>
+            <form
+              className={styles.categoryEditor}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!categorySaving) {
+                  void submitCategory();
+                }
+              }}
+            >
               <input
                 type="text"
                 value={categoryDraft}
-                onChange={(e) => setCategoryDraft(e.target.value)}
+                onChange={(e) => {
+                  setCategoryDraft(e.target.value);
+                  if (categoryError) {
+                    setCategoryError('');
+                  }
+                }}
                 placeholder="Nombre del rubro"
                 className={styles.searchInput}
               />
-              <button type="button" className={styles.btnSecondary} onClick={() => void submitCategory()}>
-                {editingCategoryId ? 'Guardar' : 'Crear'}
+              <button type="submit" className={styles.btnSecondary} disabled={categorySaving}>
+                {categorySaving ? 'Guardando...' : editingCategoryId ? 'Guardar' : 'Crear'}
               </button>
               {editingCategoryId ? (
                 <button type="button" className={styles.btnSecondary} onClick={resetCategoryEditor}>
                   Cancelar
                 </button>
               ) : null}
-            </div>
+            </form>
 
             <div className={styles.categoryList}>
               {categoriesLoading ? (
