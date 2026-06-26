@@ -1511,7 +1511,7 @@ export default function HomeClient({
               skeletonCards.slice(0, 4).map((card) => (
                 <div key={`discount-skeleton-${card}`} className="product-card product-skeleton" />
               ))
-            )}
+            ) : null}
           </div>
         </section>
       ) : null}
