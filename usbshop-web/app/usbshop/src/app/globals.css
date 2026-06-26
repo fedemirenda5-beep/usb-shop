@@ -557,20 +557,20 @@ a:focus-visible {
 
 .cart-visual {
   position: relative;
-  width: 34px;
-  height: 26px;
+  width: 26px;
+  height: 20px;
   flex: 0 0 auto;
 }
 
 .cart-basket {
   position: absolute;
-  left: 7px;
-  bottom: 7px;
-  width: 18px;
-  height: 10px;
-  border: 3px solid var(--accent);
-  border-top-width: 4px;
-  border-radius: 4px 4px 6px 6px;
+  left: 5px;
+  bottom: 5px;
+  width: 14px;
+  height: 8px;
+  border: 2px solid var(--accent);
+  border-top-width: 3px;
+  border-radius: 3px 3px 5px 5px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(199, 244, 228, 0.9));
   box-shadow: inset 0 -2px 0 rgba(15, 118, 110, 0.12);
@@ -578,10 +578,10 @@ a:focus-visible {
 
 .cart-handle {
   position: absolute;
-  left: 3px;
-  bottom: 17px;
-  width: 11px;
-  height: 3px;
+  left: 2px;
+  bottom: 13px;
+  width: 9px;
+  height: 2px;
   border-radius: 999px;
   background: var(--accent);
   transform: rotate(-28deg);
@@ -591,26 +591,26 @@ a:focus-visible {
 .cart-wheel {
   position: absolute;
   bottom: 1px;
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
 }
 
 .cart-wheel--left {
-  left: 9px;
+  left: 7px;
 }
 
 .cart-wheel--right {
-  left: 22px;
+  left: 17px;
 }
 
 .cart-box {
   position: absolute;
-  bottom: 16px;
-  width: 9px;
-  height: 8px;
+  bottom: 12px;
+  width: 6px;
+  height: 6px;
   border-radius: 2px;
   background: linear-gradient(180deg, #9ae6b4, #22c55e);
   border: 1px solid rgba(19, 78, 74, 0.22);
@@ -627,18 +627,18 @@ a:focus-visible {
 }
 
 .cart-box--back {
-  left: 8px;
-  bottom: 18px;
+  left: 6px;
+  bottom: 13px;
 }
 
 .cart-box--mid {
-  left: 14px;
-  bottom: 19px;
+  left: 10px;
+  bottom: 14px;
 }
 
 .cart-box--front {
-  left: 20px;
-  bottom: 17px;
+  left: 14px;
+  bottom: 13px;
 }
 
 .cart-visual--empty .cart-basket {
