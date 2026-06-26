@@ -111,10 +111,35 @@ export default function Navbar({
   showTrust = true,
 }: NavbarProps) {
   const [campaignBanner, setCampaignBanner] = useState<CampaignBanner>(defaultCampaignBanner);
+  const cartIsFull = cartCount > 0;
 
   useEffect(() => {
     setCampaignBanner(getAnnualCampaignBanner(new Date()));
   }, []);
+
+  const cartPillContent = (
+    <>
+      <span
+        className={`cart-visual ${cartIsFull ? "cart-visual--full" : "cart-visual--empty"}`}
+        aria-hidden="true"
+      >
+        {cartIsFull ? (
+          <>
+            <span className="cart-box cart-box--back" />
+            <span className="cart-box cart-box--mid" />
+            <span className="cart-box cart-box--front" />
+          </>
+        ) : null}
+        <span className="cart-basket" />
+        <span className="cart-wheel cart-wheel--left" />
+        <span className="cart-wheel cart-wheel--right" />
+        <span className="cart-handle" />
+      </span>
+      <span>Carrito</span>
+      <span className="cart-count">{cartCount}</span>
+      <span>${cartTotal.toLocaleString("es-AR")}</span>
+    </>
+  );
 
   return (
     <header className="navbar">
@@ -159,15 +184,11 @@ export default function Navbar({
         ) : null}
         {onCartClick ? (
           <button type="button" className="cart-pill" onClick={onCartClick}>
-            <span>Carrito</span>
-            <span className="cart-count">{cartCount}</span>
-            <span>${cartTotal.toLocaleString("es-AR")}</span>
+            {cartPillContent}
           </button>
         ) : (
           <Link href="#carrito" className="cart-pill">
-            <span>Carrito</span>
-            <span className="cart-count">{cartCount}</span>
-            <span>${cartTotal.toLocaleString("es-AR")}</span>
+            {cartPillContent}
           </Link>
         )}
       </div>

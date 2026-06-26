@@ -1479,7 +1479,7 @@ export default function HomeClient({
       </section>
       ) : null}
 
-      {!isSearching && !selectedCategory ? (
+      {!isSearching && !selectedCategory && (isLoadingProducts || filteredDiscountedProducts.length > 0) ? (
         <section id="bajaron-de-precio" className="section">
           <div className="section-header">
             <div>
@@ -1511,10 +1511,6 @@ export default function HomeClient({
               skeletonCards.slice(0, 4).map((card) => (
                 <div key={`discount-skeleton-${card}`} className="product-card product-skeleton" />
               ))
-            ) : (
-              <div className="empty-state empty-state--wide">
-                No hay productos con baja de precio en este momento.
-              </div>
             )}
           </div>
         </section>
