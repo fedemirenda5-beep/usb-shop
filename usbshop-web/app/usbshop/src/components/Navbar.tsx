@@ -119,21 +119,36 @@ export default function Navbar({
 
   const cartPillContent = (
     <>
-      <span
-        className={`cart-visual ${cartIsFull ? "cart-visual--full" : "cart-visual--empty"}`}
-        aria-hidden="true"
-      >
-        {cartIsFull ? (
-          <>
-            <span className="cart-box cart-box--back" />
-            <span className="cart-box cart-box--mid" />
-            <span className="cart-box cart-box--front" />
-          </>
-        ) : null}
-        <span className="cart-basket" />
-        <span className="cart-wheel cart-wheel--left" />
-        <span className="cart-wheel cart-wheel--right" />
-        <span className="cart-handle" />
+      <span className="cart-visual" aria-hidden="true">
+        <svg
+          viewBox="0 0 32 24"
+          className={`cart-visual-svg ${cartIsFull ? "cart-visual-svg--full" : "cart-visual-svg--empty"}`}
+          role="presentation"
+        >
+          {cartIsFull ? (
+            <>
+              <rect className="cart-box-shape cart-box-shape--back" x="9" y="6" width="6" height="5" rx="1" />
+              <rect className="cart-box-shape cart-box-shape--mid" x="13" y="5" width="6" height="6" rx="1" />
+              <rect className="cart-box-shape cart-box-shape--front" x="17" y="6" width="6" height="5" rx="1" />
+            </>
+          ) : null}
+          <path
+            className="cart-basket-shape"
+            d="M5 5h4l2.4 9h11.5l2.8-7.5H12.2"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle className="cart-wheel-shape" cx="13" cy="19" r="2.1" />
+          <circle className="cart-wheel-shape" cx="22" cy="19" r="2.1" />
+          <path
+            className="cart-handle-shape"
+            d="M4 4.5l-1.5-2"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </span>
       <span>Carrito</span>
       <span className="cart-count">{cartCount}</span>

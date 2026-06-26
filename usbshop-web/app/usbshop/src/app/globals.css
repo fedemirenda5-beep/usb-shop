@@ -564,93 +564,30 @@ a:focus-visible {
   vertical-align: middle;
 }
 
-.cart-basket {
-  position: absolute;
-  left: 5px;
-  bottom: 5px;
-  width: 14px;
-  height: 8px;
-  border: 2px solid var(--accent);
-  border-top-width: 3px;
-  border-radius: 3px 3px 5px 5px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(199, 244, 228, 0.9));
-  box-shadow: inset 0 -2px 0 rgba(15, 118, 110, 0.12);
+.cart-visual-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.cart-handle {
-  position: absolute;
-  left: 2px;
-  bottom: 13px;
-  width: 9px;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--accent);
-  transform: rotate(-28deg);
-  transform-origin: left center;
+.cart-basket-shape,
+.cart-handle-shape {
+  stroke: var(--accent);
+  stroke-width: 2.2;
 }
 
-.cart-wheel {
-  position: absolute;
-  bottom: 1px;
-  width: 5px;
-  height: 5px;
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+.cart-wheel-shape {
+  fill: var(--accent);
 }
 
-.cart-wheel--left {
-  left: 7px;
+.cart-box-shape {
+  fill: #22c55e;
+  stroke: rgba(19, 78, 74, 0.22);
+  stroke-width: 0.8;
 }
 
-.cart-wheel--right {
-  left: 17px;
-}
-
-.cart-box {
-  position: absolute;
-  bottom: 12px;
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #9ae6b4, #22c55e);
-  border: 1px solid rgba(19, 78, 74, 0.22);
-  box-shadow: 0 4px 8px rgba(34, 197, 94, 0.18);
-}
-
-.cart-box::after {
-  content: "";
-  position: absolute;
-  inset: 1px auto 1px 50%;
-  width: 1px;
-  transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.cart-box--back {
-  left: 6px;
-  bottom: 13px;
-}
-
-.cart-box--mid {
-  left: 10px;
-  bottom: 14px;
-}
-
-.cart-box--front {
-  left: 14px;
-  bottom: 13px;
-}
-
-.cart-visual--empty .cart-basket {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(226, 247, 239, 0.96));
-}
-
-.cart-visual--full .cart-basket {
-  background:
-    linear-gradient(180deg, rgba(226, 255, 240, 0.96), rgba(176, 243, 205, 0.96));
+.cart-visual-svg--empty .cart-box-shape {
+  display: none;
 }
 
 .cart-count {
