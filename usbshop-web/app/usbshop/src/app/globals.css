@@ -556,10 +556,12 @@ a:focus-visible {
 }
 
 .cart-visual {
+  display: inline-block;
   position: relative;
   width: 26px;
   height: 20px;
   flex: 0 0 auto;
+  vertical-align: middle;
 }
 
 .cart-basket {
