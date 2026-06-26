@@ -1047,9 +1047,14 @@ a:focus-visible {
 
 .featured-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.75fr);
   gap: 24px;
   align-items: start;
+}
+
+.featured-main {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
 }
 
 .category-strip {
@@ -2159,8 +2164,12 @@ input.button {
 
 @media (min-width: 900px) {
   .featured-layout {
-    grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.75fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
+  }
+
+  .featured-main {
+    align-content: start;
   }
 
   .flash-offers {
@@ -2309,6 +2318,35 @@ input.button {
   .hero-card {
     min-height: 168px;
     align-content: start;
+  }
+}
+
+@media (min-width: 1200px) {
+  .featured-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-areas: "main cart";
+    column-gap: 24px;
+  }
+
+  .featured-main {
+    grid-area: main;
+  }
+
+  .featured-layout > .cart-panel {
+    grid-area: cart;
+    width: 100%;
+    max-width: none;
+    justify-self: stretch;
+  }
+
+  .featured-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1500px) {
+  .featured-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -2517,7 +2555,7 @@ input.button {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .featured-layout > .featured-grid {
+  .featured-layout > .featured-main {
     order: 0;
   }
 

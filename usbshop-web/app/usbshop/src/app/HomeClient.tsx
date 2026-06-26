@@ -1604,93 +1604,95 @@ export default function HomeClient({
           </div>
 
         <div className="featured-layout">
-          <div className="featured-grid" id={isSearching ? "resultados" : "featured-grid"}>
-            {isSearching ? (
-              filteredProducts.length > 0 ? (
-                filteredProducts.map((product, index) => (
-                  <ProductCard
-                    key={`search-${product.id}`}
-                    product={applyBadge(product, "catalog")}
-                    imageRefreshKey={imageRefreshKey}
-                    imagePriority={index < 2 ? "high" : "auto"}
-                    inCart={cart[product.id]?.qty ?? 0}
-                    onAdd={() => addItem(product)}
-                    onView={() => handleOpenQuickView(product)}
-                    style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-                  />
+          <div className="featured-main">
+            <div className="featured-grid" id={isSearching ? "resultados" : "featured-grid"}>
+              {isSearching ? (
+                filteredProducts.length > 0 ? (
+                  filteredProducts.map((product, index) => (
+                    <ProductCard
+                      key={`search-${product.id}`}
+                      product={applyBadge(product, "catalog")}
+                      imageRefreshKey={imageRefreshKey}
+                      imagePriority={index < 2 ? "high" : "auto"}
+                      inCart={cart[product.id]?.qty ?? 0}
+                      onAdd={() => addItem(product)}
+                      onView={() => handleOpenQuickView(product)}
+                      style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+                    />
+                  ))
+                ) : isLoadingProducts ? (
+                  skeletonCards.map((card) => (
+                    <div key={`search-skeleton-${card}`} className="product-card product-skeleton" />
+                  ))
+                ) : (
+                  <div className="empty-state empty-state--wide">
+                    No hay productos disponibles con esos filtros.
+                  </div>
+                )
+              ) : selectedCategory ? (
+                filteredCatalog.length > 0 ? (
+                  filteredCatalog.map((product, index) => (
+                    <ProductCard
+                      key={`category-${product.id}`}
+                      product={applyBadge(product, "catalog")}
+                      imageRefreshKey={imageRefreshKey}
+                      imagePriority={index < 2 ? "high" : "auto"}
+                      inCart={cart[product.id]?.qty ?? 0}
+                      onAdd={() => addItem(product)}
+                      onView={() => handleOpenQuickView(product)}
+                      style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+                    />
+                  ))
+                ) : isLoadingProducts ? (
+                  skeletonCards.map((card) => (
+                    <div key={`category-skeleton-${card}`} className="product-card product-skeleton" />
+                  ))
+                ) : (
+                  <div className="empty-state empty-state--wide">
+                    No hay productos en esta categoria.
+                  </div>
+                )
+              ) : featuredWindow.length > 0 ? (
+                featuredWindow.map((product, index) => (
+                  <div
+                    key={`${product.id}-${featuredIndex}`}
+                    className="featured-fade"
+                    style={{ "--delay": getStaggerDelay(index, 0.12, 0.6) } as React.CSSProperties}
+                  >
+                    <ProductCard
+                      product={applyBadge(product, "featured")}
+                      imageRefreshKey={imageRefreshKey}
+                      imagePriority={index < 2 ? "high" : "auto"}
+                      inCart={cart[product.id]?.qty ?? 0}
+                      onAdd={() => addItem(product)}
+                      onView={() => handleOpenQuickView(product)}
+                    />
+                  </div>
                 ))
-              ) : isLoadingProducts ? (
-                skeletonCards.map((card) => (
-                  <div key={`search-skeleton-${card}`} className="product-card product-skeleton" />
+              ) : isLoadingFeatured ? (
+                skeletonCards.slice(0, 4).map((card) => (
+                  <div key={`featured-skeleton-${card}`} className="product-card product-skeleton" />
                 ))
               ) : (
                 <div className="empty-state empty-state--wide">
-                  No hay productos disponibles con esos filtros.
+                  No encontramos productos con ese criterio de busqueda.
                 </div>
-              )
-            ) : selectedCategory ? (
-              filteredCatalog.length > 0 ? (
-                filteredCatalog.map((product, index) => (
-                  <ProductCard
-                    key={`category-${product.id}`}
-                    product={applyBadge(product, "catalog")}
-                    imageRefreshKey={imageRefreshKey}
-                    imagePriority={index < 2 ? "high" : "auto"}
-                    inCart={cart[product.id]?.qty ?? 0}
-                    onAdd={() => addItem(product)}
-                    onView={() => handleOpenQuickView(product)}
-                    style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-                  />
-                ))
-              ) : isLoadingProducts ? (
-                skeletonCards.map((card) => (
-                  <div key={`category-skeleton-${card}`} className="product-card product-skeleton" />
-                ))
-              ) : (
-                <div className="empty-state empty-state--wide">
-                  No hay productos en esta categoria.
-                </div>
-              )
-            ) : featuredWindow.length > 0 ? (
-              featuredWindow.map((product, index) => (
-                <div
-                  key={`${product.id}-${featuredIndex}`}
-                  className="featured-fade"
-                  style={{ "--delay": getStaggerDelay(index, 0.12, 0.6) } as React.CSSProperties}
-                >
-                  <ProductCard
-                    product={applyBadge(product, "featured")}
-                    imageRefreshKey={imageRefreshKey}
-                    imagePriority={index < 2 ? "high" : "auto"}
-                    inCart={cart[product.id]?.qty ?? 0}
-                    onAdd={() => addItem(product)}
-                    onView={() => handleOpenQuickView(product)}
-                  />
-                </div>
-              ))
-            ) : isLoadingFeatured ? (
-              skeletonCards.slice(0, 4).map((card) => (
-                <div key={`featured-skeleton-${card}`} className="product-card product-skeleton" />
-              ))
-            ) : (
-              <div className="empty-state empty-state--wide">
-                No encontramos productos con ese criterio de busqueda.
-              </div>
-            )}
-          </div>
-          {!selectedCategory &&
-          (filteredCatalog.length > visibleCatalog.length || hasMoreProducts) ? (
-            <div className="section-actions">
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={handleLoadMoreCatalog}
-                disabled={isFetchingMore}
-              >
-                {isFetchingMore ? "Cargando mas..." : "Mostrar mas"}
-              </button>
+              )}
             </div>
-          ) : null}
+            {!selectedCategory &&
+            (filteredCatalog.length > visibleCatalog.length || hasMoreProducts) ? (
+              <div className="section-actions">
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={handleLoadMoreCatalog}
+                  disabled={isFetchingMore}
+                >
+                  {isFetchingMore ? "Cargando mas..." : "Mostrar mas"}
+                </button>
+              </div>
+            ) : null}
+          </div>
 
           <aside className="cart-panel" id="carrito">
             <div className="cart-header">
