@@ -51,7 +51,8 @@
 
 .searchBar input,
 .formGrid input,
-.formGrid select {
+.formGrid select,
+.filtersBar select {
   width: 100%;
   border: 1px solid #d7dee7;
   border-radius: 12px;
@@ -62,6 +63,27 @@
 
 .searchBar {
   display: grid;
+}
+
+.filtersBar,
+.summaryPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.filtersBar {
+  grid-template-columns: repeat(2, minmax(0, 240px));
+}
+
+.filtersBar label,
+.summaryPanel div {
+  display: grid;
+  gap: 6px;
+}
+
+.filtersBar label {
+  color: #334155;
+  font-weight: 600;
 }
 
 .tablePanel,
@@ -154,6 +176,23 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.summaryPanel {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+  padding: 18px;
+}
+
+.summaryPanel strong {
+  color: #132238;
+}
+
+.summaryPanel span {
+  color: #64748b;
+}
+
 .documentCard {
   border: 1px solid #dbe4ee;
   border-radius: 14px;
@@ -200,12 +239,21 @@
 }
 
 @media (max-width: 1100px) {
+  .summaryPanel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
+  .filtersBar,
+  .summaryPanel {
+    grid-template-columns: 1fr;
+  }
+
   .header,
   .panelHeader,
   .documentCard,

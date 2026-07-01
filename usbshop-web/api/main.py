@@ -2185,6 +2185,8 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("tax_condition", "TEXT", "TEXT"),
         ("cuit", "TEXT", "TEXT"),
         ("external_ref", "TEXT", "TEXT"),
+        ("seller_id", "INTEGER", "INTEGER"),
+        ("zone", "TEXT", "TEXT"),
         ("is_active", "INTEGER", "INTEGER"),
         ("deleted_at", "TEXT", "TIMESTAMP"),
     ],
@@ -2294,6 +2296,8 @@ def _customer_select_fields(conn: DBConn, alias: str = "") -> str:
         "tax_condition",
         "cuit",
         "external_ref",
+        "seller_id",
+        "zone",
     ]
     for field_name in optional_fields:
         if _has_column(conn, "customers", field_name):
@@ -4133,6 +4137,8 @@ def admin_backoffice_customers(
                 "tax_condition": row["tax_condition"],
                 "cuit": row["cuit"],
                 "external_ref": row["external_ref"],
+                "seller_id": int(row["seller_id"]) if row["seller_id"] is not None else None,
+                "zone": row["zone"],
                 "balance": balances.get(int(row["id"]), 0.0),
                 "invoice_count": invoice_counts.get(int(row["id"]), 0),
             }
@@ -4667,6 +4673,8 @@ def admin_backoffice_customer_detail(
             "tax_condition": customer["tax_condition"],
             "cuit": customer["cuit"],
             "external_ref": customer["external_ref"],
+            "seller_id": int(customer["seller_id"]) if customer["seller_id"] is not None else None,
+            "zone": customer["zone"],
             "created_at": customer["created_at"],
             "balance": _customer_current_balance_from_rows(movements),
             "documents": [
@@ -4697,9 +4705,19 @@ def admin_create_backoffice_customer(
     name = str(payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Nombre requerido")
+    raw_seller_id = payload.get("seller_id")
+    seller_id = int(raw_seller_id) if raw_seller_id not in (None, "", 0, "0") else None
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        if seller_id is not None:
+            _ensure_sellers_table(conn)
+            seller = conn.execute(
+                "SELECT id, is_active FROM sellers WHERE id = ?",
+                (seller_id,),
+            ).fetchone()
+            if seller is None or not bool(seller["is_active"]):
+                raise HTTPException(status_code=400, detail="Vendedor invalido")
         params = (
             name,
             str(payload.get("email") or "").strip() or None,
@@ -4710,13 +4728,15 @@ def admin_create_backoffice_customer(
             str(payload.get("address") or "").strip() or None,
             str(payload.get("tax_condition") or "").strip() or None,
             str(payload.get("cuit") or "").strip() or None,
+            seller_id,
+            str(payload.get("zone") or "").strip() or None,
         )
         if DB_IS_POSTGRES:
             row = conn.execute(
                 """
                 INSERT INTO customers (
-                    name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, seller_id, zone, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 RETURNING id
                 """,
                 params,
@@ -4726,8 +4746,8 @@ def admin_create_backoffice_customer(
             conn.execute(
                 """
                 INSERT INTO customers (
-                    name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, seller_id, zone, is_active
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 """,
                 params,
             )
@@ -4750,9 +4770,19 @@ def admin_update_backoffice_customer(
     name = str(payload.get("name") or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="Nombre requerido")
+    raw_seller_id = payload.get("seller_id")
+    seller_id = int(raw_seller_id) if raw_seller_id not in (None, "", 0, "0") else None
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        if seller_id is not None:
+            _ensure_sellers_table(conn)
+            seller = conn.execute(
+                "SELECT id, is_active FROM sellers WHERE id = ?",
+                (seller_id,),
+            ).fetchone()
+            if seller is None or not bool(seller["is_active"]):
+                raise HTTPException(status_code=400, detail="Vendedor invalido")
         row = conn.execute(
             """
             SELECT id
@@ -4766,7 +4796,7 @@ def admin_update_backoffice_customer(
         conn.execute(
             """
             UPDATE customers
-               SET name = ?, email = ?, phone = ?, sale_mode = ?, locality = ?, address = ?, tax_condition = ?, cuit = ?
+               SET name = ?, email = ?, phone = ?, sale_mode = ?, locality = ?, address = ?, tax_condition = ?, cuit = ?, seller_id = ?, zone = ?
              WHERE id = ?
             """,
             (
@@ -4778,6 +4808,8 @@ def admin_update_backoffice_customer(
                 str(payload.get("address") or "").strip() or None,
                 str(payload.get("tax_condition") or "").strip() or None,
                 str(payload.get("cuit") or "").strip() or None,
+                seller_id,
+                str(payload.get("zone") or "").strip() or None,
                 customer_id,
             ),
         )

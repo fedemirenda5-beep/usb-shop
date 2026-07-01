@@ -1,10 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './clientes.module.css';
+
+type Seller = {
+  id: number;
+  name: string;
+  is_active: boolean;
+};
 
 type Customer = {
   id: number;
@@ -17,6 +24,8 @@ type Customer = {
   tax_condition?: string | null;
   cuit?: string | null;
   external_ref?: string | null;
+  seller_id?: number | null;
+  zone?: string | null;
   balance: number;
   invoice_count: number;
   created_at?: string | null;
@@ -33,6 +42,8 @@ type CustomerDetail = {
   tax_condition?: string | null;
   cuit?: string | null;
   external_ref?: string | null;
+  seller_id?: number | null;
+  zone?: string | null;
   balance: number;
   created_at?: string | null;
   documents: Array<{
@@ -68,6 +79,8 @@ type CustomerFormState = {
   address: string;
   tax_condition: string;
   cuit: string;
+  seller_id: string;
+  zone: string;
 };
 
 const emptyCustomerForm = (): CustomerFormState => ({
@@ -79,6 +92,8 @@ const emptyCustomerForm = (): CustomerFormState => ({
   address: '',
   tax_condition: 'CONSUMIDOR_FINAL',
   cuit: '',
+  seller_id: '',
+  zone: '',
 });
 
 const formatCurrency = (value: number) =>
@@ -91,10 +106,13 @@ const formatDate = (value?: string | null) => {
 export default function ClientesPage() {
   const detailRequestRef = useRef(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [search, setSearch] = useState('');
+  const [sellerFilter, setSellerFilter] = useState('all');
+  const [zoneFilter, setZoneFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncingCustomers, setSyncingCustomers] = useState(false);
@@ -104,7 +122,7 @@ export default function ClientesPage() {
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ limit: '150' });
+      const params = new URLSearchParams({ limit: '1000' });
       if (query.trim()) params.set('q', query.trim());
       await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?${params}`, {
@@ -150,6 +168,8 @@ export default function ClientesPage() {
         address: customerData.address || '',
         tax_condition: customerData.tax_condition || 'CONSUMIDOR_FINAL',
         cuit: customerData.cuit || '',
+        seller_id: customerData.seller_id ? String(customerData.seller_id) : '',
+        zone: customerData.zone || '',
       });
       setShowCustomerForm(false);
     } catch (err) {
@@ -159,6 +179,28 @@ export default function ClientesPage() {
       setError(err instanceof Error ? err.message : 'Error cargando el detalle');
     }
   };
+
+  const loadSellers = async (signal?: AbortSignal) => {
+    try {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, {
+        credentials: 'include',
+        signal,
+      });
+      if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
+      const data = await res.json();
+      setSellers(Array.isArray(data) ? data.filter((item: Seller) => item.is_active) : []);
+    } catch (err) {
+      if (signal?.aborted) return;
+      setError(err instanceof Error ? err.message : 'Error cargando vendedores');
+    }
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSellers(controller.signal);
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -208,9 +250,73 @@ export default function ClientesPage() {
       address: selectedCustomer.address || '',
       tax_condition: selectedCustomer.tax_condition || 'CONSUMIDOR_FINAL',
       cuit: selectedCustomer.cuit || '',
+      seller_id: selectedCustomer.seller_id ? String(selectedCustomer.seller_id) : '',
+      zone: selectedCustomer.zone || '',
     });
     setError('');
     setShowCustomerForm(true);
+  };
+
+  const sellerMap = useMemo(
+    () => new Map(sellers.map((seller) => [seller.id, seller.name])),
+    [sellers]
+  );
+
+  const filteredCustomers = useMemo(() => {
+    return customers.filter((customer) => {
+      if (sellerFilter !== 'all' && String(customer.seller_id || '') !== sellerFilter) return false;
+      if (zoneFilter !== 'all' && (customer.zone || '').trim() !== zoneFilter) return false;
+      return true;
+    });
+  }, [customers, sellerFilter, zoneFilter]);
+
+  const availableZones = useMemo(() => {
+    return Array.from(
+      new Set(
+        customers
+          .map((customer) => (customer.zone || '').trim())
+          .filter((zone) => zone.length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [customers]);
+
+  const selectedSellerName =
+    (sellerFilter !== 'all' ? sellerMap.get(Number(sellerFilter)) : undefined) ||
+    (selectedCustomer?.seller_id ? sellerMap.get(selectedCustomer.seller_id) : undefined) ||
+    null;
+
+  const printSellerCustomers = async () => {
+    const targetSellerId =
+      sellerFilter !== 'all'
+        ? Number(sellerFilter)
+        : selectedCustomer?.seller_id
+          ? Number(selectedCustomer.seller_id)
+          : null;
+    if (!targetSellerId) {
+      setError('Selecciona un vendedor para imprimir su listado.');
+      return;
+    }
+    const printableCustomers = (sellerFilter !== 'all' ? filteredCustomers : customers.filter((item) => item.seller_id === targetSellerId))
+      .filter((item) => item.seller_id === targetSellerId)
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    try {
+      await openAdminSellerCustomersPrint({
+        sellerName: sellerMap.get(targetSellerId) || `Vendedor ${targetSellerId}`,
+        generatedAtLabel: formatDate(new Date().toISOString()),
+        customers: printableCustomers.map((customer) => ({
+          id: customer.id,
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email,
+          locality: customer.locality,
+          address: customer.address,
+          zone: customer.zone,
+          balance: customer.balance,
+        })),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo abrir la impresion');
+    }
   };
 
   const saveCustomer = async (e: React.FormEvent) => {
@@ -274,9 +380,17 @@ export default function ClientesPage() {
       <div className={styles.header}>
         <div>
           <h1>Clientes</h1>
-          <p>Padron unico de clientes reales del backoffice.</p>
+          <p>Padron unico con asignacion simple por vendedor y zona.</p>
         </div>
         <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => void printSellerCustomers()}
+            disabled={!selectedSellerName}
+          >
+            Imprimir clientes{selectedSellerName ? ` de ${selectedSellerName}` : ''}
+          </button>
           <button
             type="button"
             className={styles.secondaryButton}
@@ -310,14 +424,39 @@ export default function ClientesPage() {
         />
       </div>
 
+      <div className={styles.filtersBar}>
+        <label>
+          Vendedor
+          <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)}>
+            <option value="all">Todos</option>
+            {sellers.map((seller) => (
+              <option key={seller.id} value={String(seller.id)}>
+                {seller.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Zona
+          <select value={zoneFilter} onChange={(e) => setZoneFilter(e.target.value)}>
+            <option value="all">Todas</option>
+            {availableZones.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div className={styles.tablePanel}>
         <div className={styles.tableMeta}>
-          <span>{customers.length} clientes{search ? ` para "${search}"` : ''}</span>
+          <span>{filteredCustomers.length} clientes visibles{search ? ` para "${search}"` : ''}</span>
         </div>
         <div className={styles.tableWrap}>
           {loading ? (
             <div className={styles.empty}>Cargando clientes...</div>
-          ) : customers.length === 0 ? (
+          ) : filteredCustomers.length === 0 ? (
             <div className={styles.empty}>No hay clientes cargados.</div>
           ) : (
             <table className={styles.table}>
@@ -326,13 +465,15 @@ export default function ClientesPage() {
                   <th>ID</th>
                   <th>Cliente</th>
                   <th>Contacto</th>
+                  <th>Vendedor</th>
+                  <th>Zona</th>
                   <th>CUIT / DNI</th>
                   <th>Comprobantes</th>
                   <th>Saldo</th>
                 </tr>
               </thead>
               <tbody>
-                {customers.map((customer) => (
+                {filteredCustomers.map((customer) => (
                   <tr
                     key={customer.id}
                     className={customer.id === selectedCustomerId ? styles.customerRowActive : ''}
@@ -344,6 +485,8 @@ export default function ClientesPage() {
                       <span className={styles.metaLine}>{customer.locality || customer.address || 'Sin localidad'}</span>
                     </td>
                     <td>{customer.email || customer.phone || 'Sin dato'}</td>
+                    <td>{customer.seller_id ? sellerMap.get(customer.seller_id) || `Vendedor ${customer.seller_id}` : '-'}</td>
+                    <td>{customer.zone || '-'}</td>
                     <td>{customer.cuit || '-'}</td>
                     <td>{customer.invoice_count}</td>
                     <td className={customer.balance > 0 ? styles.debt : styles.credit}>
@@ -404,10 +547,36 @@ export default function ClientesPage() {
                 Ciudad
                 <input name="locality" value={customerForm.locality} onChange={handleCustomerFormChange} />
               </label>
+              <label>
+                Vendedor
+                <select name="seller_id" value={customerForm.seller_id} onChange={handleCustomerFormChange}>
+                  <option value="">Sin asignar</option>
+                  {sellers.map((seller) => (
+                    <option key={seller.id} value={String(seller.id)}>
+                      {seller.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Zona
+                <input
+                  name="zone"
+                  value={customerForm.zone}
+                  onChange={handleCustomerFormChange}
+                  list="customer-zone-options"
+                  placeholder="Ej. Centro, Norte, Sur"
+                />
+              </label>
               <label className={styles.fullWidth}>
                 Domicilio
                 <input name="address" value={customerForm.address} onChange={handleCustomerFormChange} />
               </label>
+              <datalist id="customer-zone-options">
+                {availableZones.map((zone) => (
+                  <option key={zone} value={zone} />
+                ))}
+              </datalist>
               <div className={styles.formActions}>
                 <button type="submit" className={styles.primaryButton} disabled={saving}>
                   {saving ? 'Guardando...' : selectedCustomerId ? 'Guardar cambios' : 'Crear cliente'}
@@ -425,7 +594,33 @@ export default function ClientesPage() {
         ) : null}
 
         {selectedCustomer ? (
-          <div className={styles.grid}>
+          <div className={styles.main}>
+            <div className={styles.summaryPanel}>
+              <div>
+                <strong>{selectedCustomer.name}</strong>
+                <span>{selectedCustomer.locality || selectedCustomer.address || 'Sin localidad cargada'}</span>
+              </div>
+              <div>
+                <strong>Vendedor</strong>
+                <span>
+                  {selectedCustomer.seller_id
+                    ? sellerMap.get(selectedCustomer.seller_id) || `Vendedor ${selectedCustomer.seller_id}`
+                    : 'Sin asignar'}
+                </span>
+              </div>
+              <div>
+                <strong>Zona</strong>
+                <span>{selectedCustomer.zone || 'Sin zona'}</span>
+              </div>
+              <div>
+                <strong>Saldo</strong>
+                <span className={selectedCustomer.balance > 0 ? styles.debt : styles.credit}>
+                  {formatCurrency(selectedCustomer.balance)}
+                </span>
+              </div>
+            </div>
+
+            <div className={styles.grid}>
             <div className={styles.panel}>
               <div className={styles.panelHeader}>
                 <div>
@@ -504,6 +699,7 @@ export default function ClientesPage() {
                 )}
               </div>
             </div>
+          </div>
           </div>
         ) : null}
 
