@@ -1,9 +1,10 @@
 'use client';
 
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NAV_MODULES } from './adminModules';
 import { canAccessAdminModule } from './adminPermissions';
 import styles from './admin.module.css';
@@ -11,6 +12,18 @@ import styles from './admin.module.css';
 interface AdminLayoutProps {
   children: React.ReactNode;
 }
+
+type ScannerProductPreview = {
+  id: number;
+  name: string;
+  sku: string;
+  barcode?: string | null;
+  price: number;
+  price_list_1?: number | null;
+  stock: number;
+  imageUrl?: string | null;
+  image_path?: string | null;
+};
 
 const getCurrentModule = (pathname: string | null) => {
   if (!pathname || !pathname.startsWith('/admin')) {
@@ -28,9 +41,70 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [scannerProducts, setScannerProducts] = useState<ScannerProductPreview[]>([]);
+  const [scannerPreview, setScannerPreview] = useState<ScannerProductPreview | null>(null);
+  const [scannerPreviewError, setScannerPreviewError] = useState('');
+  const scannerBufferRef = useRef('');
+  const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentModule = getCurrentModule(pathname);
   const visibleModules = NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id));
   const quickMobileModules = visibleModules.slice(0, 4);
+  const isGenerateInvoicePage = pathname === '/admin/generar-comprobante';
+
+  const money = (value: number) =>
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+
+  const clearScannerTimer = () => {
+    if (scannerTimeoutRef.current) {
+      clearTimeout(scannerTimeoutRef.current);
+      scannerTimeoutRef.current = null;
+    }
+  };
+
+  const resetScannerBuffer = () => {
+    scannerBufferRef.current = '';
+    clearScannerTimer();
+  };
+
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    return (
+      target.isContentEditable ||
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    );
+  };
+
+  const loadScannerProducts = async () => {
+    if (scannerProducts.length > 0) {
+      return scannerProducts;
+    }
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      throw new Error('No se pudieron cargar los productos para el lector');
+    }
+    const data = await res.json();
+    const products = Array.isArray(data) ? (data as ScannerProductPreview[]) : [];
+    setScannerProducts(products);
+    return products;
+  };
+
+  const findScannerProduct = (products: ScannerProductPreview[], rawValue: string) => {
+    const normalizedValue = rawValue.trim().toLowerCase();
+    if (!normalizedValue) return null;
+    return (
+      products.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => String(product.id) === normalizedValue) ||
+      null
+    );
+  };
 
   useEffect(() => {
     if (!isLoading && isVerified && !user && !error) {
@@ -60,6 +134,67 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       setSidebarOpen(false);
     }
   }, [pathname]);
+
+  useEffect(() => {
+    if (!user || isGenerateInvoicePage) {
+      resetScannerBuffer();
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (isEditableTarget(event.target)) return;
+
+      if (event.key === 'Escape') {
+        if (scannerPreview) {
+          setScannerPreview(null);
+          setScannerPreviewError('');
+          resetScannerBuffer();
+        }
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        const scannedValue = scannerBufferRef.current.trim();
+        resetScannerBuffer();
+        if (!scannedValue) return;
+        void (async () => {
+          try {
+            setScannerPreviewError('');
+            const products = await loadScannerProducts();
+            const matchedProduct = findScannerProduct(products, scannedValue);
+            if (!matchedProduct) {
+              setScannerPreview(null);
+              setScannerPreviewError(`No existe un producto con el codigo "${scannedValue}"`);
+              return;
+            }
+            setScannerPreview(matchedProduct);
+          } catch (scanError) {
+            setScannerPreview(null);
+            setScannerPreviewError(
+              scanError instanceof Error ? scanError.message : 'No se pudo resolver el producto escaneado'
+            );
+          }
+        })();
+        return;
+      }
+
+      if (event.key.length !== 1) return;
+      scannerBufferRef.current += event.key;
+      clearScannerTimer();
+      scannerTimeoutRef.current = setTimeout(() => {
+        scannerBufferRef.current = '';
+        scannerTimeoutRef.current = null;
+      }, 250);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      resetScannerBuffer();
+    };
+  }, [user, isGenerateInvoicePage, scannerProducts, scannerPreview]);
 
   if (isLoading) {
     return (
@@ -209,9 +344,67 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         </div>
 
         <main className={styles.content}>
-          <div className={styles.contentInner}>{children}</div>
+          <div className={styles.contentInner}>
+            {scannerPreviewError ? (
+              <div className={styles.scannerToastError}>{scannerPreviewError}</div>
+            ) : null}
+            {children}
+          </div>
         </main>
       </div>
+      {scannerPreview && !isGenerateInvoicePage ? (
+        <div className={styles.scannerPreviewOverlay} onClick={() => setScannerPreview(null)}>
+          <div
+            className={styles.scannerPreviewCard}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.scannerPreviewHeader}>
+              <div>
+                <span className={styles.scannerPreviewEyebrow}>Producto escaneado</span>
+                <strong>{scannerPreview.name}</strong>
+              </div>
+              <button
+                type="button"
+                className={styles.scannerPreviewClose}
+                onClick={() => setScannerPreview(null)}
+              >
+                x
+              </button>
+            </div>
+            <div className={styles.scannerPreviewBody}>
+              <div className={styles.scannerPreviewImageWrap}>
+                {resolveImageUrl(scannerPreview.imageUrl || scannerPreview.image_path, getApiBaseUrl()) ? (
+                  <img
+                    src={resolveImageUrl(scannerPreview.imageUrl || scannerPreview.image_path, getApiBaseUrl()) || ''}
+                    alt={scannerPreview.name}
+                    className={styles.scannerPreviewImage}
+                  />
+                ) : (
+                  <div className={styles.scannerPreviewImageFallback}>Sin imagen</div>
+                )}
+              </div>
+              <div className={styles.scannerPreviewGrid}>
+                <div>
+                  <span>SKU</span>
+                  <strong>{scannerPreview.sku || '-'}</strong>
+                </div>
+                <div>
+                  <span>Codigo</span>
+                  <strong>{scannerPreview.barcode || '-'}</strong>
+                </div>
+                <div>
+                  <span>Stock disponible</span>
+                  <strong>{scannerPreview.stock}</strong>
+                </div>
+                <div>
+                  <span>Precio de venta</span>
+                  <strong>{money(Number(scannerPreview.price_list_1 || scannerPreview.price || 0))}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

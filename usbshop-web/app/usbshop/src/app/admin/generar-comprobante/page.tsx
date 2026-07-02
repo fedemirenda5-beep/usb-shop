@@ -19,6 +19,10 @@ type ProductOption = {
   imageUrl?: string | null;
   image_path?: string | null;
 };
+type ScannedProductDraft = {
+  product: ProductOption;
+  quantity: string;
+};
 type SellerOption = { id: number; name: string; commission_percent: number; is_active: boolean };
 type OrderDraft = {
   id: number;
@@ -139,6 +143,7 @@ export default function GenerarComprobantePage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [scanInput, setScanInput] = useState('');
+  const [scannedDraft, setScannedDraft] = useState<ScannedProductDraft | null>(null);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
   const [form, setForm] = useState({
@@ -349,6 +354,14 @@ export default function GenerarComprobantePage() {
     setSearchQuantities((current) => ({ ...current, [product.id]: '1' }));
   };
 
+  const addScannedDraftToInvoice = () => {
+    if (!scannedDraft) return;
+    const quantity = Math.max(1, Number(scannedDraft.quantity || 1));
+    addProductToInvoice(scannedDraft.product, quantity);
+    setScannedDraft(null);
+    setScanInput('');
+  };
+
   const updateItem = (index: number, field: keyof InvoiceFormItem, value: string | boolean) => {
     setForm((current) => ({
       ...current,
@@ -389,8 +402,16 @@ export default function GenerarComprobantePage() {
       return;
     }
     setError('');
-    addProductToInvoice(matchedProduct);
-    setScanInput('');
+    setScannedDraft((current) => {
+      if (current?.product.id === matchedProduct.id) {
+        return {
+          product: matchedProduct,
+          quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
+        };
+      }
+      return { product: matchedProduct, quantity: '1' };
+    });
+    setScanInput(scannedValue);
   };
 
   const handleScannerKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -647,7 +668,7 @@ export default function GenerarComprobantePage() {
                     placeholder="Escanea codigo y presiona Enter"
                   />
                   <small className={styles.fieldHint}>
-                    El lector funciona como teclado: si envia Enter, agrega el producto automaticamente.
+                    El lector funciona como teclado: al enviar Enter deja el producto listo para cargar cantidad y agregarlo.
                   </small>
                 </label>
                 <label className={styles.desktopPickerSearch}>
@@ -661,6 +682,68 @@ export default function GenerarComprobantePage() {
                   />
                 </label>
               </div>
+              {scannedDraft ? (
+                <div className={styles.productSearchItem}>
+                  <div className={styles.productSearchIdentity}>
+                    <div className={styles.productSearchThumb}>
+                      {resolveImageUrl(scannedDraft.product.imageUrl || scannedDraft.product.image_path, getApiBaseUrl()) ? (
+                        <img
+                          src={resolveImageUrl(scannedDraft.product.imageUrl || scannedDraft.product.image_path, getApiBaseUrl()) || ''}
+                          alt={scannedDraft.product.name}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span>Sin imagen</span>
+                      )}
+                    </div>
+                    <div className={styles.productSearchMain}>
+                      <strong>{scannedDraft.product.name}</strong>
+                      <span>
+                        #{scannedDraft.product.id} · {scannedDraft.product.sku || 'Sin SKU'} · Cod. {scannedDraft.product.barcode || '-'} · Stock {scannedDraft.product.stock}
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.productSearchPrices}>
+                    <span>Esp. {money(scannedDraft.product.price)}</span>
+                    <span>L1 {money(Number(scannedDraft.product.price_list_1 || scannedDraft.product.price || 0))}</span>
+                    <span>L2 {money(Number(scannedDraft.product.price_list_2 || scannedDraft.product.price || 0))}</span>
+                  </div>
+                  <div className={styles.productSearchActions}>
+                    <label className={styles.inlineQty}>
+                      <span>Cant.</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={scannedDraft.quantity}
+                        onChange={(event) =>
+                          setScannedDraft((current) =>
+                            current ? { ...current, quantity: event.target.value } : current
+                          )
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return;
+                          event.preventDefault();
+                          addScannedDraftToInvoice();
+                        }}
+                      />
+                    </label>
+                    <button type="button" className={styles.secondaryButton} onClick={addScannedDraftToInvoice}>
+                      Agregar
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.removeButton}
+                      onClick={() => {
+                        setScannedDraft(null);
+                        setScanInput('');
+                      }}
+                    >
+                      Limpiar
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className={styles.desktopPickerResults}>
                 {!productSearch.trim() ? (
                   <div className={styles.emptyCell}>Escribí para buscar productos y ver coincidencias.</div>
@@ -819,6 +902,7 @@ export default function GenerarComprobantePage() {
             <div className={styles.formActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => {
                 setScanInput('');
+                setScannedDraft(null);
                 setProductSearch('');
                 setSearchQuantities({});
                 setShowSpecialDiscountEditor(false);
