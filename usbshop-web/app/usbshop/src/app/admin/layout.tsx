@@ -1,7 +1,7 @@
 'use client';
 
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -42,7 +42,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [scannerProducts, setScannerProducts] = useState<ScannerProductPreview[]>([]);
-  const [scannerPreview, setScannerPreview] = useState<ScannerProductPreview | null>(null);
   const [scannerPreviewError, setScannerPreviewError] = useState('');
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,9 +49,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const visibleModules = NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id));
   const quickMobileModules = visibleModules.slice(0, 4);
   const isGenerateInvoicePage = pathname === '/admin/generar-comprobante';
-
-  const money = (value: number) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
   const clearScannerTimer = () => {
     if (scannerTimeoutRef.current) {
@@ -147,11 +143,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       if (isEditableTarget(event.target)) return;
 
       if (event.key === 'Escape') {
-        if (scannerPreview) {
-          setScannerPreview(null);
-          setScannerPreviewError('');
-          resetScannerBuffer();
-        }
+        setScannerPreviewError('');
+        resetScannerBuffer();
         return;
       }
 
@@ -165,13 +158,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             const products = await loadScannerProducts();
             const matchedProduct = findScannerProduct(products, scannedValue);
             if (!matchedProduct) {
-              setScannerPreview(null);
               setScannerPreviewError(`No existe un producto con el codigo "${scannedValue}"`);
               return;
             }
-            setScannerPreview(matchedProduct);
+            router.push(`/admin/productos?edit=${matchedProduct.id}`);
           } catch (scanError) {
-            setScannerPreview(null);
             setScannerPreviewError(
               scanError instanceof Error ? scanError.message : 'No se pudo resolver el producto escaneado'
             );
@@ -194,7 +185,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       window.removeEventListener('keydown', handleKeyDown);
       resetScannerBuffer();
     };
-  }, [user, isGenerateInvoicePage, scannerProducts, scannerPreview]);
+  }, [user, isGenerateInvoicePage, scannerProducts, router]);
 
   if (isLoading) {
     return (
@@ -352,59 +343,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </div>
         </main>
       </div>
-      {scannerPreview && !isGenerateInvoicePage ? (
-        <div className={styles.scannerPreviewOverlay} onClick={() => setScannerPreview(null)}>
-          <div
-            className={styles.scannerPreviewCard}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.scannerPreviewHeader}>
-              <div>
-                <span className={styles.scannerPreviewEyebrow}>Producto escaneado</span>
-                <strong>{scannerPreview.name}</strong>
-              </div>
-              <button
-                type="button"
-                className={styles.scannerPreviewClose}
-                onClick={() => setScannerPreview(null)}
-              >
-                x
-              </button>
-            </div>
-            <div className={styles.scannerPreviewBody}>
-              <div className={styles.scannerPreviewImageWrap}>
-                {resolveImageUrl(scannerPreview.imageUrl || scannerPreview.image_path, getApiBaseUrl()) ? (
-                  <img
-                    src={resolveImageUrl(scannerPreview.imageUrl || scannerPreview.image_path, getApiBaseUrl()) || ''}
-                    alt={scannerPreview.name}
-                    className={styles.scannerPreviewImage}
-                  />
-                ) : (
-                  <div className={styles.scannerPreviewImageFallback}>Sin imagen</div>
-                )}
-              </div>
-              <div className={styles.scannerPreviewGrid}>
-                <div>
-                  <span>SKU</span>
-                  <strong>{scannerPreview.sku || '-'}</strong>
-                </div>
-                <div>
-                  <span>Codigo</span>
-                  <strong>{scannerPreview.barcode || '-'}</strong>
-                </div>
-                <div>
-                  <span>Stock disponible</span>
-                  <strong>{scannerPreview.stock}</strong>
-                </div>
-                <div>
-                  <span>Precio de venta</span>
-                  <strong>{money(Number(scannerPreview.price_list_1 || scannerPreview.price || 0))}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
