@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
+import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './clientes.module.css';
 
 type Seller = {
@@ -183,7 +184,7 @@ export default function ClientesPage() {
   const loadSellers = async (signal?: AbortSignal) => {
     try {
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, {
         credentials: 'include',
         signal,
       });

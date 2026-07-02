@@ -20,10 +20,13 @@ Regla: el admin siempre debe leer desde la API. No se agregan pantallas que lean
 - `Productos`: operativo
 - `Pedidos`: operativo
 - `Clientes`: operativo sobre `customers`
+- `Vendedores`: operativo sobre `sellers`, `invoices` y resumenes comerciales
+- `Gastos`: operativo sobre `expenses`
 - `Comprobantes`: operativo sobre `invoices`
 - `Cuentas corrientes`: operativo sobre `account_movements`
 - `Balances`: operativo, vista financiera propia
 - `Reportes`: operativo sobre resumen comercial
+- `Usuarios`: operativo sobre `users`
 
 ## Legacy
 
@@ -63,6 +66,11 @@ Cada cambio nuevo del admin debe cerrar estas 5 capas cuando apliquen:
    - alta en `src/app/admin/adminModules.ts`
 5. Verificacion
    - prueba manual local y build del frontend
+
+Ademas:
+
+- los limites operativos visibles en frontend deben salir de una configuracion comun del admin; no se repiten numeros magicos por pantalla
+- si un flujo necesita mas de un dataset grande para operar, primero se evalua si corresponde resolverlo por endpoint puntual en API antes de cargar listados completos en cliente
 
 Si una mejora no puede cerrar las capas necesarias, no debe quedar visible en el menu.
 

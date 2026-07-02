@@ -5,6 +5,7 @@ import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { ADMIN_LIMITS } from './adminConfig';
 import { NAV_MODULES } from './adminModules';
 import { canAccessAdminModule } from './adminPermissions';
 import styles from './admin.module.css';
@@ -41,7 +42,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [scannerProducts, setScannerProducts] = useState<ScannerProductPreview[]>([]);
   const [scannerPreviewError, setScannerPreviewError] = useState('');
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,21 +74,20 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     );
   };
 
-  const loadScannerProducts = async () => {
-    if (scannerProducts.length > 0) {
-      return scannerProducts;
-    }
+  const loadScannerProducts = async (rawValue: string) => {
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, {
+    const params = new URLSearchParams({
+      q: rawValue.trim(),
+      limit: String(ADMIN_LIMITS.scannerLookup),
+    });
+    const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
       credentials: 'include',
     });
     if (!res.ok) {
       throw new Error('No se pudieron cargar los productos para el lector');
     }
     const data = await res.json();
-    const products = Array.isArray(data) ? (data as ScannerProductPreview[]) : [];
-    setScannerProducts(products);
-    return products;
+    return Array.isArray(data) ? (data as ScannerProductPreview[]) : [];
   };
 
   const findScannerProduct = (products: ScannerProductPreview[], rawValue: string) => {
@@ -155,7 +154,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         void (async () => {
           try {
             setScannerPreviewError('');
-            const products = await loadScannerProducts();
+            const products = await loadScannerProducts(scannedValue);
             const matchedProduct = findScannerProduct(products, scannedValue);
             if (!matchedProduct) {
               setScannerPreviewError(`No existe un producto con el codigo "${scannedValue}"`);
@@ -185,7 +184,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       window.removeEventListener('keydown', handleKeyDown);
       resetScannerBuffer();
     };
-  }, [user, isGenerateInvoicePage, scannerProducts, router]);
+  }, [user, isGenerateInvoicePage, router]);
 
   if (isLoading) {
     return (

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
 
@@ -167,9 +168,9 @@ export default function GenerarComprobantePage() {
         setLoading(true);
         await loadRuntimeConfig();
         const [customersRes, productsRes, sellersRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=1000`, { credentials: 'include' }),
-          fetch(`${getApiBaseUrl()}/admin/products?limit=1000`, { credentials: 'include' }),
-          fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=${ADMIN_LIMITS.customersLargeList}`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/products?limit=${ADMIN_LIMITS.productsLargeList}`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { credentials: 'include' }),
         ]);
         if (!customersRes.ok || !productsRes.ok || !sellersRes.ok) throw new Error('No se pudieron cargar las opciones');
         setCustomers(await customersRes.json());

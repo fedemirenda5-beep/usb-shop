@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './pedidos.module.css';
 
 interface OrderItem {
@@ -70,7 +71,7 @@ export default function PedidosPage() {
       setError('');
       await loadRuntimeConfig();
       const res = await fetch(
-        `${getApiBaseUrl()}/admin/orders?status=ALL&limit=300&include_items=true`,
+        `${getApiBaseUrl()}/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=true`,
         { credentials: 'include', signal }
       );
       if (!res.ok) throw new Error('No se pudieron cargar las ordenes de compra');

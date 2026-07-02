@@ -7,6 +7,7 @@ import { openAdminAccountPrint } from '@/lib/adminAccountPrint';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './cuentas-corrientes.module.css';
 
 type Aging = {
@@ -272,7 +273,7 @@ export default function CuentasCorrientesPage() {
     overviewRequestRef.current = requestId;
     setLoading(true);
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=1000`, { credentials: 'include' });
+    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=${ADMIN_LIMITS.customersLargeList}`, { credentials: 'include' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(

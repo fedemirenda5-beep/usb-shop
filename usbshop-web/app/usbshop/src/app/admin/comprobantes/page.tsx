@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
+import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './comprobantes.module.css';
 
 type Invoice = {
@@ -189,7 +190,7 @@ export default function ComprobantesPage() {
 
   async function loadInvoices() {
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, { credentials: 'include' });
+    const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, { credentials: 'include' });
     if (!res.ok) throw new Error('No se pudieron cargar los comprobantes');
     const data = await res.json();
     setItems(data);
@@ -198,7 +199,7 @@ export default function ComprobantesPage() {
 
   async function loadSellerOptions() {
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=200`, { credentials: 'include' });
+    const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { credentials: 'include' });
     if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
     const data = (await res.json()) as SellerOption[];
     setSellerOptions(data.filter((item) => item.is_active));

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { ADMIN_LIMITS } from '../adminConfig';
 import { canViewProfitMetrics, canViewSellerCommissionBreakdown } from '../adminPermissions';
 import styles from './vendedores.module.css';
 
@@ -335,7 +336,7 @@ export default function VendedoresPage() {
       sellers.length > 0
         ? sellers
         : await (async () => {
-            const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=150`, {
+            const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersExtendedList}`, {
               credentials: 'include',
               cache: 'no-store',
             });
@@ -346,7 +347,7 @@ export default function VendedoresPage() {
             return Array.isArray(sellerData) ? (sellerData as Seller[]) : [];
           })();
 
-    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
       credentials: 'include',
       cache: 'no-store',
     });
@@ -442,7 +443,7 @@ export default function VendedoresPage() {
   const buildSellerDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
     let selected = sellers.find((seller) => seller.id === sellerId) ?? null;
     if (!selected) {
-      const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=150`, {
+      const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersExtendedList}`, {
         credentials: 'include',
         cache: 'no-store',
       });
@@ -456,7 +457,7 @@ export default function VendedoresPage() {
       throw new Error('Vendedor no encontrado');
     }
 
-    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
       credentials: 'include',
       cache: 'no-store',
     });
@@ -588,7 +589,7 @@ export default function VendedoresPage() {
       await loadRuntimeConfig();
       let requestedPeriod = monthlyPeriod;
       if (!requestedPeriod && !hasExplicitPeriod) {
-        const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=300`, {
+        const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
           credentials: 'include',
           cache: 'no-store',
         });
@@ -640,7 +641,7 @@ export default function VendedoresPage() {
         setSummaryLoading(true);
       }
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=500`, {
+      const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesRangeList}`, {
         credentials: 'include',
         cache: 'no-store',
       });
