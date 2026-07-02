@@ -10,6 +10,7 @@ const MAX_PRODUCT_IMAGES = 3;
 interface ProductFormData {
   name: string;
   sku: string;
+  barcode?: string | null;
   price: number;
   price_list_1?: number | null;
   price_list_2?: number | null;
@@ -28,6 +29,7 @@ interface ProductFormData {
 interface ProductFormState {
   name: string;
   sku: string;
+  barcode: string;
   price: string;
   price_list_1: string;
   price_list_2: string;
@@ -128,6 +130,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
   const source = initialData || {
     name: '',
     sku: '',
+    barcode: '',
     price: 0,
     cost: 0,
     stock: 0,
@@ -145,6 +148,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
   return {
     name: source.name,
     sku: source.sku,
+    barcode: source.barcode || '',
     price: basePrice,
     price_list_1: source.price_list_1 ? toDecimalString(source.price_list_1) : fallbackListPrice,
     price_list_2: source.price_list_2 ? toDecimalString(source.price_list_2) : fallbackListPrice,
@@ -420,6 +424,7 @@ export function ProductForm({
       await onSubmit({
         name: formData.name.trim(),
         sku: formData.sku.trim(),
+        barcode: formData.barcode.trim() || null,
         price,
         price_list_1: formData.price_list_1.trim() ? priceList1 : 0,
         price_list_2: formData.price_list_2.trim() ? priceList2 : 0,
@@ -475,6 +480,20 @@ export function ProductForm({
             onChange={handleChange}
             placeholder="Ej: CABLE-USB-C-001"
             required
+            disabled={loading}
+            className={styles.input}
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label htmlFor="barcode">Codigo de barras</label>
+          <input
+            id="barcode"
+            type="text"
+            name="barcode"
+            value={formData.barcode}
+            onChange={handleChange}
+            placeholder="Ej: 7791234567890"
             disabled={loading}
             className={styles.input}
           />

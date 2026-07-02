@@ -11,6 +11,7 @@ type ProductOption = {
   id: number;
   name: string;
   sku: string;
+  barcode?: string | null;
   price: number;
   price_list_1?: number | null;
   price_list_2?: number | null;
@@ -137,6 +138,7 @@ export default function GenerarComprobantePage() {
   const [error, setError] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
+  const [scanInput, setScanInput] = useState('');
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
   const [form, setForm] = useState({
@@ -281,7 +283,7 @@ export default function GenerarComprobantePage() {
     const needle = productSearch.trim().toLowerCase();
     if (!needle) return [];
     return products
-      .filter((product) => [product.name, product.sku, String(product.id)].join(' ').toLowerCase().includes(needle))
+      .filter((product) => [product.name, product.sku, product.barcode || '', String(product.id)].join(' ').toLowerCase().includes(needle))
       .slice(0, 12);
   }, [productSearch, products]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
@@ -365,6 +367,36 @@ export default function GenerarComprobantePage() {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     if (filteredProducts.length > 0) addProductToInvoice(filteredProducts[0]);
+  };
+
+  const findProductByScannerValue = (rawValue: string) => {
+    const normalizedValue = rawValue.trim().toLowerCase();
+    if (!normalizedValue) return null;
+    return (
+      products.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => String(product.id) === normalizedValue) ||
+      null
+    );
+  };
+
+  const processScannerValue = (rawValue: string) => {
+    const scannedValue = rawValue.trim();
+    if (!scannedValue) return;
+    const matchedProduct = findProductByScannerValue(scannedValue);
+    if (!matchedProduct) {
+      setError(`No existe un producto con el codigo "${scannedValue}"`);
+      return;
+    }
+    setError('');
+    addProductToInvoice(matchedProduct);
+    setScanInput('');
+  };
+
+  const handleScannerKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    processScannerValue(scanInput);
   };
 
   const updateSearchQuantity = (productId: number, value: string) => {
@@ -606,13 +638,26 @@ export default function GenerarComprobantePage() {
             <section className={styles.desktopPickerPanel}>
               <div className={styles.desktopPickerBar}>
                 <label className={styles.desktopPickerSearch}>
+                  Escanear codigo
+                  <input
+                    type="text"
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={handleScannerKeyDown}
+                    placeholder="Escanea codigo y presiona Enter"
+                  />
+                  <small className={styles.fieldHint}>
+                    El lector funciona como teclado: si envia Enter, agrega el producto automaticamente.
+                  </small>
+                </label>
+                <label className={styles.desktopPickerSearch}>
                   Buscar producto
                   <input
                     type="text"
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
                     onKeyDown={handleProductSearchKeyDown}
-                    placeholder="Buscar por nombre, SKU o ID"
+                    placeholder="Buscar por nombre, SKU, codigo o ID"
                   />
                 </label>
               </div>
@@ -637,7 +682,7 @@ export default function GenerarComprobantePage() {
                           </div>
                           <div className={styles.productSearchMain}>
                             <strong>{product.name}</strong>
-                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Stock {product.stock}</span>
+                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Cod. {product.barcode || '-'} · Stock {product.stock}</span>
                           </div>
                         </div>
                         <div className={styles.productSearchPrices}>
@@ -703,7 +748,7 @@ export default function GenerarComprobantePage() {
                           <td>
                             <strong>{selectedProduct?.name || `Producto #${item.product_id}`}</strong>
                             <div className={styles.itemMeta}>
-                              {selectedProduct ? `${selectedProduct.sku || 'Sin SKU'}${item.manual_price ? ' · precio manual' : ''}` : 'Producto no encontrado'}
+                              {selectedProduct ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}` : 'Producto no encontrado'}
                             </div>
                           </td>
                           <td>{selectedProduct?.stock ?? '-'}</td>
@@ -773,6 +818,7 @@ export default function GenerarComprobantePage() {
             </div>
             <div className={styles.formActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => {
+                setScanInput('');
                 setProductSearch('');
                 setSearchQuantities({});
                 setShowSpecialDiscountEditor(false);

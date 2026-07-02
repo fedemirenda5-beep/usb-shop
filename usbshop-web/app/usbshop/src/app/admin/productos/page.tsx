@@ -15,6 +15,7 @@ interface Product {
   id: number;
   name: string;
   sku: string;
+  barcode?: string | null;
   price: number;
   price_list_1?: number | null;
   price_list_2?: number | null;
@@ -277,7 +278,7 @@ export default function ProductosPage() {
         return true;
       }
       const haystack = normalizeSearchValue(
-        [product.name, product.sku, product.category || '', product.image_path || '', ...(product.image_urls || [])].join(' ')
+        [product.name, product.sku, product.barcode || '', product.category || '', product.image_path || '', ...(product.image_urls || [])].join(' ')
       );
       return tokens.every((token) => haystack.includes(token));
     });
@@ -355,6 +356,7 @@ export default function ProductosPage() {
       body: JSON.stringify({
           name: product.name,
           sku: product.sku,
+          barcode: product.barcode || null,
           price: product.price,
           price_list_1: product.price_list_1 || 0,
           price_list_2: product.price_list_2 || 0,
@@ -380,6 +382,7 @@ export default function ProductosPage() {
   const buildProductUpdatePayload = (product: Product, overrides: Partial<Product>) => ({
     name: product.name,
     sku: product.sku,
+    barcode: product.barcode || null,
     price: product.price,
     price_list_1: product.price_list_1 || 0,
     price_list_2: product.price_list_2 || 0,
@@ -987,6 +990,7 @@ export default function ProductosPage() {
                 );
               })()}
               <div><span>SKU</span><strong>{selectedProduct.sku || '-'}</strong></div>
+              <div><span>Codigo</span><strong>{selectedProduct.barcode || '-'}</strong></div>
               <div><span>Rubro</span><strong>{selectedProduct.category || categoryMap.get(selectedProduct.category_id || 0) || 'Sin rubro'}</strong></div>
               <div><span>Costo</span><strong>{currencyFormatter.format(selectedProduct.cost || 0)}</strong></div>
               <div><span>Stock</span><strong>{selectedProduct.stock}</strong></div>

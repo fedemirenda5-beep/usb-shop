@@ -912,6 +912,17 @@ def _ensure_products_cost_column(conn: DBConn) -> None:
     _invalidate_table_cache("products")
 
 
+def _ensure_products_barcode_column(conn: DBConn) -> None:
+    if _has_column(conn, "products", "barcode"):
+        return
+    if DB_IS_POSTGRES:
+        conn.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS barcode TEXT")
+    else:
+        conn.execute("ALTER TABLE products ADD COLUMN barcode TEXT")
+    conn.commit()
+    _invalidate_table_cache("products")
+
+
 def _ensure_products_highlight_new_arrivals_column(conn: DBConn) -> None:
     if _has_column(conn, "products", "highlight_new_arrivals"):
         return
@@ -3645,6 +3656,7 @@ def admin_list_products(
     conn = _connect()
     try:
         _ensure_product_images_table(conn)
+        _ensure_products_barcode_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
@@ -3661,9 +3673,9 @@ def admin_list_products(
             conditions.append("is_active = 1")
         
         if q:
-            conditions.append("(name LIKE ? OR sku LIKE ?)")
+            conditions.append("(name LIKE ? OR sku LIKE ? OR COALESCE(barcode, '') LIKE ?)")
             like = f"%{q}%"
-            params.extend([like, like])
+            params.extend([like, like, like])
         
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
@@ -3673,7 +3685,7 @@ def admin_list_products(
         
         rows = conn.execute(
             f"""
-            SELECT id, name, sku, price, price_list_1, price_list_2, cost, stock, 
+            SELECT id, name, sku, barcode, price, price_list_1, price_list_2, cost, stock, 
                    image_path, category_id, is_active, is_featured, is_offer,
                    flash_offer_price, flash_offer_ends_at,
                    {"highlight_new_arrivals" if has_highlight_new_arrivals else "NULL AS highlight_new_arrivals"}
@@ -3696,6 +3708,7 @@ def admin_list_products(
                 "id": int(row["id"]),
                 "name": row["name"],
                 "sku": row["sku"],
+                "barcode": row["barcode"],
                 "price": float(row["price"] or 0),
                 "price_list_1": float(row["price_list_1"] or 0),
                 "price_list_2": float(row["price_list_2"] or 0),
@@ -3749,6 +3762,7 @@ def admin_create_product(
     
     name = str(payload.get("name") or "").strip()
     sku = str(payload.get("sku") or "").strip()
+    barcode = str(payload.get("barcode") or "").strip() or None
     price = float(payload.get("price") or 0)
     cost = float(payload.get("cost") or 0)
     stock = int(payload.get("stock") or 0)
@@ -3765,14 +3779,20 @@ def admin_create_product(
     
     conn = _connect()
     try:
+        _ensure_products_barcode_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
         if conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone():
             raise HTTPException(status_code=400, detail="Ya existe un producto con ese SKU")
+        if barcode and conn.execute("SELECT id FROM products WHERE barcode = ?", (barcode,)).fetchone():
+            raise HTTPException(status_code=400, detail="Ya existe un producto con ese codigo de barras")
 
         columns = ["name", "sku", "price", "stock"]
         values: list[Any] = [name, sku, price, stock]
+        if _has_column(conn, "products", "barcode"):
+            columns.append("barcode")
+            values.append(barcode)
 
         if _has_column(conn, "products", "cost"):
             columns.append("cost")
@@ -3827,6 +3847,7 @@ def admin_create_product(
             "id": product_id,
             "name": name,
             "sku": sku,
+            "barcode": barcode,
             "price": price,
             "price_list_1": float(payload.get("price_list_1") or 0),
             "price_list_2": float(payload.get("price_list_2") or 0),
@@ -3892,6 +3913,7 @@ def admin_update_product(
     
     conn = _connect()
     try:
+        _ensure_products_barcode_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
@@ -3912,6 +3934,17 @@ def admin_update_product(
         if "sku" in payload:
             updates.append("sku = ?")
             params.append(str(payload["sku"]).strip())
+        if "barcode" in payload and _has_column(conn, "products", "barcode"):
+            raw_barcode = str(payload.get("barcode") or "").strip() or None
+            if raw_barcode:
+                duplicated_barcode = conn.execute(
+                    "SELECT id FROM products WHERE barcode = ? AND id <> ?",
+                    (raw_barcode, product_id),
+                ).fetchone()
+                if duplicated_barcode:
+                    raise HTTPException(status_code=400, detail="Ya existe un producto con ese codigo de barras")
+            updates.append("barcode = ?")
+            params.append(raw_barcode)
         if "price" in payload:
             updates.append("price = ?")
             params.append(float(payload["price"]))
@@ -5571,6 +5604,7 @@ def admin_create_invoice(
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_products_barcode_column(conn)
         _ensure_sellers_table(conn)
         if customer_id <= 0 and document_type == "PRESUPUESTO" and order_id:
             web_order = conn.execute(

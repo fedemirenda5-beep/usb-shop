@@ -10,6 +10,7 @@ import { ProductForm } from '../components/ProductForm';
 type ProductPayload = {
   name: string;
   sku: string;
+  barcode?: string | null;
   price: number;
   price_list_1?: number | null;
   price_list_2?: number | null;
