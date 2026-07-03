@@ -143,7 +143,6 @@ export default function GenerarComprobantePage() {
   const [error, setError] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
-  const [scanInput, setScanInput] = useState('');
   const [scannedDraft, setScannedDraft] = useState<ScannedProductDraft | null>(null);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
@@ -360,7 +359,7 @@ export default function GenerarComprobantePage() {
     const quantity = Math.max(1, Number(scannedDraft.quantity || 1));
     addProductToInvoice(scannedDraft.product, quantity);
     setScannedDraft(null);
-    setScanInput('');
+    setProductSearch('');
   };
 
   const updateItem = (index: number, field: keyof InvoiceFormItem, value: string | boolean) => {
@@ -375,12 +374,6 @@ export default function GenerarComprobantePage() {
         return nextItem;
       }),
     }));
-  };
-
-  const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    if (filteredProducts.length > 0) addProductToInvoice(filteredProducts[0]);
   };
 
   const findProductByScannerValue = (rawValue: string) => {
@@ -399,6 +392,11 @@ export default function GenerarComprobantePage() {
     if (!scannedValue) return;
     const matchedProduct = findProductByScannerValue(scannedValue);
     if (!matchedProduct) {
+      if (filteredProducts.length > 0) {
+        setError('');
+        addProductToInvoice(filteredProducts[0]);
+        return;
+      }
       setError(`No existe un producto con el codigo "${scannedValue}"`);
       return;
     }
@@ -412,13 +410,13 @@ export default function GenerarComprobantePage() {
       }
       return { product: matchedProduct, quantity: '1' };
     });
-    setScanInput(scannedValue);
+    setProductSearch(scannedValue);
   };
 
-  const handleScannerKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+  const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    processScannerValue(scanInput);
+    processScannerValue(productSearch);
   };
 
   const updateSearchQuantity = (productId: number, value: string) => {
@@ -660,20 +658,7 @@ export default function GenerarComprobantePage() {
             <section className={styles.desktopPickerPanel}>
               <div className={styles.desktopPickerBar}>
                 <label className={styles.desktopPickerSearch}>
-                  Escanear codigo
-                  <input
-                    type="text"
-                    value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
-                    onKeyDown={handleScannerKeyDown}
-                    placeholder="Escanea codigo y presiona Enter"
-                  />
-                  <small className={styles.fieldHint}>
-                    El lector funciona como teclado: al enviar Enter deja el producto listo para cargar cantidad y agregarlo.
-                  </small>
-                </label>
-                <label className={styles.desktopPickerSearch}>
-                  Buscar producto
+                  Buscar o escanear producto
                   <input
                     type="text"
                     value={productSearch}
@@ -681,6 +666,9 @@ export default function GenerarComprobantePage() {
                     onKeyDown={handleProductSearchKeyDown}
                     placeholder="Buscar por nombre, SKU, codigo o ID"
                   />
+                  <small className={styles.fieldHint}>
+                    La misma barra sirve para escribir o usar el lector. Con Enter prioriza codigo/SKU/ID exacto y, si no existe, agrega la primera coincidencia.
+                  </small>
                 </label>
               </div>
               {scannedDraft ? (
@@ -737,7 +725,7 @@ export default function GenerarComprobantePage() {
                       className={styles.removeButton}
                       onClick={() => {
                         setScannedDraft(null);
-                        setScanInput('');
+                        setProductSearch('');
                       }}
                     >
                       Limpiar
@@ -902,7 +890,6 @@ export default function GenerarComprobantePage() {
             </div>
             <div className={styles.formActions}>
               <button type="button" className={styles.secondaryButton} onClick={() => {
-                setScanInput('');
                 setScannedDraft(null);
                 setProductSearch('');
                 setSearchQuantities({});
