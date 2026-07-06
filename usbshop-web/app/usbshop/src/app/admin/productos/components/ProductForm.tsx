@@ -11,6 +11,7 @@ interface ProductFormData {
   name: string;
   sku: string;
   barcode?: string | null;
+  imeis?: string[];
   price: number;
   price_list_1?: number | null;
   price_list_2?: number | null;
@@ -30,6 +31,7 @@ interface ProductFormState {
   name: string;
   sku: string;
   barcode: string;
+  imeis: string;
   price: string;
   price_list_1: string;
   price_list_2: string;
@@ -118,6 +120,23 @@ const dedupeImageValues = (values: string[]) => {
   return Array.from(new Set(normalized)).slice(0, MAX_PRODUCT_IMAGES);
 };
 
+const normalizeCategoryName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const parseImeiValues = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[\s,;]+/)
+        .map((item) => item.replace(/[^\d]/g, '').trim())
+        .filter(Boolean)
+    )
+  );
+
 const buildInitialImages = (initialData?: ProductFormData & { id?: number }) => {
   const entries = dedupeImageValues([
     initialData?.image_path || '',
@@ -131,6 +150,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     name: '',
     sku: '',
     barcode: '',
+    imeis: [],
     price: 0,
     cost: 0,
     stock: 0,
@@ -149,6 +169,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     name: source.name,
     sku: source.sku,
     barcode: source.barcode || '',
+    imeis: Array.isArray(source.imeis) ? source.imeis.join('\n') : '',
     price: basePrice,
     price_list_1: source.price_list_1 ? toDecimalString(source.price_list_1) : fallbackListPrice,
     price_list_2: source.price_list_2 ? toDecimalString(source.price_list_2) : fallbackListPrice,
@@ -203,6 +224,8 @@ export function ProductForm({
   }, []);
 
   const isUploadingAnyImage = uploadingSlots.some(Boolean);
+  const selectedCategory = categories.find((category) => String(category.id) === formData.category_id);
+  const isCellphonesCategory = normalizeCategoryName(selectedCategory?.name || '') === 'celulares';
 
   const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [name]: value } as ProductFormState));
@@ -404,6 +427,10 @@ export function ProductForm({
       if (!Number.isFinite(stock) || stock < 0) {
         throw new Error('Stock no puede ser negativo');
       }
+      const imeis = parseImeiValues(formData.imeis);
+      if (isCellphonesCategory && imeis.length > stock) {
+        throw new Error('No podes cargar mas IMEIs que stock disponible');
+      }
       if (formData.flash_offer_price.trim() && (!Number.isFinite(flashOfferPrice) || flashOfferPrice <= 0)) {
         throw new Error('El precio de oferta relampago debe ser mayor a 0');
       }
@@ -425,6 +452,7 @@ export function ProductForm({
         name: formData.name.trim(),
         sku: formData.sku.trim(),
         barcode: formData.barcode.trim() || null,
+        imeis,
         price,
         price_list_1: formData.price_list_1.trim() ? priceList1 : 0,
         price_list_2: formData.price_list_2.trim() ? priceList2 : 0,
@@ -517,6 +545,25 @@ export function ProductForm({
             ))}
           </select>
         </div>
+
+        {isCellphonesCategory ? (
+          <div className={styles.field}>
+            <label htmlFor="imeis">IMEIs</label>
+            <textarea
+              id="imeis"
+              name="imeis"
+              value={formData.imeis}
+              onChange={(e) => handleFieldChange('imeis', e.target.value)}
+              placeholder={'Un IMEI por linea\nEj: 356789012345678'}
+              disabled={loading}
+              className={styles.textarea}
+              rows={6}
+            />
+            <p className={styles.help}>
+              Solo para celulares. Carga un IMEI por linea para validar si el equipo es tuyo y cuando se vendio.
+            </p>
+          </div>
+        ) : null}
 
         <div className={styles.fieldRowTriple}>
           <div className={styles.field}>

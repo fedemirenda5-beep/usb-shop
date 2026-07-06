@@ -51,6 +51,7 @@ type InvoiceDetail = {
     quantity: number;
     unit_price: number;
     line_total: number;
+    imeis?: string[];
   }>;
   payments: Array<{
     id: number;
@@ -685,7 +686,12 @@ export default function ComprobantesPage() {
                           {detail.items.map((item) => (
                             <tr key={item.id}>
                               <td>{item.quantity}</td>
-                              <td className={styles.productDescriptionCell}>{item.product_name}</td>
+                              <td className={styles.productDescriptionCell}>
+                                <div>{item.product_name}</div>
+                                {item.imeis && item.imeis.length > 0 ? (
+                                  <small>IMEIs: {item.imeis.join(', ')}</small>
+                                ) : null}
+                              </td>
                               <td>{money(item.unit_price)}</td>
                               <td className={styles.total}>{money(item.line_total)}</td>
                             </tr>

@@ -13,6 +13,7 @@ type ProductOption = {
   name: string;
   sku: string;
   barcode?: string | null;
+  imeis?: string[];
   price: number;
   price_list_1?: number | null;
   price_list_2?: number | null;
@@ -53,7 +54,25 @@ type BudgetDraft = {
     unit_price: number;
   }>;
 };
-type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean };
+type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean; imeis: string[] };
+type ImeiLookupResponse = {
+  found: boolean;
+  imei: string;
+  is_own: boolean;
+  status: 'available' | 'sold' | 'unknown';
+  product?: {
+    id?: number | null;
+    name?: string | null;
+    sku?: string | null;
+    category_id?: number | null;
+    category_name?: string | null;
+  };
+  sale?: {
+    invoice_id?: number | null;
+    sold_at?: string | null;
+    document_type?: string | null;
+  };
+};
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const normalizeSearchValue = (value: string) =>
@@ -208,7 +227,7 @@ export default function GenerarComprobantePage() {
           notes: draft.notes || '',
           special_discount_percent: '0',
           items: draft.items.length
-            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true }))
+            ? draft.items.map((item) => ({ product_id: String(item.product_id), quantity: String(item.quantity), unit_price: String(item.unit_price), manual_price: true, imeis: [] }))
             : [],
         });
         setCustomerSearch(matchedCustomer?.name || draft.customer_name || '');
@@ -251,6 +270,7 @@ export default function GenerarComprobantePage() {
             quantity: String(item.quantity),
             unit_price: String(item.unit_price),
             manual_price: true,
+            imeis: [],
           })),
         });
         setCustomerSearch(invoice.customer_name || '');
@@ -349,17 +369,26 @@ export default function GenerarComprobantePage() {
     return Number(product.price || 0);
   };
 
-  const addProductToInvoice = (product: ProductOption, quantityOverride?: number) => {
+  const addProductToInvoice = (product: ProductOption, quantityOverride?: number, scannedImei?: string) => {
     const inlineQuantity = searchQuantities[product.id];
     const normalizedQuantity = Math.max(1, Number(quantityOverride || inlineQuantity || 1));
+    let wasAdded = true;
     setForm((current) => {
       const existingIndex = current.items.findIndex((item) => Number(item.product_id) === product.id);
       if (existingIndex >= 0) {
+        if (scannedImei && current.items[existingIndex].imeis.includes(scannedImei)) {
+          wasAdded = false;
+          return current;
+        }
         return {
           ...current,
           items: current.items.map((item, index) =>
             index === existingIndex
-              ? { ...item, quantity: String(Number(item.quantity || 0) + normalizedQuantity) }
+              ? {
+                  ...item,
+                  quantity: String(Number(item.quantity || 0) + normalizedQuantity),
+                  imeis: scannedImei ? [...item.imeis, scannedImei] : item.imeis,
+                }
               : item
           ),
         };
@@ -373,11 +402,16 @@ export default function GenerarComprobantePage() {
             quantity: String(normalizedQuantity),
             unit_price: String(getProductPriceByList(product, current.price_list)),
             manual_price: false,
+            imeis: scannedImei ? [scannedImei] : [],
           },
         ],
       };
     });
     setSearchQuantities((current) => ({ ...current, [product.id]: '1' }));
+    if (!wasAdded && scannedImei) {
+      setError(`El IMEI ${scannedImei} ya esta cargado en este comprobante`);
+    }
+    return wasAdded;
   };
 
   const updateItem = (index: number, field: keyof InvoiceFormItem, value: string | boolean) => {
@@ -405,37 +439,87 @@ export default function GenerarComprobantePage() {
     );
   };
 
-  const processScannerValue = (rawValue: string) => {
-    const scannedValue = rawValue.trim();
-    if (!scannedValue) return;
-    const matchedProduct = findProductByScannerValue(scannedValue);
-    if (!matchedProduct) {
-      if (filteredProducts.length > 0) {
-        setError('');
-        addProductToInvoice(filteredProducts[0]);
+  const lookupImeiValue = async (rawValue: string) => {
+    await loadRuntimeConfig();
+    const params = new URLSearchParams({ q: rawValue.trim() });
+    const res = await fetch(`${getApiBaseUrl()}/admin/imei-lookup?${params.toString()}`, { credentials: 'include' });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(payload.detail || 'No se pudo consultar el IMEI');
+    }
+    return (await res.json()) as ImeiLookupResponse;
+  };
+
+  const processScannerValue = async (rawValue: string) => {
+    try {
+      const scannedValue = rawValue.trim();
+      if (!scannedValue) return;
+      const matchedProduct = findProductByScannerValue(scannedValue);
+      if (!matchedProduct) {
+        const probablyImei = /^\d{14,17}$/.test(scannedValue);
+        if (probablyImei) {
+          const imeiLookup = await lookupImeiValue(scannedValue);
+          if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
+            setError(`El IMEI ${scannedValue} no esta registrado como propio`);
+            return;
+          }
+          if (imeiLookup.status === 'sold') {
+            const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
+            const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
+            setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
+            return;
+          }
+          const imeiProduct = products.find((product) => product.id === Number(imeiLookup.product.id));
+          if (!imeiProduct) {
+            setError(`El IMEI ${scannedValue} es propio, pero el producto no esta disponible en la lista actual`);
+            return;
+          }
+          setError('');
+          if (!addProductToInvoice(imeiProduct, 1, scannedValue)) {
+            return;
+          }
+          setScannedDraft((current) => {
+            if (current?.product.id === imeiProduct.id) {
+              return {
+                product: imeiProduct,
+                quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
+              };
+            }
+            return { product: imeiProduct, quantity: '1' };
+          });
+          setProductSearch('');
+          return;
+        }
+        if (filteredProducts.length > 0) {
+          setError('');
+          addProductToInvoice(filteredProducts[0]);
+          setProductSearch('');
+          return;
+        }
+        setError(`No existe un producto con el codigo "${scannedValue}"`);
         return;
       }
-      setError(`No existe un producto con el codigo "${scannedValue}"`);
-      return;
+      setError('');
+      addProductToInvoice(matchedProduct, 1);
+      setScannedDraft((current) => {
+        if (current?.product.id === matchedProduct.id) {
+          return {
+            product: matchedProduct,
+            quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
+          };
+        }
+        return { product: matchedProduct, quantity: '1' };
+      });
+      setProductSearch('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo procesar el escaneo');
     }
-    setError('');
-    addProductToInvoice(matchedProduct, 1);
-    setScannedDraft((current) => {
-      if (current?.product.id === matchedProduct.id) {
-        return {
-          product: matchedProduct,
-          quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
-        };
-      }
-      return { product: matchedProduct, quantity: '1' };
-    });
-    setProductSearch(scannedValue);
   };
 
   const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    processScannerValue(productSearch);
+    void processScannerValue(productSearch);
   };
 
   useEffect(() => {
@@ -466,7 +550,7 @@ export default function GenerarComprobantePage() {
         if (isProductSearchField) {
           event.preventDefault();
         }
-        processScannerValue(scannedValue);
+        void processScannerValue(scannedValue);
         return;
       }
 
@@ -484,7 +568,7 @@ export default function GenerarComprobantePage() {
       window.removeEventListener('keydown', handleWindowKeyDown);
       resetScannerBuffer();
     };
-  }, [productSearch, products]);
+  }, [productSearch, products, form.price_list]);
 
   const updateSearchQuantity = (productId: number, value: string) => {
     setSearchQuantities((current) => ({ ...current, [productId]: value }));
@@ -517,7 +601,12 @@ export default function GenerarComprobantePage() {
         due_date: form.due_date || null,
         notes: form.notes || null,
         special_discount: specialDiscount,
-        items: form.items.map((item) => ({ product_id: Number(item.product_id), quantity: Number(item.quantity), unit_price: Number(item.unit_price) })),
+        items: form.items.map((item) => ({
+          product_id: Number(item.product_id),
+          quantity: Number(item.quantity),
+          unit_price: Number(item.unit_price),
+          imeis: item.imeis,
+        })),
       };
       const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
         method: 'POST',
@@ -859,7 +948,9 @@ export default function GenerarComprobantePage() {
                           <td>
                             <strong>{selectedProduct?.name || `Producto #${item.product_id}`}</strong>
                             <div className={styles.itemMeta}>
-                              {selectedProduct ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}` : 'Producto no encontrado'}
+                              {selectedProduct
+                                ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
+                                : 'Producto no encontrado'}
                             </div>
                           </td>
                           <td>{selectedProduct?.stock ?? '-'}</td>
