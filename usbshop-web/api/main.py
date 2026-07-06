@@ -1548,7 +1548,9 @@ def _customer_balance(conn: DBConn, customer_id: int) -> float:
         SELECT movement_type, amount
         FROM account_movements
         WHERE customer_id = ?
-        """,
+        """
+        + _active_account_movements_clause(conn)
+        ,
         (customer_id,),
     ).fetchall()
     balance = 0.0
@@ -4135,6 +4137,10 @@ def admin_backoffice_customers(
             """
             SELECT customer_id, amount, movement_type
             FROM account_movements
+            WHERE customer_id IS NOT NULL
+            """
+            + _active_account_movements_clause(conn)
+            + """
             ORDER BY created_at ASC, id ASC
             """
         ).fetchall()
@@ -6147,6 +6153,9 @@ def admin_confirm_invoice(
                 SELECT id
                 FROM account_movements
                 WHERE invoice_id = ? AND movement_type = 'DEBIT'
+                """
+                + _active_account_movements_clause(conn)
+                + """
                 LIMIT 1
                 """,
                 (invoice_id,),
@@ -6478,7 +6487,9 @@ def admin_cc_update_movement(
             SELECT id, customer_id, invoice_id, movement_type, entry_kind
             FROM account_movements
             WHERE id = ? AND customer_id = ?
-            """,
+            """
+            + _active_account_movements_clause(conn)
+            ,
             (movement_id, customer_id),
         ).fetchone()
         if movement is None:
