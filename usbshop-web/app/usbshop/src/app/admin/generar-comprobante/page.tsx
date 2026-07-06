@@ -167,6 +167,7 @@ export default function GenerarComprobantePage() {
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scannerLastKeyAtRef = useRef(0);
   const [form, setForm] = useState({
     order_id: '',
     customer_id: '',
@@ -544,7 +545,9 @@ export default function GenerarComprobantePage() {
       }
 
       if (event.key === 'Enter') {
-        const scannedValue = isProductSearchField ? productSearch.trim() : scannerBufferRef.current.trim();
+        const scannedValue = isProductSearchField
+          ? (scannerBufferRef.current.trim() || productSearch.trim())
+          : scannerBufferRef.current.trim();
         resetScannerBuffer();
         if (!scannedValue) return;
         if (isProductSearchField) {
@@ -555,6 +558,35 @@ export default function GenerarComprobantePage() {
       }
 
       if (event.key.length !== 1) return;
+      const now = Date.now();
+      const delta = now - scannerLastKeyAtRef.current;
+      scannerLastKeyAtRef.current = now;
+      if (isProductSearchField) {
+        const currentInputValue = target.value || '';
+        if (scannerBufferRef.current) {
+          event.preventDefault();
+          scannerBufferRef.current += event.key;
+          clearScannerTimer();
+          scannerTimeoutRef.current = setTimeout(() => {
+            scannerBufferRef.current = '';
+            scannerTimeoutRef.current = null;
+          }, 250);
+          return;
+        }
+        if (delta > 0 && delta < 50 && currentInputValue.length <= 1) {
+          event.preventDefault();
+          scannerBufferRef.current = `${currentInputValue}${event.key}`;
+          if (currentInputValue) {
+            setProductSearch('');
+          }
+          clearScannerTimer();
+          scannerTimeoutRef.current = setTimeout(() => {
+            scannerBufferRef.current = '';
+            scannerTimeoutRef.current = null;
+          }, 250);
+          return;
+        }
+      }
       scannerBufferRef.current += event.key;
       clearScannerTimer();
       scannerTimeoutRef.current = setTimeout(() => {
