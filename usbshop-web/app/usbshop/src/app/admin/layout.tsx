@@ -48,7 +48,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const currentModule = getCurrentModule(pathname);
   const visibleModules = NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id));
   const quickMobileModules = visibleModules.slice(0, 4);
-  const isGenerateInvoicePage = pathname === '/admin/generar-comprobante';
+  const isGenerateInvoicePage = Boolean(pathname?.startsWith('/admin/generar-comprobante'));
 
   const clearScannerTimer = () => {
     if (scannerTimeoutRef.current) {

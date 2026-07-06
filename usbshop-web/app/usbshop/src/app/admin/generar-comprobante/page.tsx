@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -146,6 +146,8 @@ export default function GenerarComprobantePage() {
   const [scannedDraft, setScannedDraft] = useState<ScannedProductDraft | null>(null);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
+  const scannerBufferRef = useRef('');
+  const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [form, setForm] = useState({
     order_id: '',
     customer_id: '',
@@ -317,6 +319,30 @@ export default function GenerarComprobantePage() {
 
   const canSubmitWithoutCustomer = form.document_type === 'PRESUPUESTO' && Boolean(form.order_id);
 
+  const clearScannerTimer = () => {
+    if (scannerTimeoutRef.current) {
+      clearTimeout(scannerTimeoutRef.current);
+      scannerTimeoutRef.current = null;
+    }
+  };
+
+  const resetScannerBuffer = () => {
+    scannerBufferRef.current = '';
+    clearScannerTimer();
+  };
+
+  const isEditableTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    return (
+      target.isContentEditable ||
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+    );
+  };
+
   const getProductPriceByList = (product: ProductOption, priceList: string) => {
     if (priceList === '1') return Number(product.price_list_1 || product.price || 0);
     if (priceList === '2') return Number(product.price_list_2 || product.price || 0);
@@ -418,6 +444,54 @@ export default function GenerarComprobantePage() {
     event.preventDefault();
     processScannerValue(productSearch);
   };
+
+  useEffect(() => {
+    const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+      const target = event.target;
+      const isEditingField = isEditableTarget(target);
+      const isProductSearchField =
+        target instanceof HTMLInputElement &&
+        target.getAttribute('placeholder') === 'Buscar por nombre, SKU, codigo o ID';
+
+      if (isEditingField && !isProductSearchField) {
+        resetScannerBuffer();
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        resetScannerBuffer();
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        const scannedValue = isProductSearchField ? productSearch.trim() : scannerBufferRef.current.trim();
+        resetScannerBuffer();
+        if (!scannedValue) return;
+        if (isProductSearchField) {
+          event.preventDefault();
+        }
+        processScannerValue(scannedValue);
+        return;
+      }
+
+      if (event.key.length !== 1) return;
+      scannerBufferRef.current += event.key;
+      clearScannerTimer();
+      scannerTimeoutRef.current = setTimeout(() => {
+        scannerBufferRef.current = '';
+        scannerTimeoutRef.current = null;
+      }, 250);
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleWindowKeyDown);
+      resetScannerBuffer();
+    };
+  }, [productSearch, products]);
 
   const updateSearchQuantity = (productId: number, value: string) => {
     setSearchQuantities((current) => ({ ...current, [productId]: value }));
