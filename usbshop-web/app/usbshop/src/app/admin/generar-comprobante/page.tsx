@@ -380,14 +380,6 @@ export default function GenerarComprobantePage() {
     setSearchQuantities((current) => ({ ...current, [product.id]: '1' }));
   };
 
-  const addScannedDraftToInvoice = () => {
-    if (!scannedDraft) return;
-    const quantity = Math.max(1, Number(scannedDraft.quantity || 1));
-    addProductToInvoice(scannedDraft.product, quantity);
-    setScannedDraft(null);
-    setProductSearch('');
-  };
-
   const updateItem = (index: number, field: keyof InvoiceFormItem, value: string | boolean) => {
     setForm((current) => ({
       ...current,
@@ -427,6 +419,7 @@ export default function GenerarComprobantePage() {
       return;
     }
     setError('');
+    addProductToInvoice(matchedProduct, 1);
     setScannedDraft((current) => {
       if (current?.product.id === matchedProduct.id) {
         return {
@@ -741,7 +734,7 @@ export default function GenerarComprobantePage() {
                     placeholder="Buscar por nombre, SKU, codigo o ID"
                   />
                   <small className={styles.fieldHint}>
-                    La misma barra sirve para escribir o usar el lector. Con Enter prioriza codigo/SKU/ID exacto y, si no existe, agrega la primera coincidencia.
+                    Cada lectura suma 1 unidad al comprobante. Si escaneas el mismo codigo varias veces, acumula cantidad sobre el mismo producto.
                   </small>
                 </label>
               </div>
@@ -772,37 +765,9 @@ export default function GenerarComprobantePage() {
                     <span>L2 {money(Number(scannedDraft.product.price_list_2 || scannedDraft.product.price || 0))}</span>
                   </div>
                   <div className={styles.productSearchActions}>
-                    <label className={styles.inlineQty}>
-                      <span>Cant.</span>
-                      <input
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={scannedDraft.quantity}
-                        onChange={(event) =>
-                          setScannedDraft((current) =>
-                            current ? { ...current, quantity: event.target.value } : current
-                          )
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Enter') return;
-                          event.preventDefault();
-                          addScannedDraftToInvoice();
-                        }}
-                      />
-                    </label>
-                    <button type="button" className={styles.secondaryButton} onClick={addScannedDraftToInvoice}>
-                      Agregar
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.removeButton}
-                      onClick={() => {
-                        setScannedDraft(null);
-                        setProductSearch('');
-                      }}
-                    >
-                      Limpiar
+                    <span>Escaneado {scannedDraft.quantity} {Number(scannedDraft.quantity) === 1 ? 'vez' : 'veces'}</span>
+                    <button type="button" className={styles.secondaryButton} onClick={() => setScannedDraft(null)}>
+                      Ocultar
                     </button>
                   </div>
                 </div>
