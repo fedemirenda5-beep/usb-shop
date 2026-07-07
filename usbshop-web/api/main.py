@@ -3833,9 +3833,9 @@ def admin_list_products(
             conditions.append("is_active = 1")
         
         if q:
-            conditions.append("(name LIKE ? OR sku LIKE ? OR COALESCE(barcode, '') LIKE ?)")
+            conditions.append("(name LIKE ? OR sku LIKE ? OR COALESCE(barcode, '') LIKE ? OR CAST(id AS TEXT) = ?)")
             like = f"%{q}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, str(q).strip()])
         
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
