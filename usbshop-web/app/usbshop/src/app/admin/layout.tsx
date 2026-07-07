@@ -1,7 +1,7 @@
 'use client';
 
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -43,12 +43,17 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [scannerPreviewError, setScannerPreviewError] = useState('');
+  const [scannerPreviewProduct, setScannerPreviewProduct] = useState<ScannerProductPreview | null>(null);
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentModule = getCurrentModule(pathname);
   const visibleModules = NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id));
   const quickMobileModules = visibleModules.slice(0, 4);
   const isGenerateInvoicePage = Boolean(pathname?.startsWith('/admin/generar-comprobante'));
+  const isDashboardPage = pathname === '/admin';
+  const scannerPreviewImageUrl = scannerPreviewProduct
+    ? resolveImageUrl(scannerPreviewProduct.imageUrl || scannerPreviewProduct.image_path, getApiBaseUrl())
+    : null;
 
   const clearScannerTimer = () => {
     if (scannerTimeoutRef.current) {
@@ -131,6 +136,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }, [pathname]);
 
   useEffect(() => {
+    if (!isDashboardPage) {
+      setScannerPreviewProduct(null);
+    }
+  }, [isDashboardPage]);
+
+  useEffect(() => {
     if (!user || isGenerateInvoicePage) {
       resetScannerBuffer();
       return;
@@ -143,6 +154,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
       if (event.key === 'Escape') {
         setScannerPreviewError('');
+        setScannerPreviewProduct(null);
         resetScannerBuffer();
         return;
       }
@@ -157,11 +169,18 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             const products = await loadScannerProducts(scannedValue);
             const matchedProduct = findScannerProduct(products, scannedValue);
             if (!matchedProduct) {
+              setScannerPreviewProduct(null);
               setScannerPreviewError(`No existe un producto con el codigo "${scannedValue}"`);
               return;
             }
+            if (isDashboardPage) {
+              setScannerPreviewProduct(matchedProduct);
+              return;
+            }
+            setScannerPreviewProduct(null);
             router.push(`/admin/productos?edit=${matchedProduct.id}`);
           } catch (scanError) {
+            setScannerPreviewProduct(null);
             setScannerPreviewError(
               scanError instanceof Error ? scanError.message : 'No se pudo resolver el producto escaneado'
             );
@@ -184,7 +203,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       window.removeEventListener('keydown', handleKeyDown);
       resetScannerBuffer();
     };
-  }, [user, isGenerateInvoicePage, router]);
+  }, [user, isDashboardPage, isGenerateInvoicePage, router]);
 
   if (isLoading) {
     return (
@@ -337,6 +356,51 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <div className={styles.contentInner}>
             {scannerPreviewError ? (
               <div className={styles.scannerToastError}>{scannerPreviewError}</div>
+            ) : null}
+            {isDashboardPage && scannerPreviewProduct ? (
+              <section className={styles.scannerPreviewCard} aria-label="Vista previa del producto escaneado">
+                <div className={styles.scannerPreviewMedia}>
+                  {scannerPreviewImageUrl ? (
+                    <img
+                      src={scannerPreviewImageUrl}
+                      alt={scannerPreviewProduct.name}
+                    />
+                  ) : (
+                    <span>Sin imagen</span>
+                  )}
+                </div>
+                <div className={styles.scannerPreviewBody}>
+                  <span className={styles.scannerPreviewEyebrow}>Producto escaneado</span>
+                  <strong>{scannerPreviewProduct.name}</strong>
+                  <span className={styles.scannerPreviewMeta}>
+                    #{scannerPreviewProduct.id} · {scannerPreviewProduct.sku || 'Sin SKU'} · Cod. {scannerPreviewProduct.barcode || '-'}
+                  </span>
+                  <div className={styles.scannerPreviewStats}>
+                    <div>
+                      <span>Stock disponible</span>
+                      <strong>{scannerPreviewProduct.stock}</strong>
+                    </div>
+                    <div>
+                      <span>Precio de venta</span>
+                      <strong>
+                        {new Intl.NumberFormat('es-AR', {
+                          style: 'currency',
+                          currency: 'ARS',
+                          maximumFractionDigits: 0,
+                        }).format(Number(scannerPreviewProduct.price || 0))}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={styles.scannerPreviewClose}
+                  onClick={() => setScannerPreviewProduct(null)}
+                  aria-label="Ocultar vista previa"
+                >
+                  Ocultar
+                </button>
+              </section>
             ) : null}
             {children}
           </div>
