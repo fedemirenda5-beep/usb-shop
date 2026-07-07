@@ -13,6 +13,7 @@ type ProductOption = {
   name: string;
   sku: string;
   barcode?: string | null;
+  category_id?: number | null;
   imeis?: string[];
   price: number;
   price_list_1?: number | null;
@@ -21,6 +22,7 @@ type ProductOption = {
   imageUrl?: string | null;
   image_path?: string | null;
 };
+type CategoryOption = { id: number; name: string };
 type ScannedProductDraft = {
   product: ProductOption;
   quantity: string;
@@ -81,6 +83,7 @@ const normalizeSearchValue = (value: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLowerCase();
+const normalizeCategoryName = (value?: string | null) => normalizeSearchValue(String(value || ''));
 const normalizePhoneValue = (value?: string | null) => {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -155,6 +158,7 @@ export default function GenerarComprobantePage() {
   const budgetInvoiceIdParam = Number(searchParams?.get('budget_invoice_id') || 0);
   const customerIdParam = Number(searchParams?.get('customer_id') || 0);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [sellers, setSellers] = useState<SellerOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +171,8 @@ export default function GenerarComprobantePage() {
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scannerAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scannerLastAutoSubmittedRef = useRef('');
   const scannerLastKeyAtRef = useRef(0);
   const [form, setForm] = useState({
     order_id: '',
@@ -188,15 +194,17 @@ export default function GenerarComprobantePage() {
       try {
         setLoading(true);
         await loadRuntimeConfig();
-        const [customersRes, productsRes, sellersRes] = await Promise.all([
+        const [customersRes, productsRes, sellersRes, categoriesRes] = await Promise.all([
           fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=${ADMIN_LIMITS.customersLargeList}`, { credentials: 'include' }),
           fetch(`${getApiBaseUrl()}/admin/products?limit=${ADMIN_LIMITS.productsLargeList}`, { credentials: 'include' }),
           fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { credentials: 'include' }),
+          fetch(`${getApiBaseUrl()}/admin/categories`, { credentials: 'include' }),
         ]);
-        if (!customersRes.ok || !productsRes.ok || !sellersRes.ok) throw new Error('No se pudieron cargar las opciones');
+        if (!customersRes.ok || !productsRes.ok || !sellersRes.ok || !categoriesRes.ok) throw new Error('No se pudieron cargar las opciones');
         setCustomers(await customersRes.json());
         setProducts(await productsRes.json());
         setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
+        setCategories(await categoriesRes.json());
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando formulario');
       } finally {
@@ -297,6 +305,10 @@ export default function GenerarComprobantePage() {
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const sellerMap = useMemo(() => new Map(sellers.map((seller) => [seller.id, seller])), [sellers]);
+  const celularesCategoryIds = useMemo(
+    () => new Set(categories.filter((category) => normalizeCategoryName(category.name) === 'celulares').map((category) => category.id)),
+    [categories]
+  );
   const selectedCustomer = useMemo(() => customerMap.get(Number(form.customer_id)), [customerMap, form.customer_id]);
   const normalizedCustomerSearch = normalizeSearchValue(customerSearch);
   const filteredCustomerOptions = useMemo(() => {
@@ -337,6 +349,21 @@ export default function GenerarComprobantePage() {
     }
     return 'La factura descuenta stock y, si la operación es por cuenta corriente, genera deuda del cliente.';
   }, [form.document_type]);
+  const pendingOrderCellphoneImeiItems = useMemo(() => {
+    if (!form.order_id || form.document_type !== 'FACTURA') return [];
+    return form.items
+      .map((item, index) => {
+        const product = productMap.get(Number(item.product_id));
+        if (!product?.category_id || !celularesCategoryIds.has(product.category_id)) return null;
+        const quantity = Math.max(0, Number(item.quantity || 0));
+        const imeiCount = item.imeis.length;
+        const missingCount = Math.max(0, quantity - imeiCount);
+        if (missingCount <= 0) return null;
+        return { index, product, quantity, imeiCount, missingCount };
+      })
+      .filter(Boolean) as Array<{ index: number; product: ProductOption; quantity: number; imeiCount: number; missingCount: number }>;
+  }, [form.order_id, form.document_type, form.items, productMap, celularesCategoryIds]);
+  const hasPendingOrderCellphoneImeis = pendingOrderCellphoneImeiItems.length > 0;
 
   const canSubmitWithoutCustomer = form.document_type === 'PRESUPUESTO' && Boolean(form.order_id);
 
@@ -344,6 +371,10 @@ export default function GenerarComprobantePage() {
     if (scannerTimeoutRef.current) {
       clearTimeout(scannerTimeoutRef.current);
       scannerTimeoutRef.current = null;
+    }
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+      scannerAutoSubmitTimeoutRef.current = null;
     }
   };
 
@@ -387,7 +418,9 @@ export default function GenerarComprobantePage() {
             index === existingIndex
               ? {
                   ...item,
-                  quantity: String(Number(item.quantity || 0) + normalizedQuantity),
+                  quantity: scannedImei
+                    ? String(Math.max(Number(item.quantity || 0), item.imeis.length + normalizedQuantity))
+                    : String(Number(item.quantity || 0) + normalizedQuantity),
                   imeis: scannedImei ? [...item.imeis, scannedImei] : item.imeis,
                 }
               : item
@@ -555,10 +588,42 @@ export default function GenerarComprobantePage() {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     const scannedValue = event.currentTarget.value.trim() || productSearch.trim();
+    scannerLastAutoSubmittedRef.current = scannedValue;
     resetScannerBuffer();
     if (!scannedValue) return;
     void processScannerValue(scannedValue);
   };
+
+  useEffect(() => {
+    const scannedValue = productSearch.trim();
+    if (!scannedValue) {
+      scannerLastAutoSubmittedRef.current = '';
+      if (scannerAutoSubmitTimeoutRef.current) {
+        clearTimeout(scannerAutoSubmitTimeoutRef.current);
+        scannerAutoSubmitTimeoutRef.current = null;
+      }
+      return;
+    }
+    const probablyScannerCode = /^\d{6,17}$/.test(scannedValue);
+    if (!probablyScannerCode || scannerLastAutoSubmittedRef.current === scannedValue) {
+      return;
+    }
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+    }
+    scannerAutoSubmitTimeoutRef.current = setTimeout(() => {
+      scannerAutoSubmitTimeoutRef.current = null;
+      if (scannerLastAutoSubmittedRef.current === scannedValue) return;
+      scannerLastAutoSubmittedRef.current = scannedValue;
+      void processScannerValue(scannedValue);
+    }, 180);
+    return () => {
+      if (scannerAutoSubmitTimeoutRef.current) {
+        clearTimeout(scannerAutoSubmitTimeoutRef.current);
+        scannerAutoSubmitTimeoutRef.current = null;
+      }
+    };
+  }, [productSearch]);
 
   useEffect(() => {
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -629,6 +694,13 @@ export default function GenerarComprobantePage() {
 
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (hasPendingOrderCellphoneImeis) {
+      const pendingLabels = pendingOrderCellphoneImeiItems
+        .map((item) => `${item.product.name}: faltan ${item.missingCount} IMEI${item.missingCount === 1 ? '' : 's'}`)
+        .join(' · ');
+      setError(`Antes de confirmar el pedido web, escanea los IMEIs pendientes. ${pendingLabels}`);
+      return;
+    }
     try {
       setCreating(true);
       setError('');
@@ -971,6 +1043,11 @@ export default function GenerarComprobantePage() {
                 </div>
                 <strong>{form.items.length} item{form.items.length === 1 ? '' : 's'}</strong>
               </div>
+              {hasPendingOrderCellphoneImeis ? (
+                <div className={styles.orderDraftInfo}>
+                  Pedido web con celulares: escanea los IMEIs antes de emitir la factura.
+                </div>
+              ) : null}
               <div className={styles.tableWrap}>
                 <table className={styles.table}>
                   <thead>
@@ -996,6 +1073,11 @@ export default function GenerarComprobantePage() {
                                 ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
                                 : 'Producto no encontrado'}
                             </div>
+                            {selectedProduct?.category_id && celularesCategoryIds.has(selectedProduct.category_id) && form.order_id ? (
+                              <div className={styles.itemMeta}>
+                                IMEIs cargados: {item.imeis.length}/{Math.max(0, Number(item.quantity || 0))}
+                              </div>
+                            ) : null}
                           </td>
                           <td>{selectedProduct?.stock ?? '-'}</td>
                           <td>
@@ -1073,7 +1155,7 @@ export default function GenerarComprobantePage() {
               <button
                 type="submit"
                 className={styles.createButton}
-                disabled={creating || (!form.customer_id && !canSubmitWithoutCustomer) || form.items.length === 0}
+                disabled={creating || (!form.customer_id && !canSubmitWithoutCustomer) || form.items.length === 0 || hasPendingOrderCellphoneImeis}
               >
                 {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
               </button>
