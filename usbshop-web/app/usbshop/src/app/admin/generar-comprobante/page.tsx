@@ -175,6 +175,8 @@ export default function GenerarComprobantePage() {
   const scannerAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannerLastAutoSubmittedRef = useRef('');
   const scannerLastKeyAtRef = useRef(0);
+  const scannerProcessingRef = useRef(false);
+  const scannerQueuedValueRef = useRef('');
   const [form, setForm] = useState({
     order_id: '',
     customer_id: '',
@@ -389,6 +391,7 @@ export default function GenerarComprobantePage() {
       productSearchInputRef.current.value = '';
     }
     setProductSearch('');
+    scannerLastAutoSubmittedRef.current = '';
   };
 
   const isEditableTarget = (target: EventTarget | null) => {
@@ -547,7 +550,6 @@ export default function GenerarComprobantePage() {
           }
           return { product: imeiProduct, quantity: '1' };
         });
-        clearProductSearchInput();
         return;
       }
       const matchedProduct = findProductByScannerValue(scannedValue);
@@ -569,7 +571,6 @@ export default function GenerarComprobantePage() {
         if (filteredProducts.length > 0) {
           setError('');
           addProductToInvoice(filteredProducts[0]);
-          clearProductSearchInput();
           return;
         }
         setError(`No existe un producto con el codigo "${scannedValue}"`);
@@ -586,10 +587,30 @@ export default function GenerarComprobantePage() {
         }
         return { product: resolvedProduct, quantity: '1' };
       });
-      clearProductSearchInput();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo procesar el escaneo');
     }
+  };
+
+  const submitScannerValue = (rawValue: string) => {
+    const scannedValue = rawValue.trim();
+    if (!scannedValue) return;
+    resetScannerBuffer();
+    clearProductSearchInput();
+    if (scannerProcessingRef.current) {
+      scannerQueuedValueRef.current = scannedValue;
+      return;
+    }
+    scannerProcessingRef.current = true;
+    void (async () => {
+      let currentValue = scannedValue;
+      while (currentValue) {
+        await processScannerValue(currentValue);
+        currentValue = scannerQueuedValueRef.current.trim();
+        scannerQueuedValueRef.current = '';
+      }
+      scannerProcessingRef.current = false;
+    })();
   };
 
   const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -597,9 +618,8 @@ export default function GenerarComprobantePage() {
     event.preventDefault();
     const scannedValue = event.currentTarget.value.trim() || productSearch.trim();
     scannerLastAutoSubmittedRef.current = scannedValue;
-    resetScannerBuffer();
     if (!scannedValue) return;
-    void processScannerValue(scannedValue);
+    submitScannerValue(scannedValue);
   };
 
   const scheduleProductSearchAutoSubmit = (rawValue: string) => {
@@ -623,7 +643,7 @@ export default function GenerarComprobantePage() {
       scannerAutoSubmitTimeoutRef.current = null;
       if (scannerLastAutoSubmittedRef.current === scannedValue) return;
       scannerLastAutoSubmittedRef.current = scannedValue;
-      void processScannerValue(scannedValue);
+      submitScannerValue(scannedValue);
     }, 180);
   };
 
@@ -658,7 +678,7 @@ export default function GenerarComprobantePage() {
         const scannedValue = scannerBufferRef.current.trim();
         resetScannerBuffer();
         if (!scannedValue) return;
-        void processScannerValue(scannedValue);
+        submitScannerValue(scannedValue);
         return;
       }
 
