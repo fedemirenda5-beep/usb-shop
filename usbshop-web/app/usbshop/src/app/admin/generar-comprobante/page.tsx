@@ -594,8 +594,8 @@ export default function GenerarComprobantePage() {
     void processScannerValue(scannedValue);
   };
 
-  useEffect(() => {
-    const scannedValue = productSearch.trim();
+  const scheduleProductSearchAutoSubmit = (rawValue: string) => {
+    const scannedValue = rawValue.trim();
     if (!scannedValue) {
       scannerLastAutoSubmittedRef.current = '';
       if (scannerAutoSubmitTimeoutRef.current) {
@@ -617,13 +617,7 @@ export default function GenerarComprobantePage() {
       scannerLastAutoSubmittedRef.current = scannedValue;
       void processScannerValue(scannedValue);
     }, 180);
-    return () => {
-      if (scannerAutoSubmitTimeoutRef.current) {
-        clearTimeout(scannerAutoSubmitTimeoutRef.current);
-        scannerAutoSubmitTimeoutRef.current = null;
-      }
-    };
-  }, [productSearch]);
+  };
 
   useEffect(() => {
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
@@ -934,7 +928,11 @@ export default function GenerarComprobantePage() {
                   <input
                     type="text"
                     value={productSearch}
-                    onChange={(e) => setProductSearch(e.target.value)}
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setProductSearch(nextValue);
+                      scheduleProductSearchAutoSubmit(nextValue);
+                    }}
                     onKeyDown={handleProductSearchKeyDown}
                     placeholder="Buscar por nombre, SKU, codigo o ID"
                   />
