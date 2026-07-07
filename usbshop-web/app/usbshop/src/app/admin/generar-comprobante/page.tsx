@@ -520,7 +520,10 @@ export default function GenerarComprobantePage() {
   const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    void processScannerValue(productSearch);
+    const scannedValue = scannerBufferRef.current.trim() || productSearch.trim();
+    resetScannerBuffer();
+    if (!scannedValue) return;
+    void processScannerValue(scannedValue);
   };
 
   useEffect(() => {
