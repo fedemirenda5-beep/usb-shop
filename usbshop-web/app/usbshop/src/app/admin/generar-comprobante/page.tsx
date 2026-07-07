@@ -440,6 +440,22 @@ export default function GenerarComprobantePage() {
     );
   };
 
+  const loadScannerProducts = async (rawValue: string) => {
+    await loadRuntimeConfig();
+    const params = new URLSearchParams({
+      q: rawValue.trim(),
+      limit: String(ADMIN_LIMITS.scannerLookup),
+    });
+    const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      throw new Error('No se pudieron cargar los productos para el lector');
+    }
+    const data = await res.json();
+    return Array.isArray(data) ? (data as ProductOption[]) : [];
+  };
+
   const lookupImeiValue = async (rawValue: string) => {
     await loadRuntimeConfig();
     const params = new URLSearchParams({ q: rawValue.trim() });
@@ -456,7 +472,21 @@ export default function GenerarComprobantePage() {
       const scannedValue = rawValue.trim();
       if (!scannedValue) return;
       const matchedProduct = findProductByScannerValue(scannedValue);
-      if (!matchedProduct) {
+      const resolvedProduct = matchedProduct || findProductByScannerValue(
+        scannedValue,
+      ) || (
+        await (async () => {
+          const remoteProducts = await loadScannerProducts(scannedValue);
+          const normalizedValue = scannedValue.trim().toLowerCase();
+          return (
+            remoteProducts.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+            remoteProducts.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
+            remoteProducts.find((product) => String(product.id) === normalizedValue) ||
+            null
+          );
+        })()
+      );
+      if (!resolvedProduct) {
         const probablyImei = /^\d{14,17}$/.test(scannedValue);
         if (probablyImei) {
           const imeiLookup = await lookupImeiValue(scannedValue);
@@ -501,15 +531,15 @@ export default function GenerarComprobantePage() {
         return;
       }
       setError('');
-      addProductToInvoice(matchedProduct, 1);
+      addProductToInvoice(resolvedProduct, 1);
       setScannedDraft((current) => {
-        if (current?.product.id === matchedProduct.id) {
+        if (current?.product.id === resolvedProduct.id) {
           return {
-            product: matchedProduct,
+            product: resolvedProduct,
             quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
           };
         }
-        return { product: matchedProduct, quantity: '1' };
+        return { product: resolvedProduct, quantity: '1' };
       });
       setProductSearch('');
     } catch (err) {
@@ -520,7 +550,7 @@ export default function GenerarComprobantePage() {
   const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    const scannedValue = scannerBufferRef.current.trim() || productSearch.trim();
+    const scannedValue = scannerBufferRef.current.trim() || event.currentTarget.value.trim() || productSearch.trim();
     resetScannerBuffer();
     if (!scannedValue) return;
     void processScannerValue(scannedValue);
