@@ -471,6 +471,44 @@ export default function GenerarComprobantePage() {
     try {
       const scannedValue = rawValue.trim();
       if (!scannedValue) return;
+      const probablyImei = /^\d{14,17}$/.test(scannedValue);
+      if (probablyImei) {
+        const imeiLookup = await lookupImeiValue(scannedValue);
+        if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
+          setError(`El IMEI ${scannedValue} no esta registrado como propio`);
+          return;
+        }
+        if (imeiLookup.status === 'sold') {
+          const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
+          const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
+          setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
+          return;
+        }
+        const imeiProductId = Number(imeiLookup.product.id);
+        const imeiProduct =
+          products.find((product) => product.id === imeiProductId) ||
+          (await loadScannerProducts(String(imeiProductId))).find((product) => product.id === imeiProductId) ||
+          null;
+        if (!imeiProduct) {
+          setError(`El IMEI ${scannedValue} es propio, pero el producto no esta disponible en la lista actual`);
+          return;
+        }
+        setError('');
+        if (!addProductToInvoice(imeiProduct, 1, scannedValue)) {
+          return;
+        }
+        setScannedDraft((current) => {
+          if (current?.product.id === imeiProduct.id) {
+            return {
+              product: imeiProduct,
+              quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
+            };
+          }
+          return { product: imeiProduct, quantity: '1' };
+        });
+        setProductSearch('');
+        return;
+      }
       const matchedProduct = findProductByScannerValue(scannedValue);
       const resolvedProduct = matchedProduct || findProductByScannerValue(
         scannedValue,
@@ -487,40 +525,6 @@ export default function GenerarComprobantePage() {
         })()
       );
       if (!resolvedProduct) {
-        const probablyImei = /^\d{14,17}$/.test(scannedValue);
-        if (probablyImei) {
-          const imeiLookup = await lookupImeiValue(scannedValue);
-          if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
-            setError(`El IMEI ${scannedValue} no esta registrado como propio`);
-            return;
-          }
-          if (imeiLookup.status === 'sold') {
-            const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
-            const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
-            setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
-            return;
-          }
-          const imeiProduct = products.find((product) => product.id === Number(imeiLookup.product.id));
-          if (!imeiProduct) {
-            setError(`El IMEI ${scannedValue} es propio, pero el producto no esta disponible en la lista actual`);
-            return;
-          }
-          setError('');
-          if (!addProductToInvoice(imeiProduct, 1, scannedValue)) {
-            return;
-          }
-          setScannedDraft((current) => {
-            if (current?.product.id === imeiProduct.id) {
-              return {
-                product: imeiProduct,
-                quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
-              };
-            }
-            return { product: imeiProduct, quantity: '1' };
-          });
-          setProductSearch('');
-          return;
-        }
         if (filteredProducts.length > 0) {
           setError('');
           addProductToInvoice(filteredProducts[0]);
@@ -550,7 +554,7 @@ export default function GenerarComprobantePage() {
   const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
-    const scannedValue = scannerBufferRef.current.trim() || event.currentTarget.value.trim() || productSearch.trim();
+    const scannedValue = event.currentTarget.value.trim() || productSearch.trim();
     resetScannerBuffer();
     if (!scannedValue) return;
     void processScannerValue(scannedValue);
@@ -571,6 +575,12 @@ export default function GenerarComprobantePage() {
         resetScannerBuffer();
         return;
       }
+      if (isProductSearchField) {
+        if (event.key === 'Escape') {
+          resetScannerBuffer();
+        }
+        return;
+      }
 
       if (event.key === 'Escape') {
         resetScannerBuffer();
@@ -578,14 +588,9 @@ export default function GenerarComprobantePage() {
       }
 
       if (event.key === 'Enter') {
-        const scannedValue = isProductSearchField
-          ? (scannerBufferRef.current.trim() || productSearch.trim())
-          : scannerBufferRef.current.trim();
+        const scannedValue = scannerBufferRef.current.trim();
         resetScannerBuffer();
         if (!scannedValue) return;
-        if (isProductSearchField) {
-          event.preventDefault();
-        }
         void processScannerValue(scannedValue);
         return;
       }
@@ -594,32 +599,6 @@ export default function GenerarComprobantePage() {
       const now = Date.now();
       const delta = now - scannerLastKeyAtRef.current;
       scannerLastKeyAtRef.current = now;
-      if (isProductSearchField) {
-        const currentInputValue = target.value || '';
-        if (scannerBufferRef.current) {
-          event.preventDefault();
-          scannerBufferRef.current += event.key;
-          clearScannerTimer();
-          scannerTimeoutRef.current = setTimeout(() => {
-            scannerBufferRef.current = '';
-            scannerTimeoutRef.current = null;
-          }, 250);
-          return;
-        }
-        if (delta > 0 && delta < 50 && currentInputValue.length <= 1) {
-          event.preventDefault();
-          scannerBufferRef.current = `${currentInputValue}${event.key}`;
-          if (currentInputValue) {
-            setProductSearch('');
-          }
-          clearScannerTimer();
-          scannerTimeoutRef.current = setTimeout(() => {
-            scannerBufferRef.current = '';
-            scannerTimeoutRef.current = null;
-          }, 250);
-          return;
-        }
-      }
       scannerBufferRef.current += event.key;
       clearScannerTimer();
       scannerTimeoutRef.current = setTimeout(() => {
