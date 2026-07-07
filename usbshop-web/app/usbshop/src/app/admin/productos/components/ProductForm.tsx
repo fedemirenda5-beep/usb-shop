@@ -127,12 +127,28 @@ const normalizeCategoryName = (value: string) =>
     .toLowerCase()
     .trim();
 
+const splitCollapsedImeiToken = (value: string) => {
+  const digits = value.replace(/[^\d]/g, '').trim();
+  if (!digits) return [] as string[];
+  if (digits.length <= 17) return [digits];
+  for (const chunkSize of [15, 14, 16, 17]) {
+    if (digits.length % chunkSize !== 0) continue;
+    const chunks = Array.from({ length: digits.length / chunkSize }, (_, index) =>
+      digits.slice(index * chunkSize, (index + 1) * chunkSize)
+    ).filter(Boolean);
+    if (chunks.length > 1 && chunks.every((chunk) => chunk.length >= 14 && chunk.length <= 17)) {
+      return chunks;
+    }
+  }
+  return [digits];
+};
+
 const parseImeiValues = (value: string) =>
   Array.from(
     new Set(
       value
         .split(/[\s,;]+/)
-        .map((item) => item.replace(/[^\d]/g, '').trim())
+        .flatMap((item) => splitCollapsedImeiToken(item))
         .filter(Boolean)
     )
   );
