@@ -169,6 +169,7 @@ export default function GenerarComprobantePage() {
   const [scannedDraft, setScannedDraft] = useState<ScannedProductDraft | null>(null);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
+  const productSearchInputRef = useRef<HTMLInputElement | null>(null);
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannerAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -383,6 +384,13 @@ export default function GenerarComprobantePage() {
     clearScannerTimer();
   };
 
+  const clearProductSearchInput = () => {
+    if (productSearchInputRef.current) {
+      productSearchInputRef.current.value = '';
+    }
+    setProductSearch('');
+  };
+
   const isEditableTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
     const tag = target.tagName;
@@ -539,7 +547,7 @@ export default function GenerarComprobantePage() {
           }
           return { product: imeiProduct, quantity: '1' };
         });
-        setProductSearch('');
+        clearProductSearchInput();
         return;
       }
       const matchedProduct = findProductByScannerValue(scannedValue);
@@ -561,7 +569,7 @@ export default function GenerarComprobantePage() {
         if (filteredProducts.length > 0) {
           setError('');
           addProductToInvoice(filteredProducts[0]);
-          setProductSearch('');
+          clearProductSearchInput();
           return;
         }
         setError(`No existe un producto con el codigo "${scannedValue}"`);
@@ -578,7 +586,7 @@ export default function GenerarComprobantePage() {
         }
         return { product: resolvedProduct, quantity: '1' };
       });
-      setProductSearch('');
+      clearProductSearchInput();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo procesar el escaneo');
     }
@@ -926,6 +934,7 @@ export default function GenerarComprobantePage() {
                 <label className={styles.desktopPickerSearch}>
                   Buscar o escanear producto
                   <input
+                    ref={productSearchInputRef}
                     type="text"
                     value={productSearch}
                     onChange={(e) => {
