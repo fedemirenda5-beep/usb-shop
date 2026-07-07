@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -184,6 +184,9 @@ export default function ProductosPage() {
   const [categoryError, setCategoryError] = useState('');
   const [categorySaving, setCategorySaving] = useState(false);
   const deferredSearch = useDeferredValue(search);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const scannerAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scannerLastAutoSubmittedRef = useRef('');
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -293,6 +296,13 @@ export default function ProductosPage() {
     }
   }, [page, totalPages]);
 
+  useEffect(() => () => {
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+      scannerAutoSubmitTimeoutRef.current = null;
+    }
+  }, []);
+
   const visibleProducts = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return filteredProducts.slice(start, start + PAGE_SIZE);
@@ -312,6 +322,96 @@ export default function ProductosPage() {
     router.push(`/admin/productos?edit=${productId}`);
     const product = products.find((item) => item.id === productId) || null;
     setEditProduct(product);
+  };
+
+  const resolveScannedProduct = async (rawValue: string) => {
+    const normalizedValue = normalizeSearchValue(rawValue);
+    if (!normalizedValue) return null;
+    const localMatch =
+      products.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => String(product.id) === normalizedValue) ||
+      null;
+    if (localMatch) return localMatch;
+
+    await loadRuntimeConfig();
+    const params = new URLSearchParams({
+      q: rawValue.trim(),
+      limit: '25',
+    });
+    const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('No se pudieron cargar los productos para el lector');
+    const data = await res.json();
+    const remoteProducts = Array.isArray(data) ? (data as Product[]) : [];
+    return (
+      remoteProducts.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      remoteProducts.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
+      remoteProducts.find((product) => String(product.id) === normalizedValue) ||
+      null
+    );
+  };
+
+  const clearSearchInput = () => {
+    if (searchInputRef.current) {
+      searchInputRef.current.value = '';
+    }
+    setSearch('');
+    scannerLastAutoSubmittedRef.current = '';
+  };
+
+  const submitSearchScannerValue = (rawValue: string) => {
+    const scannedValue = rawValue.trim();
+    if (!scannedValue) return;
+    clearSearchInput();
+    void (async () => {
+      try {
+        const matchedProduct = await resolveScannedProduct(scannedValue);
+        if (!matchedProduct) {
+          setError(`No existe un producto con el codigo "${scannedValue}"`);
+          return;
+        }
+        setError('');
+        openEditor(matchedProduct.id);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'No se pudo resolver el producto escaneado');
+      }
+    })();
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const scannedValue = event.currentTarget.value.trim() || search.trim();
+    scannerLastAutoSubmittedRef.current = scannedValue;
+    if (!scannedValue) return;
+    submitSearchScannerValue(scannedValue);
+  };
+
+  const scheduleSearchScannerSubmit = (rawValue: string) => {
+    const scannedValue = rawValue.trim();
+    if (!scannedValue) {
+      scannerLastAutoSubmittedRef.current = '';
+      if (scannerAutoSubmitTimeoutRef.current) {
+        clearTimeout(scannerAutoSubmitTimeoutRef.current);
+        scannerAutoSubmitTimeoutRef.current = null;
+      }
+      return;
+    }
+    const probablyScannerCode = /^\d{6,17}$/.test(scannedValue);
+    if (!probablyScannerCode || scannerLastAutoSubmittedRef.current === scannedValue) {
+      return;
+    }
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+    }
+    scannerAutoSubmitTimeoutRef.current = setTimeout(() => {
+      scannerAutoSubmitTimeoutRef.current = null;
+      if (scannerLastAutoSubmittedRef.current === scannedValue) return;
+      scannerLastAutoSubmittedRef.current = scannedValue;
+      submitSearchScannerValue(scannedValue);
+    }, 180);
   };
 
   const openProductDetail = (productId: number) => {
@@ -723,13 +823,17 @@ export default function ProductosPage() {
 
       <div className={styles.searchForm}>
         <input
+          ref={searchInputRef}
           type="text"
           placeholder="Buscar por nombre o SKU..."
           value={search}
           onChange={(e) => {
-            setSearch(e.target.value);
+            const nextValue = e.target.value;
+            setSearch(nextValue);
             setPage(1);
+            scheduleSearchScannerSubmit(nextValue);
           }}
+          onKeyDown={handleSearchKeyDown}
           className={styles.searchInput}
         />
         <select
