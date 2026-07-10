@@ -13,6 +13,7 @@ type LoginUserOption = {
 };
 
 const LAST_LOGIN_USERNAME_KEY = 'usbshop_last_login_username';
+const LOGIN_USERS_CACHE_KEY = 'usbshop_login_users_v1';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,8 +24,37 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
+  const [localNotice, setLocalNotice] = useState('');
+  const [hasCachedUsers, setHasCachedUsers] = useState(false);
   const [targetPath, setTargetPath] = useState('/admin');
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
+
+  const applySuggestedUsername = (options: LoginUserOption[], preferredUsername = '') => {
+    setUsername((current) => {
+      if (current) {
+        return current;
+      }
+      if (preferredUsername && options.some((option) => option.username === preferredUsername)) {
+        return preferredUsername;
+      }
+      if (preferredUsername) {
+        return preferredUsername;
+      }
+      return options.length === 1 ? options[0].username : '';
+    });
+  };
+
+  const hydrateUserOptions = (options: LoginUserOption[]) => {
+    setUserOptions(options);
+    setHasCachedUsers(options.length > 0);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LOGIN_USERS_CACHE_KEY, JSON.stringify(options));
+      const savedUsername = window.localStorage.getItem(LAST_LOGIN_USERNAME_KEY)?.trim() || '';
+      applySuggestedUsername(options, savedUsername);
+    } else {
+      applySuggestedUsername(options);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -45,34 +75,57 @@ export default function LoginPage() {
   }, [username]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const savedUsername = window.localStorage.getItem(LAST_LOGIN_USERNAME_KEY)?.trim() || '';
+    if (savedUsername) {
+      setUsername((current) => current || savedUsername);
+    }
+    try {
+      const rawCachedUsers = window.localStorage.getItem(LOGIN_USERS_CACHE_KEY);
+      if (!rawCachedUsers) {
+        return;
+      }
+      const parsed = JSON.parse(rawCachedUsers) as LoginUserOption[] | null;
+      const cachedUsers = Array.isArray(parsed)
+        ? parsed.filter(
+            (item): item is LoginUserOption =>
+              Boolean(item) && typeof item.username === 'string' && typeof item.role === 'string'
+          )
+        : [];
+      if (cachedUsers.length > 0) {
+        setUserOptions(cachedUsers);
+        setHasCachedUsers(true);
+        applySuggestedUsername(cachedUsers, savedUsername);
+        setUsersLoading(false);
+      }
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
     const loadUsers = async () => {
       try {
         setUsersLoading(true);
-        const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 5000);
+        setLocalNotice('');
+        const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 12000);
         if (!res.ok) {
           throw new Error('No se pudo cargar la lista de usuarios');
         }
         const data = (await res.json()) as LoginUserOption[];
-        setUserOptions(Array.isArray(data) ? data : []);
-        setUsername((current) => {
-          if (current) {
-            return current;
-          }
-          if (!Array.isArray(data) || data.length === 0) {
-            return '';
-          }
-          const savedUsername =
-            typeof window !== 'undefined' ? window.localStorage.getItem(LAST_LOGIN_USERNAME_KEY)?.trim() || '' : '';
-          if (savedUsername && data.some((option) => option.username === savedUsername)) {
-            return savedUsername;
-          }
-          return data.length === 1 ? data[0].username : '';
-        });
+        const nextOptions = Array.isArray(data) ? data : [];
+        hydrateUserOptions(nextOptions);
       } catch (err) {
-        if (err instanceof Error) {
-          setLocalError(err.message);
+        const fallbackMessage = err instanceof Error ? err.message : 'No se pudo cargar la lista de usuarios';
+        const cachedAvailable =
+          hasCachedUsers ||
+          (typeof window !== 'undefined' && Boolean(window.localStorage.getItem(LOGIN_USERS_CACHE_KEY)));
+        if (cachedAvailable) {
+          setLocalNotice('La API esta lenta. Se muestra la lista guardada para que puedas ingresar igual.');
         } else {
-          setLocalError('No se pudo cargar la lista de usuarios');
+          setLocalError(fallbackMessage);
         }
       } finally {
         setUsersLoading(false);
@@ -97,6 +150,7 @@ export default function LoginPage() {
       return;
     }
     setLocalError('');
+    setLocalNotice('');
 
     if (!username.trim()) {
       setLocalError('Selecciona un usuario');
@@ -182,10 +236,40 @@ export default function LoginPage() {
           </div>
 
           {(localError || error) && <div className={styles.error}>{localError || error}</div>}
+          {localNotice ? <div className={styles.notice}>{localNotice}</div> : null}
 
           <button type="submit" disabled={submitting || !username.trim() || !password.trim()} className={styles.button}>
             {submitting ? 'Ingresando...' : 'Ingresar'}
           </button>
+
+          {!submitting && (localError || localNotice) ? (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => {
+                setLocalError('');
+                setLocalNotice('');
+                setUsersLoading(true);
+                void (async () => {
+                  try {
+                    const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 12000);
+                    if (!res.ok) {
+                      throw new Error('No se pudo cargar la lista de usuarios');
+                    }
+                    const data = (await res.json()) as LoginUserOption[];
+                    const nextOptions = Array.isArray(data) ? data : [];
+                    hydrateUserOptions(nextOptions);
+                  } catch (retryError) {
+                    setLocalError(retryError instanceof Error ? retryError.message : 'No se pudo cargar la lista de usuarios');
+                  } finally {
+                    setUsersLoading(false);
+                  }
+                })();
+              }}
+            >
+              Reintentar carga
+            </button>
+          ) : null}
         </form>
 
         <div className={styles.footer}>

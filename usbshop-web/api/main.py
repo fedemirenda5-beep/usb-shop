@@ -3514,6 +3514,7 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     if row is None:
         raise HTTPException(status_code=401, detail="Credenciales invalidas")
     payload_data = {
+        "id": int(row["id"]),
         "username": row["username"],
         "role": row["role"],
         "exp": int(time.time() + SESSION_TTL_SECONDS),
@@ -3531,7 +3532,7 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
             domain=cookie_options["domain"],
             path=str(cookie_options["path"]),
         )
-    return {"username": row["username"], "role": row["role"]}
+    return {"id": int(row["id"]), "username": row["username"], "role": row["role"]}
 
 
 @app.get("/auth/users")
@@ -3632,7 +3633,8 @@ def admin_update_user(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict[str, Any]:
     session_payload = _require_full_admin(session_token)
-    current_username = str(session_payload.get("username") or "").strip().lower()
+    current_user_id = session_payload.get("id")
+    current_username = str(session_payload.get("username") or "").strip()
     conn = _connect()
     try:
         _ensure_users_table(conn)
@@ -3660,7 +3662,15 @@ def admin_update_user(
             if duplicate is not None:
                 raise HTTPException(status_code=409, detail="Ya existe un usuario con ese nombre")
 
-        if existing_username_key == current_username:
+        is_current_user = False
+        try:
+            is_current_user = current_user_id is not None and int(current_user_id) == int(user_id)
+        except (TypeError, ValueError):
+            is_current_user = False
+        if not is_current_user and current_username:
+            is_current_user = existing_username == current_username
+
+        if is_current_user:
             if next_active != 1:
                 raise HTTPException(status_code=400, detail="No puedes desactivar tu propio usuario")
             if next_role != ROLE_ADMIN:
@@ -3694,7 +3704,8 @@ def admin_delete_user(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict[str, Any]:
     session_payload = _require_full_admin(session_token)
-    current_username = str(session_payload.get("username") or "").strip().lower()
+    current_user_id = session_payload.get("id")
+    current_username = str(session_payload.get("username") or "").strip()
     conn = _connect()
     try:
         _ensure_users_table(conn)
@@ -3705,8 +3716,16 @@ def admin_delete_user(
         if existing is None:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        existing_username = str(existing["username"] or "").strip().lower()
-        if existing_username == current_username:
+        existing_username = str(existing["username"] or "").strip()
+        is_current_user = False
+        try:
+            is_current_user = current_user_id is not None and int(current_user_id) == int(user_id)
+        except (TypeError, ValueError):
+            is_current_user = False
+        if not is_current_user and current_username:
+            is_current_user = existing_username == current_username
+
+        if is_current_user:
             raise HTTPException(status_code=400, detail="No puedes eliminar tu propio usuario")
 
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -3735,7 +3754,13 @@ def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE))
     payload = _verify_session(session or "")
     if not payload:
         raise HTTPException(status_code=401, detail="No autenticado")
-    return {"username": payload.get("username"), "role": payload.get("role")}
+    user_id = payload.get("id")
+    normalized_id = None
+    try:
+        normalized_id = int(user_id) if user_id is not None else None
+    except (TypeError, ValueError):
+        normalized_id = None
+    return {"id": normalized_id, "username": payload.get("username"), "role": payload.get("role")}
 
 
 @app.get("/products/{product_id}/image")

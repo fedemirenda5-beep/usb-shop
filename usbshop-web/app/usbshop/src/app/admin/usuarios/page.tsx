@@ -27,6 +27,16 @@ const emptyForm: UserFormState = {
   active: true,
 };
 
+const isCurrentSessionUser = (
+  target: Pick<AdminUser, 'id' | 'username'>,
+  currentUser?: { id?: number | null; username?: string | null } | null
+) => {
+  if (typeof currentUser?.id === 'number') {
+    return target.id === currentUser.id;
+  }
+  return target.username.trim() === String(currentUser?.username || '').trim();
+};
+
 const parseError = async (response: Response, fallback: string) => {
   try {
     const data = (await response.json()) as { detail?: string };
@@ -141,7 +151,7 @@ export default function AdminUsersPage() {
   };
 
   const handleDelete = async (target: AdminUser) => {
-    const isCurrentUser = target.username.trim().toLowerCase() === (user?.username || '').trim().toLowerCase();
+    const isCurrentUser = isCurrentSessionUser(target, user);
     if (isCurrentUser) {
       setError('No puedes eliminar tu propio usuario.');
       setSuccess('');
@@ -202,7 +212,7 @@ export default function AdminUsersPage() {
 
           <div className={styles.userList}>
             {users.map((item) => {
-              const isCurrentUser = item.username.trim().toLowerCase() === (user?.username || '').trim().toLowerCase();
+              const isCurrentUser = isCurrentSessionUser(item, user);
               return (
                 <article
                   key={item.id}

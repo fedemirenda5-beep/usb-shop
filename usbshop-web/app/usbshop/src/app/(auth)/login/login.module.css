@@ -122,6 +122,34 @@
   font-family: var(--font-body);
 }
 
+.notice {
+  padding: 12px 16px;
+  background: rgba(132, 204, 22, 0.12);
+  border: 1px solid rgba(132, 204, 22, 0.28);
+  border-radius: 8px;
+  color: #3f6212;
+  font-size: 14px;
+  font-family: var(--font-body);
+}
+
+.secondaryButton {
+  font-family: var(--font-head);
+  padding: 11px 16px;
+  background: white;
+  color: var(--ink);
+  border: 1px solid rgba(132, 204, 22, 0.35);
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.secondaryButton:hover {
+  border-color: var(--lime);
+  background: rgba(132, 204, 22, 0.08);
+}
+
 .footer {
   text-align: center;
   color: var(--muted);

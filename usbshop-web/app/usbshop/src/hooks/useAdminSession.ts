@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 
 interface AdminUser {
+  id?: number | null;
   username: string;
   role: string;
 }
@@ -19,6 +20,7 @@ type SessionSnapshot = {
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const CONFIG_TIMEOUT_MS = 5000;
 const SESSION_REQUEST_TIMEOUT_MS = 15000;
+const LOGIN_REQUEST_TIMEOUT_MS = 20000;
 const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
 const SESSION_REQUEST_ATTEMPTS = 2;
 const SESSION_RETRY_DELAY_MS = 700;
@@ -47,6 +49,7 @@ const restoreSnapshot = (): SessionSnapshot => {
     const parsed = JSON.parse(raw) as { user?: AdminUser | null } | null;
     const user =
       parsed?.user &&
+      (parsed.user.id === undefined || parsed.user.id === null || typeof parsed.user.id === 'number') &&
       typeof parsed.user.username === 'string' &&
       typeof parsed.user.role === 'string'
         ? parsed.user
@@ -300,12 +303,16 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
     updateSnapshot({ isLoading: true, error: null });
     try {
       await withTimeout(loadRuntimeConfig(), CONFIG_TIMEOUT_MS, 'No se pudo cargar la configuracion');
-      const res = await fetchWithTimeout(`${getApiBaseUrl()}/auth/login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      }, SESSION_REQUEST_TIMEOUT_MS);
+      const res = await fetchWithRetry(
+        `${getApiBaseUrl()}/auth/login`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        },
+        LOGIN_REQUEST_TIMEOUT_MS
+      );
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({ detail: 'Error desconocido' }));
