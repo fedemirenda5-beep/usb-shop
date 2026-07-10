@@ -133,9 +133,12 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingCustomer, setDeletingCustomer] = useState(false);
+  const [assigningSeller, setAssigningSeller] = useState(false);
+  const [togglingCustomerStatus, setTogglingCustomerStatus] = useState(false);
   const [syncingCustomers, setSyncingCustomers] = useState(false);
   const [error, setError] = useState('');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(emptyCustomerForm);
+  const [quickSellerId, setQuickSellerId] = useState('');
   const [showGrowthChart, setShowGrowthChart] = useState(false);
 
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
@@ -191,11 +194,13 @@ export default function ClientesPage() {
         seller_id: customerData.seller_id ? String(customerData.seller_id) : '',
         zone: customerData.zone || '',
       });
+      setQuickSellerId(customerData.seller_id ? String(customerData.seller_id) : '');
       setShowCustomerForm(false);
     } catch (err) {
       if (signal?.aborted) return;
       setSelectedCustomer(null);
       setCustomerForm(emptyCustomerForm());
+      setQuickSellerId('');
       setError(err instanceof Error ? err.message : 'Error cargando el detalle');
     }
   };
@@ -241,6 +246,7 @@ export default function ClientesPage() {
     } else {
       setSelectedCustomer(null);
       setCustomerForm(emptyCustomerForm());
+      setQuickSellerId('');
     }
   }, [selectedCustomerId]);
 
@@ -410,6 +416,77 @@ export default function ClientesPage() {
       setError(err instanceof Error ? err.message : 'Error guardando cliente');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const updateSelectedCustomer = async (
+    overrides: Partial<CustomerFormState>,
+    options?: { keepFormOpen?: boolean }
+  ) => {
+    if (!selectedCustomerId || !selectedCustomer) return false;
+    const payload = {
+      name: selectedCustomer.name || '',
+      is_active: selectedCustomer.is_active !== false,
+      email: selectedCustomer.email || '',
+      phone: selectedCustomer.phone || '',
+      sale_mode: selectedCustomer.sale_mode || 'CONTADO',
+      locality: selectedCustomer.locality || '',
+      address: selectedCustomer.address || '',
+      tax_condition: selectedCustomer.tax_condition || 'CONSUMIDOR_FINAL',
+      cuit: selectedCustomer.cuit || '',
+      seller_id: selectedCustomer.seller_id ? String(selectedCustomer.seller_id) : '',
+      zone: selectedCustomer.zone || '',
+      ...overrides,
+    };
+    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${selectedCustomerId}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...payload,
+        is_active: payload.is_active === '1' || payload.is_active === true,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.detail || 'No se pudo actualizar el cliente');
+    }
+    await loadCustomers(search);
+    await loadCustomerDetail(selectedCustomerId);
+    if (!options?.keepFormOpen) {
+      setShowCustomerForm(false);
+    }
+    return true;
+  };
+
+  const saveQuickSellerAssignment = async () => {
+    if (!selectedCustomer) return;
+    try {
+      setAssigningSeller(true);
+      setError('');
+      await loadRuntimeConfig();
+      await updateSelectedCustomer({ seller_id: quickSellerId }, { keepFormOpen: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo asignar el vendedor');
+    } finally {
+      setAssigningSeller(false);
+    }
+  };
+
+  const toggleSelectedCustomerActive = async () => {
+    if (!selectedCustomer) return;
+    try {
+      setTogglingCustomerStatus(true);
+      setError('');
+      await loadRuntimeConfig();
+      await updateSelectedCustomer(
+        { is_active: selectedCustomer.is_active === false ? '1' : '0' },
+        { keepFormOpen: true }
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo actualizar el estado del cliente');
+    } finally {
+      setTogglingCustomerStatus(false);
     }
   };
 
@@ -589,6 +666,8 @@ export default function ClientesPage() {
                     key={customer.id}
                     className={customer.id === selectedCustomerId ? styles.customerRowActive : ''}
                     onClick={() => setSelectedCustomerId(customer.id)}
+                    onDoubleClick={openSelectedCustomerForEdit}
+                    title="Click para seleccionar. Doble click para editar."
                   >
                     <td>{customer.id}</td>
                     <td>
@@ -746,6 +825,60 @@ export default function ClientesPage() {
                 <span className={selectedCustomer.balance > 0 ? styles.debt : styles.credit}>
                   {formatCurrency(selectedCustomer.balance)}
                 </span>
+              </div>
+              <div className={styles.summaryField}>
+                <strong>Asignar vendedor</strong>
+                <div className={styles.inlineActions}>
+                  <select
+                    value={quickSellerId}
+                    onChange={(e) => setQuickSellerId(e.target.value)}
+                    className={styles.inlineSelect}
+                  >
+                    <option value="">Sin asignar</option>
+                    {sellers.map((seller) => (
+                      <option key={seller.id} value={String(seller.id)}>
+                        {seller.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => void saveQuickSellerAssignment()}
+                    disabled={assigningSeller}
+                  >
+                    {assigningSeller ? 'Guardando...' : 'Guardar vendedor'}
+                  </button>
+                </div>
+              </div>
+              <div className={styles.summaryActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={openSelectedCustomerForEdit}
+                >
+                  Editar cliente
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void toggleSelectedCustomerActive()}
+                  disabled={togglingCustomerStatus}
+                >
+                  {togglingCustomerStatus
+                    ? 'Guardando...'
+                    : selectedCustomer.is_active === false
+                      ? 'Reactivar cliente'
+                      : 'Dar de baja'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={() => void deleteInactiveCustomer()}
+                  disabled={selectedCustomer.is_active !== false || deletingCustomer}
+                >
+                  {deletingCustomer ? 'Eliminando...' : 'Eliminar inactivo'}
+                </button>
               </div>
             </div>
 

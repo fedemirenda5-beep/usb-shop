@@ -199,6 +199,34 @@
   color: #64748b;
 }
 
+.summaryField {
+  display: grid;
+  gap: 8px;
+}
+
+.summaryActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.inlineActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.inlineSelect {
+  min-width: 220px;
+  border: 1px solid #d7dee7;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  background: #fff;
+}
+
 .documentCard {
   border: 1px solid #dbe4ee;
   border-radius: 14px;
@@ -375,9 +403,16 @@
   .panelHeader,
   .documentCard,
   .headerActions,
-  .formActions {
+  .formActions,
+  .summaryActions,
+  .inlineActions {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .inlineSelect {
+    min-width: 0;
+    width: 100%;
   }
 
   .formGrid {
