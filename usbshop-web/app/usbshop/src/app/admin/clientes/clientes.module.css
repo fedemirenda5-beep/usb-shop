@@ -26,6 +26,13 @@
   padding: 18px;
 }
 
+.headerContent {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
 .header h1,
 .panelHeader h2,
 .panelHeader h3 {
@@ -47,6 +54,26 @@
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.backButton {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: white;
+  color: #132238;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+}
+
+.backButton span {
+  font-size: 18px;
+  line-height: 1;
 }
 
 .printControls {
@@ -112,6 +139,57 @@
   color: #64748b;
   font-size: 13px;
   margin-bottom: 12px;
+}
+
+.workspaceBanner {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(120deg, rgba(15, 23, 42, 0.04), rgba(20, 184, 166, 0.12));
+  border: 1px solid rgba(20, 184, 166, 0.22);
+}
+
+.workspaceBannerSummary {
+  display: grid;
+  gap: 4px;
+}
+
+.workspaceBannerSummary span,
+.workspaceBannerStats span {
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workspaceBannerSummary strong {
+  color: #132238;
+  font-size: 20px;
+}
+
+.workspaceBannerSummary small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.workspaceBannerStats {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.workspaceBannerStats div {
+  display: grid;
+  gap: 4px;
+}
+
+.workspaceBannerStats strong {
+  color: #132238;
+  font-size: 14px;
 }
 
 .tableWrap {
@@ -557,12 +635,15 @@
   }
 
   .header,
+  .headerContent,
   .panelHeader,
   .documentCard,
   .headerActions,
   .formActions,
   .summaryActions,
   .inlineActions,
+  .workspaceBanner,
+  .workspaceBannerStats,
   .printControls {
     flex-direction: column;
     align-items: flex-start;

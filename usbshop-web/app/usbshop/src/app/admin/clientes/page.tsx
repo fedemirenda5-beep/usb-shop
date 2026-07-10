@@ -122,6 +122,7 @@ const getMonthBucket = (value?: string | null) => {
 
 export default function ClientesPage() {
   const detailRequestRef = useRef(0);
+  const detailSectionRef = useRef<HTMLElement | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
@@ -141,6 +142,27 @@ export default function ClientesPage() {
   const [quickSellerId, setQuickSellerId] = useState('');
   const [printScope, setPrintScope] = useState<'all' | 'seller'>('all');
   const [showGrowthChart, setShowGrowthChart] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 860 : false
+  );
+  const [desktopWorkspaceMode, setDesktopWorkspaceMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+    const media = window.matchMedia('(max-width: 860px)');
+    const sync = () => setIsMobileLayout(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    if (isMobileLayout) {
+      setDesktopWorkspaceMode(false);
+    }
+  }, [isMobileLayout]);
 
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
@@ -321,6 +343,21 @@ export default function ClientesPage() {
     });
     setError('');
     setShowCustomerForm(true);
+  };
+
+  const openCustomerWorkspace = (customerId: number) => {
+    setError('');
+    setSelectedCustomerId(customerId);
+    if (!isMobileLayout) {
+      setDesktopWorkspaceMode(true);
+    }
+    requestAnimationFrame(() => {
+      detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const exitDesktopWorkspace = () => {
+    setDesktopWorkspaceMode(false);
   };
 
   const sellerMap = useMemo(
@@ -583,9 +620,17 @@ export default function ClientesPage() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <div>
-          <h1>Clientes</h1>
-          <p>Padron unico con asignacion simple por vendedor y zona.</p>
+        <div className={styles.headerContent}>
+          <div>
+            <h1>Clientes</h1>
+            <p>Padron unico con asignacion simple por vendedor y zona.</p>
+          </div>
+          {!isMobileLayout && desktopWorkspaceMode ? (
+            <button type="button" className={styles.backButton} onClick={exitDesktopWorkspace}>
+              <span aria-hidden="true">←</span>
+              Cambiar cliente
+            </button>
+          ) : null}
         </div>
         <div className={styles.headerActions}>
           <button
@@ -662,6 +707,7 @@ export default function ClientesPage() {
         </label>
       </div>
 
+      {!desktopWorkspaceMode ? (
       <div className={styles.tablePanel}>
         <div className={styles.tableMeta}>
           <span>{filteredCustomers.length} clientes visibles{search ? ` para "${search}"` : ''}</span>
@@ -693,8 +739,8 @@ export default function ClientesPage() {
                     key={customer.id}
                     className={customer.id === selectedCustomerId ? styles.customerRowActive : ''}
                     onClick={() => setSelectedCustomerId(customer.id)}
-                    onDoubleClick={openSelectedCustomerForEdit}
-                    title="Click para seleccionar. Doble click para editar."
+                    onDoubleClick={() => void openCustomerWorkspace(customer.id)}
+                    title="Click para seleccionar. Doble click para abrir la ficha."
                   >
                     <td className={styles.colId}>{customer.id}</td>
                     <td className={styles.colCliente} title={customer.locality || customer.address || customer.name}>
@@ -757,8 +803,29 @@ export default function ClientesPage() {
           )}
         </div>
       </div>
+      ) : selectedCustomer ? (
+        <div className={styles.workspaceBanner}>
+          <div className={styles.workspaceBannerSummary}>
+            <span>Cliente activo</span>
+            <strong>{selectedCustomer.name}</strong>
+            <small>
+              #{selectedCustomer.id} · {selectedCustomer.email || selectedCustomer.phone || selectedCustomer.cuit || 'Sin dato de contacto'}
+            </small>
+          </div>
+          <div className={styles.workspaceBannerStats}>
+            <div>
+              <span>Saldo actual</span>
+              <strong>{formatCurrency(selectedCustomer.balance)}</strong>
+            </div>
+            <div>
+              <span>Estado</span>
+              <strong>{selectedCustomer.is_active === false ? 'Inactivo' : 'Activo'}</strong>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-      <section className={styles.main}>
+      <section className={styles.main} ref={detailSectionRef}>
         {showCustomerForm ? (
           <div className={styles.panel}>
             <div className={styles.panelHeader}>
