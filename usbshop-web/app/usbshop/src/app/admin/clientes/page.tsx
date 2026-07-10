@@ -492,12 +492,8 @@ export default function ClientesPage() {
 
   const deleteInactiveCustomer = async () => {
     if (!selectedCustomerId || !selectedCustomer) return;
-    if (selectedCustomer.is_active !== false) {
-      setError('Solo puedes eliminar clientes inactivos.');
-      return;
-    }
     const confirmed = window.confirm(
-      `Vas a eliminar el cliente inactivo "${selectedCustomer.name}". Esta accion no se puede deshacer.`
+      `Vas a eliminar el cliente "${selectedCustomer.name}". Esta accion no se puede deshacer.`
     );
     if (!confirmed) return;
     try {
@@ -592,7 +588,7 @@ export default function ClientesPage() {
             onClick={() => void deleteInactiveCustomer()}
             disabled={!selectedCustomer || selectedCustomer.is_active !== false || deletingCustomer}
           >
-            {deletingCustomer ? 'Eliminando...' : 'Eliminar inactivo'}
+            {deletingCustomer ? 'Eliminando...' : 'Eliminar cliente'}
           </button>
           <button type="button" className={styles.primaryButton} onClick={resetForNewCustomer}>
             + Nuevo cliente
@@ -875,9 +871,9 @@ export default function ClientesPage() {
                   type="button"
                   className={styles.dangerButton}
                   onClick={() => void deleteInactiveCustomer()}
-                  disabled={selectedCustomer.is_active !== false || deletingCustomer}
+                  disabled={deletingCustomer}
                 >
-                  {deletingCustomer ? 'Eliminando...' : 'Eliminar inactivo'}
+                  {deletingCustomer ? 'Eliminando...' : 'Eliminar cliente'}
                 </button>
               </div>
             </div>

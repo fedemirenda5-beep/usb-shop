@@ -5163,8 +5163,6 @@ def admin_delete_backoffice_customer(
         ).fetchone()
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        if bool(int(customer["is_active"] or 0)):
-            raise HTTPException(status_code=400, detail="Solo puedes eliminar clientes inactivos")
         invoice_count_row = conn.execute(
             "SELECT COUNT(*) AS qty FROM invoices WHERE customer_id = ?",
             (customer_id,),
