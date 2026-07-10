@@ -706,7 +706,11 @@ export default function ClientesPage() {
                       </span>
                     </td>
                     <td className={`${styles.colContacto} ${styles.truncateCell}`}>{customer.email || customer.phone || 'Sin dato'}</td>
-                    <td className={`${styles.colVendedor} ${styles.truncateCell}`}>{customer.seller_id ? sellerMap.get(customer.seller_id) || `Vendedor ${customer.seller_id}` : '-'}</td>
+                    <td className={styles.colVendedor}>
+                      <span className={styles.sellerName}>
+                        {customer.seller_id ? sellerMap.get(customer.seller_id) || `Vendedor ${customer.seller_id}` : '-'}
+                      </span>
+                    </td>
                     <td className={`${styles.colZona} ${styles.truncateCell}`}>{customer.zone || '-'}</td>
                     <td className={`${styles.colCuit} ${styles.truncateCell}`}>{customer.cuit || '-'}</td>
                     <td className={styles.colComprobantes}>{customer.invoice_count}</td>
