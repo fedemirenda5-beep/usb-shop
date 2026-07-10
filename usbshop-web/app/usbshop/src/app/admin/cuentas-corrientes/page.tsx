@@ -171,6 +171,7 @@ export default function CuentasCorrientesPage() {
   const [deleting, setDeleting] = useState(false);
   const [deletingMovementId, setDeletingMovementId] = useState<number | null>(null);
   const [detailOnly, setDetailOnly] = useState(false);
+  const [desktopWorkspaceMode, setDesktopWorkspaceMode] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDateRangeModal, setShowDateRangeModal] = useState(false);
   const [outputMode, setOutputMode] = useState<'print' | 'pdf' | null>(null);
@@ -372,6 +373,12 @@ export default function CuentasCorrientesPage() {
     if (isMobileLayout) return;
     setDetailOnly(false);
   }, [customers, isMobileLayout]);
+
+  useEffect(() => {
+    if (isMobileLayout) {
+      setDesktopWorkspaceMode(false);
+    }
+  }, [isMobileLayout]);
 
   const submitMovement = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -652,9 +659,30 @@ export default function CuentasCorrientesPage() {
     }
   };
 
+  const openDesktopWorkspace = (customerId: number) => {
+    setError('');
+    setSelectedId(customerId);
+    setDetail(null);
+    setInvoices([]);
+    setOutputRange(null);
+    setDetailOnly(false);
+    setDesktopWorkspaceMode(true);
+    window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   const closeDetailOnly = () => {
     setDetailOnly(false);
     setOutputRange(null);
+  };
+
+  const exitDesktopWorkspace = () => {
+    setDesktopWorkspaceMode(false);
+    setOutputRange(null);
+    window.requestAnimationFrame(() => {
+      document.querySelector(`.${styles.customerBoard}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const requestOutput = (mode: 'print' | 'pdf') => {
@@ -720,6 +748,7 @@ export default function CuentasCorrientesPage() {
 
       setShowDeleteModal(false);
       setDetailOnly(false);
+      setDesktopWorkspaceMode(false);
       setDetail(null);
       setInvoices([]);
       setSelectedId(null);
@@ -1258,6 +1287,34 @@ export default function CuentasCorrientesPage() {
       {!isMobileLayout && !detailOnly ? (
         <>
           <section className={styles.desktopToolbar}>
+            {desktopWorkspaceMode && selectedOverview ? (
+              <div className={styles.workspaceBanner}>
+                <div className={styles.workspaceBannerSummary}>
+                  <span>Cuenta activa</span>
+                  <strong>{selectedOverview.name}</strong>
+                  <small>
+                    #{selectedOverview.id} · {selectedOverview.email || selectedOverview.phone || selectedOverview.cuit || 'Sin dato de contacto'}
+                  </small>
+                </div>
+                <div className={styles.workspaceBannerStats}>
+                  <div>
+                    <span>Saldo actual</span>
+                    <strong>
+                      {selectedOverview.balance >= 0
+                        ? `Debe ${money(selectedOverview.balance)}`
+                        : `Haber ${money(Math.abs(selectedOverview.balance))}`}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Vencido</span>
+                    <strong>{money(selectedOverview.classification?.overdue || 0)}</strong>
+                  </div>
+                  <button type="button" className={styles.secondaryButton} onClick={exitDesktopWorkspace}>
+                    Cambiar cuenta
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div className={styles.searchBar}>
               <span>Buscar</span>
               <input
@@ -1343,7 +1400,8 @@ export default function CuentasCorrientesPage() {
             </div>
           </section>
 
-          <section className={styles.customerBoard}>
+          {!desktopWorkspaceMode ? (
+            <section className={styles.customerBoard}>
             <div className={styles.boardHeader}>
               <span>{filteredCustomers.length} clientes visibles</span>
               {hideGlobalTotals ? (
@@ -1373,7 +1431,7 @@ export default function CuentasCorrientesPage() {
                       <tr
                         key={customer.id}
                         className={selectedId === customer.id ? styles.customerRowActive : ''}
-                        onClick={() => setSelectedId(customer.id)}
+                        onClick={() => openDesktopWorkspace(customer.id)}
                         onDoubleClick={() => openCustomerDetail(customer.id)}
                       >
                         <td>
@@ -1397,7 +1455,8 @@ export default function CuentasCorrientesPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+            </section>
+          ) : null}
         </>
       ) : null}
 

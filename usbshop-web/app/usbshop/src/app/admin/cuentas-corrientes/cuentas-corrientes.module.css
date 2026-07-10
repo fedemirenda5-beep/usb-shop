@@ -20,6 +20,14 @@
 .search { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; }
 .inlineSearch { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; background: white; }
 .toolbarActions { display: flex; gap: 10px; flex-wrap: wrap; }
+.workspaceBanner { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 14px 16px; border-radius: 12px; background: linear-gradient(120deg, rgba(15,23,42,.04), rgba(132,204,22,.12)); border: 1px solid rgba(132,204,22,.24); }
+.workspaceBannerSummary { display: grid; gap: 4px; }
+.workspaceBannerSummary span, .workspaceBannerStats span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.workspaceBannerSummary strong { color: var(--ink); font-size: 20px; }
+.workspaceBannerSummary small { color: var(--muted); font-size: 12px; }
+.workspaceBannerStats { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.workspaceBannerStats div { display: grid; gap: 4px; }
+.workspaceBannerStats strong { color: var(--ink); font-size: 14px; }
 .primaryButton, .secondaryButton, .dangerButton, .modeButton { border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-weight: 700; font: inherit; }
 .primaryButton { background: var(--ink); color: white; }
 .secondaryButton { background: #eef2f7; color: var(--ink); }
@@ -137,7 +145,7 @@
 @media (max-width: 860px) {
   .mobilePicker { display: grid; }
   .desktopToolbar, .customerBoard { display: none; }
-  .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+  .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader, .workspaceBanner { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .toolbarActions, .accountActions, .modeSwitcher, .confirmActions, .formActions, .filterPills { flex-direction: column; }
   .modalOverlay { padding: 12px; }
   .confirmModal { padding: 14px; }
