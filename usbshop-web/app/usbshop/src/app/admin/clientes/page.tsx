@@ -265,6 +265,44 @@ export default function ClientesPage() {
     setShowCustomerForm(true);
   };
 
+  const loadCustomerDetailData = async (customerId: number) => {
+    await loadRuntimeConfig();
+    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${customerId}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.detail || 'No se pudo cargar el cliente');
+    }
+    return res.json();
+  };
+
+  const openCustomerForEdit = async (customerId: number) => {
+    try {
+      setError('');
+      const customerData = await loadCustomerDetailData(customerId);
+      setSelectedCustomerId(customerId);
+      setSelectedCustomer(customerData);
+      setCustomerForm({
+        name: customerData.name || '',
+        is_active: customerData.is_active === false ? '0' : '1',
+        email: customerData.email || '',
+        phone: customerData.phone || '',
+        sale_mode: customerData.sale_mode || 'CONTADO',
+        locality: customerData.locality || '',
+        address: customerData.address || '',
+        tax_condition: customerData.tax_condition || 'CONSUMIDOR_FINAL',
+        cuit: customerData.cuit || '',
+        seller_id: customerData.seller_id ? String(customerData.seller_id) : '',
+        zone: customerData.zone || '',
+      });
+      setQuickSellerId(customerData.seller_id ? String(customerData.seller_id) : '');
+      setShowCustomerForm(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo abrir el cliente');
+    }
+  };
+
   const openSelectedCustomerForEdit = () => {
     if (!selectedCustomer) return;
     setCustomerForm({
@@ -490,17 +528,16 @@ export default function ClientesPage() {
     }
   };
 
-  const deleteInactiveCustomer = async () => {
-    if (!selectedCustomerId || !selectedCustomer) return;
+  const deleteCustomer = async (customerId: number, customerName: string) => {
     const confirmed = window.confirm(
-      `Vas a eliminar el cliente "${selectedCustomer.name}". Esta accion no se puede deshacer.`
+      `Vas a eliminar el cliente "${customerName}". Esta accion no se puede deshacer.`
     );
     if (!confirmed) return;
     try {
       setDeletingCustomer(true);
       setError('');
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${selectedCustomerId}`, {
+      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${customerId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -508,9 +545,12 @@ export default function ClientesPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.detail || 'No se pudo eliminar el cliente');
       }
-      setSelectedCustomerId(null);
-      setSelectedCustomer(null);
-      setCustomerForm(emptyCustomerForm());
+      if (selectedCustomerId === customerId) {
+        setSelectedCustomerId(null);
+        setSelectedCustomer(null);
+        setCustomerForm(emptyCustomerForm());
+        setQuickSellerId('');
+      }
       await loadCustomers(search);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error eliminando cliente');
@@ -582,14 +622,6 @@ export default function ClientesPage() {
           >
             Editar cliente
           </button>
-          <button
-            type="button"
-            className={styles.dangerButton}
-            onClick={() => void deleteInactiveCustomer()}
-            disabled={!selectedCustomer || selectedCustomer.is_active !== false || deletingCustomer}
-          >
-            {deletingCustomer ? 'Eliminando...' : 'Eliminar cliente'}
-          </button>
           <button type="button" className={styles.primaryButton} onClick={resetForNewCustomer}>
             + Nuevo cliente
           </button>
@@ -654,6 +686,7 @@ export default function ClientesPage() {
                   <th>CUIT / DNI</th>
                   <th>Comprobantes</th>
                   <th>Saldo</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -682,6 +715,39 @@ export default function ClientesPage() {
                     <td>{customer.invoice_count}</td>
                     <td className={customer.balance > 0 ? styles.debt : styles.credit}>
                       {formatCurrency(customer.balance)}
+                    </td>
+                    <td>
+                      <div className={styles.rowActions}>
+                        <button
+                          type="button"
+                          className={styles.iconButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openCustomerForEdit(customer.id);
+                          }}
+                          title={`Editar ${customer.name}`}
+                          aria-label={`Editar ${customer.name}`}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25Zm2.92 2.33H5v-.92l9.06-9.06.92.92L5.92 19.58ZM20.71 7.04a1 1 0 0 0 0-1.41L18.37 3.3a1 1 0 0 0-1.41 0l-1.13 1.13 3.75 3.75 1.13-1.14Z" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.iconDeleteButton}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void deleteCustomer(customer.id, customer.name);
+                          }}
+                          title={`Eliminar ${customer.name}`}
+                          aria-label={`Eliminar ${customer.name}`}
+                          disabled={deletingCustomer}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 6h2v8h-2V9Zm4 0h2v8h-2V9ZM7 9h2v8H7V9Zm-1 11a2 2 0 0 1-2-2V8h16v10a2 2 0 0 1-2 2H6Z" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -870,7 +936,7 @@ export default function ClientesPage() {
                 <button
                   type="button"
                   className={styles.dangerButton}
-                  onClick={() => void deleteInactiveCustomer()}
+                  onClick={() => void deleteCustomer(selectedCustomer.id, selectedCustomer.name)}
                   disabled={deletingCustomer}
                 >
                   {deletingCustomer ? 'Eliminando...' : 'Eliminar cliente'}
