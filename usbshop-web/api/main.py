@@ -5163,32 +5163,12 @@ def admin_delete_backoffice_customer(
         ).fetchone()
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        invoice_count_row = conn.execute(
-            "SELECT COUNT(*) AS qty FROM invoices WHERE customer_id = ?",
-            (customer_id,),
-        ).fetchone()
-        movement_count_row = conn.execute(
-            """
-            SELECT COUNT(*) AS qty
-            FROM account_movements
-            WHERE customer_id = ?
-            """
-            + _active_account_movements_clause(conn),
-            (customer_id,),
-        ).fetchone()
-        invoice_count = int(invoice_count_row["qty"] or 0)
-        movement_count = int(movement_count_row["qty"] or 0)
-        if invoice_count > 0 or movement_count > 0:
-            raise HTTPException(
-                status_code=400,
-                detail="No se puede eliminar el cliente porque todavia tiene comprobantes o movimientos asociados",
-            )
         conn.execute(
             "UPDATE customers SET deleted_at = ?, is_active = 0 WHERE id = ?",
             (datetime.utcnow().isoformat(), customer_id),
         )
         conn.commit()
-        return {"id": customer_id, "message": "Cliente eliminado"}
+        return {"id": customer_id, "message": "Cliente eliminado con historial conservado"}
     finally:
         conn.close()
 
