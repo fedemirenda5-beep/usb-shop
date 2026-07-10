@@ -49,6 +49,23 @@
   flex-wrap: wrap;
 }
 
+.printControls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.headerSelect {
+  min-width: 190px;
+  border: 1px solid #d7dee7;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  background: #fff;
+  color: #132238;
+}
+
 .searchBar input,
 .formGrid input,
 .formGrid select,
@@ -104,14 +121,16 @@
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .table th,
 .table td {
-  padding: 10px 8px;
+  padding: 10px 6px;
   border-bottom: 1px solid #e2e8f0;
   text-align: left;
-  font-size: 14px;
+  font-size: 13px;
+  vertical-align: middle;
 }
 
 .table th {
@@ -128,19 +147,68 @@
   background: #f0fdfa;
 }
 
+.truncateText,
+.truncateCell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.colId {
+  width: 56px;
+}
+
+.colCliente {
+  width: 18%;
+}
+
+.colEstado {
+  width: 92px;
+}
+
+.colContacto {
+  width: 16%;
+}
+
+.colVendedor {
+  width: 14%;
+}
+
+.colZona {
+  width: 10%;
+}
+
+.colCuit {
+  width: 12%;
+}
+
+.colComprobantes {
+  width: 92px;
+  text-align: center !important;
+}
+
+.colSaldo {
+  width: 112px;
+}
+
+.colAcciones {
+  width: 88px;
+}
+
 .rowActions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .iconButton,
 .iconDeleteButton {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 1px solid #d7dee7;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   display: inline-flex;
   align-items: center;
@@ -156,8 +224,8 @@
 
 .iconButton svg,
 .iconDeleteButton svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: currentColor;
 }
 
@@ -448,6 +516,18 @@
   .grid {
     grid-template-columns: 1fr;
   }
+
+  .colCuit,
+  .colComprobantes {
+    display: none;
+  }
+}
+
+@media (max-width: 920px) {
+  .colContacto,
+  .colZona {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
@@ -457,17 +537,24 @@
     grid-template-columns: 1fr;
   }
 
+  .colId,
+  .colVendedor {
+    display: none;
+  }
+
   .header,
   .panelHeader,
   .documentCard,
   .headerActions,
   .formActions,
   .summaryActions,
-  .inlineActions {
+  .inlineActions,
+  .printControls {
     flex-direction: column;
     align-items: flex-start;
   }
 
+  .headerSelect,
   .inlineSelect {
     min-width: 0;
     width: 100%;

@@ -139,6 +139,7 @@ export default function ClientesPage() {
   const [error, setError] = useState('');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(emptyCustomerForm);
   const [quickSellerId, setQuickSellerId] = useState('');
+  const [printScope, setPrintScope] = useState<'all' | 'seller'>('all');
   const [showGrowthChart, setShowGrowthChart] = useState(false);
 
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
@@ -383,28 +384,24 @@ export default function ClientesPage() {
     };
   }, [customers]);
 
-  const selectedSellerName =
-    (sellerFilter !== 'all' ? sellerMap.get(Number(sellerFilter)) : undefined) ||
-    (selectedCustomer?.seller_id ? sellerMap.get(selectedCustomer.seller_id) : undefined) ||
-    null;
-
   const printSellerCustomers = async () => {
-    const targetSellerId =
-      sellerFilter !== 'all'
-        ? Number(sellerFilter)
-        : selectedCustomer?.seller_id
-          ? Number(selectedCustomer.seller_id)
-          : null;
-    if (!targetSellerId) {
-      setError('Selecciona un vendedor para imprimir su listado.');
+    const targetSellerId = sellerFilter !== 'all' ? Number(sellerFilter) : null;
+    if (printScope === 'seller' && !targetSellerId) {
+      setError('Selecciona un vendedor en el filtro para imprimir solo sus clientes.');
       return;
     }
-    const printableCustomers = (sellerFilter !== 'all' ? filteredCustomers : customers.filter((item) => item.seller_id === targetSellerId))
-      .filter((item) => item.seller_id === targetSellerId)
-      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    const printableCustomers =
+      printScope === 'seller'
+        ? filteredCustomers
+            .filter((item) => item.seller_id === targetSellerId)
+            .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        : filteredCustomers.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
     try {
       await openAdminSellerCustomersPrint({
-        sellerName: sellerMap.get(targetSellerId) || `Vendedor ${targetSellerId}`,
+        sellerName:
+          printScope === 'seller' && targetSellerId
+            ? sellerMap.get(targetSellerId) || `Vendedor ${targetSellerId}`
+            : 'Todos los clientes',
         generatedAtLabel: formatDate(new Date().toISOString()),
         customers: printableCustomers.map((customer) => ({
           id: customer.id,
@@ -598,14 +595,23 @@ export default function ClientesPage() {
           >
             Grafico clientes
           </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => void printSellerCustomers()}
-            disabled={!selectedSellerName}
-          >
-            Imprimir clientes{selectedSellerName ? ` de ${selectedSellerName}` : ''}
-          </button>
+          <div className={styles.printControls}>
+            <select
+              value={printScope}
+              onChange={(e) => setPrintScope(e.target.value === 'seller' ? 'seller' : 'all')}
+              className={styles.headerSelect}
+            >
+              <option value="all">Imprimir todos</option>
+              <option value="seller">Filtrar por vendedor</option>
+            </select>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void printSellerCustomers()}
+            >
+              Imprimir clientes
+            </button>
+          </div>
           <button
             type="button"
             className={styles.secondaryButton}
@@ -613,14 +619,6 @@ export default function ClientesPage() {
             disabled={syncingCustomers}
           >
             {syncingCustomers ? 'Actualizando...' : 'Importar desde pedidos web'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={openSelectedCustomerForEdit}
-            disabled={!selectedCustomer}
-          >
-            Editar cliente
           </button>
           <button type="button" className={styles.primaryButton} onClick={resetForNewCustomer}>
             + Nuevo cliente
@@ -677,16 +675,16 @@ export default function ClientesPage() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Cliente</th>
-                  <th>Estado</th>
-                  <th>Contacto</th>
-                  <th>Vendedor</th>
-                  <th>Zona</th>
-                  <th>CUIT / DNI</th>
-                  <th>Comprobantes</th>
-                  <th>Saldo</th>
-                  <th>Acciones</th>
+                  <th className={styles.colId}>ID</th>
+                  <th className={styles.colCliente}>Cliente</th>
+                  <th className={styles.colEstado}>Estado</th>
+                  <th className={styles.colContacto}>Contacto</th>
+                  <th className={styles.colVendedor}>Vendedor</th>
+                  <th className={styles.colZona}>Zona</th>
+                  <th className={styles.colCuit}>CUIT / DNI</th>
+                  <th className={styles.colComprobantes}>Comprobantes</th>
+                  <th className={styles.colSaldo}>Saldo</th>
+                  <th className={styles.colAcciones}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -698,25 +696,25 @@ export default function ClientesPage() {
                     onDoubleClick={openSelectedCustomerForEdit}
                     title="Click para seleccionar. Doble click para editar."
                   >
-                    <td>{customer.id}</td>
-                    <td>
+                    <td className={styles.colId}>{customer.id}</td>
+                    <td className={styles.colCliente}>
                       <strong>{customer.name}</strong>
-                      <span className={styles.metaLine}>{customer.locality || customer.address || 'Sin localidad'}</span>
+                      <span className={`${styles.metaLine} ${styles.truncateText}`}>{customer.locality || customer.address || 'Sin localidad'}</span>
                     </td>
-                    <td>
+                    <td className={styles.colEstado}>
                       <span className={customer.is_active === false ? styles.inactiveBadge : styles.activeBadge}>
                         {customer.is_active === false ? 'Inactivo' : 'Activo'}
                       </span>
                     </td>
-                    <td>{customer.email || customer.phone || 'Sin dato'}</td>
-                    <td>{customer.seller_id ? sellerMap.get(customer.seller_id) || `Vendedor ${customer.seller_id}` : '-'}</td>
-                    <td>{customer.zone || '-'}</td>
-                    <td>{customer.cuit || '-'}</td>
-                    <td>{customer.invoice_count}</td>
-                    <td className={customer.balance > 0 ? styles.debt : styles.credit}>
+                    <td className={`${styles.colContacto} ${styles.truncateCell}`}>{customer.email || customer.phone || 'Sin dato'}</td>
+                    <td className={`${styles.colVendedor} ${styles.truncateCell}`}>{customer.seller_id ? sellerMap.get(customer.seller_id) || `Vendedor ${customer.seller_id}` : '-'}</td>
+                    <td className={`${styles.colZona} ${styles.truncateCell}`}>{customer.zone || '-'}</td>
+                    <td className={`${styles.colCuit} ${styles.truncateCell}`}>{customer.cuit || '-'}</td>
+                    <td className={styles.colComprobantes}>{customer.invoice_count}</td>
+                    <td className={`${styles.colSaldo} ${customer.balance > 0 ? styles.debt : styles.credit}`}>
                       {formatCurrency(customer.balance)}
                     </td>
-                    <td>
+                    <td className={styles.colAcciones}>
                       <div className={styles.rowActions}>
                         <button
                           type="button"
