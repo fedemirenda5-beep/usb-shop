@@ -1190,9 +1190,17 @@ export default function CuentasCorrientesPage() {
   return (
     <div className={`${styles.page} ${detailOnly ? styles.pageDetailOnly : ''}`}>
       <section className={styles.header}>
-        <div>
+        <div className={styles.headerContent}>
+          <div>
           <h1>Cuentas corrientes</h1>
           <p>Vista operativa inspirada en la app de escritorio: clientes, saldo y movimientos en una sola pantalla.</p>
+          </div>
+          {!isMobileLayout && desktopWorkspaceMode ? (
+            <button type="button" className={styles.backButton} onClick={exitDesktopWorkspace}>
+              <span aria-hidden="true">←</span>
+              Cambiar cuenta
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -1309,9 +1317,6 @@ export default function CuentasCorrientesPage() {
                     <span>Vencido</span>
                     <strong>{money(selectedOverview.classification?.overdue || 0)}</strong>
                   </div>
-                  <button type="button" className={styles.secondaryButton} onClick={exitDesktopWorkspace}>
-                    Cambiar cuenta
-                  </button>
                 </div>
               </div>
             ) : null}

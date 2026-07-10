@@ -1,6 +1,9 @@
 .page { display: flex; flex-direction: column; gap: 16px; }
+.headerContent { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
 .header h1 { margin: 0; color: var(--ink); }
 .header p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.backButton { border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 999px; padding: 10px 16px; background: white; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); }
+.backButton span { font-size: 18px; line-height: 1; }
 .desktopToolbar, .customerBoard, .content { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; box-shadow: 0 4px 16px var(--shadow); }
 .mobilePicker { display: none; background: white; border: 1px solid var(--bg-soft); border-radius: 14px; box-shadow: 0 4px 16px var(--shadow); padding: 14px; gap: 12px; }
 .mobilePickerHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
@@ -145,7 +148,7 @@
 @media (max-width: 860px) {
   .mobilePicker { display: grid; }
   .desktopToolbar, .customerBoard { display: none; }
-  .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader, .workspaceBanner { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
+  .headerContent, .searchBar, .boardHeader, .accountHeader, .sectionHeader, .formHeader, .workspaceBanner { grid-template-columns: 1fr; flex-direction: column; align-items: stretch; }
   .toolbarActions, .accountActions, .modeSwitcher, .confirmActions, .formActions, .filterPills { flex-direction: column; }
   .modalOverlay { padding: 12px; }
   .confirmModal { padding: 14px; }
