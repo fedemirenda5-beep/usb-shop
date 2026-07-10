@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import styles from './ProductForm.module.css';
@@ -242,6 +242,13 @@ export function ProductForm({
   const isUploadingAnyImage = uploadingSlots.some(Boolean);
   const selectedCategory = categories.find((category) => String(category.id) === formData.category_id);
   const isCellphonesCategory = normalizeCategoryName(selectedCategory?.name || '') === 'celulares';
+
+  const handleBarcodeKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') {
+      return;
+    }
+    event.preventDefault();
+  };
 
   const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
     setFormData((prev) => ({ ...prev, [name]: value } as ProductFormState));
@@ -537,6 +544,7 @@ export function ProductForm({
             name="barcode"
             value={formData.barcode}
             onChange={handleChange}
+            onKeyDown={handleBarcodeKeyDown}
             placeholder="Ej: 7791234567890"
             disabled={loading}
             className={styles.input}
