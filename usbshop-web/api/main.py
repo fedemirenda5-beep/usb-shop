@@ -2486,6 +2486,7 @@ def _customer_select_fields(conn: DBConn, alias: str = "") -> str:
     ]
     optional_fields = [
         "created_at",
+        "is_active",
         "sale_mode",
         "locality",
         "address",
@@ -4388,7 +4389,7 @@ def admin_backoffice_customers(
             f"""
             SELECT {customer_fields}
             FROM customers
-            WHERE COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            WHERE deleted_at IS NULL
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
             """,
         ).fetchall()
@@ -4450,6 +4451,7 @@ def admin_backoffice_customers(
                 "email": row["email"],
                 "phone": row["phone"],
                 "created_at": row["created_at"],
+                "is_active": bool(int(row["is_active"] or 0)) if row["is_active"] is not None else True,
                 "sale_mode": row["sale_mode"],
                 "locality": row["locality"],
                 "address": row["address"],
@@ -4931,7 +4933,7 @@ def admin_backoffice_customer_detail(
             f"""
             SELECT {customer_fields}
             FROM customers
-            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (customer_id,),
         ).fetchone()
@@ -4995,6 +4997,7 @@ def admin_backoffice_customer_detail(
             "seller_id": int(customer["seller_id"]) if customer["seller_id"] is not None else None,
             "zone": customer["zone"],
             "created_at": customer["created_at"],
+            "is_active": bool(int(customer["is_active"] or 0)) if customer["is_active"] is not None else True,
             "balance": _customer_current_balance_from_rows(movements),
             "documents": [
                 {
@@ -5049,13 +5052,14 @@ def admin_create_backoffice_customer(
             str(payload.get("cuit") or "").strip() or None,
             seller_id,
             str(payload.get("zone") or "").strip() or None,
+            1 if bool(payload.get("is_active", True)) else 0,
         )
         if DB_IS_POSTGRES:
             row = conn.execute(
                 """
                 INSERT INTO customers (
                     name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, seller_id, zone, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 RETURNING id
                 """,
                 params,
@@ -5066,7 +5070,7 @@ def admin_create_backoffice_customer(
                 """
                 INSERT INTO customers (
                     name, email, phone, created_at, sale_mode, locality, address, tax_condition, cuit, seller_id, zone, is_active
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 params,
             )
@@ -5106,7 +5110,7 @@ def admin_update_backoffice_customer(
             """
             SELECT id
             FROM customers
-            WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
+            WHERE id = ? AND deleted_at IS NULL
             """,
             (customer_id,),
         ).fetchone()
@@ -5115,7 +5119,7 @@ def admin_update_backoffice_customer(
         conn.execute(
             """
             UPDATE customers
-               SET name = ?, email = ?, phone = ?, sale_mode = ?, locality = ?, address = ?, tax_condition = ?, cuit = ?, seller_id = ?, zone = ?
+               SET name = ?, email = ?, phone = ?, sale_mode = ?, locality = ?, address = ?, tax_condition = ?, cuit = ?, seller_id = ?, zone = ?, is_active = ?
              WHERE id = ?
             """,
             (
@@ -5129,11 +5133,64 @@ def admin_update_backoffice_customer(
                 str(payload.get("cuit") or "").strip() or None,
                 seller_id,
                 str(payload.get("zone") or "").strip() or None,
+                1 if bool(payload.get("is_active", True)) else 0,
                 customer_id,
             ),
         )
         conn.commit()
         return {"id": customer_id, "message": "Cliente actualizado"}
+    finally:
+        conn.close()
+
+
+@app.delete("/admin/backoffice-customers/{customer_id}")
+def admin_delete_backoffice_customer(
+    customer_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        customer = conn.execute(
+            """
+            SELECT id, name, COALESCE(is_active, 1) AS is_active
+            FROM customers
+            WHERE id = ? AND deleted_at IS NULL
+            """,
+            (customer_id,),
+        ).fetchone()
+        if customer is None:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        if bool(int(customer["is_active"] or 0)):
+            raise HTTPException(status_code=400, detail="Solo puedes eliminar clientes inactivos")
+        invoice_count_row = conn.execute(
+            "SELECT COUNT(*) AS qty FROM invoices WHERE customer_id = ?",
+            (customer_id,),
+        ).fetchone()
+        movement_count_row = conn.execute(
+            """
+            SELECT COUNT(*) AS qty
+            FROM account_movements
+            WHERE customer_id = ?
+            """
+            + _active_account_movements_clause(conn),
+            (customer_id,),
+        ).fetchone()
+        invoice_count = int(invoice_count_row["qty"] or 0)
+        movement_count = int(movement_count_row["qty"] or 0)
+        if invoice_count > 0 or movement_count > 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede eliminar el cliente porque todavia tiene comprobantes o movimientos asociados",
+            )
+        conn.execute(
+            "UPDATE customers SET deleted_at = ?, is_active = 0 WHERE id = ?",
+            (datetime.utcnow().isoformat(), customer_id),
+        )
+        conn.commit()
+        return {"id": customer_id, "message": "Cliente eliminado"}
     finally:
         conn.close()
 

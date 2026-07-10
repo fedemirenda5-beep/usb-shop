@@ -153,7 +153,8 @@
 }
 
 .primaryButton,
-.secondaryButton {
+.secondaryButton,
+.dangerButton {
   border: none;
   border-radius: 12px;
   padding: 10px 14px;
@@ -170,6 +171,11 @@
 .secondaryButton {
   background: #e2e8f0;
   color: #132238;
+}
+
+.dangerButton {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .grid {
@@ -213,6 +219,26 @@
 .credit {
   color: #047857;
   font-weight: 700;
+}
+
+.activeBadge,
+.inactiveBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.activeBadge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.inactiveBadge {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .errorBox,

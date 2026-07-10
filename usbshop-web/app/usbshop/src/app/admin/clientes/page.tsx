@@ -17,6 +17,7 @@ type Seller = {
 type Customer = {
   id: number;
   name: string;
+  is_active?: boolean;
   email?: string | null;
   phone?: string | null;
   sale_mode?: string | null;
@@ -35,6 +36,7 @@ type Customer = {
 type CustomerDetail = {
   id: number;
   name: string;
+  is_active?: boolean;
   email?: string | null;
   phone?: string | null;
   sale_mode?: string | null;
@@ -73,6 +75,7 @@ type CustomerDetail = {
 
 type CustomerFormState = {
   name: string;
+  is_active: string;
   email: string;
   phone: string;
   sale_mode: string;
@@ -86,6 +89,7 @@ type CustomerFormState = {
 
 const emptyCustomerForm = (): CustomerFormState => ({
   name: '',
+  is_active: '1',
   email: '',
   phone: '',
   sale_mode: 'CONTADO',
@@ -128,6 +132,7 @@ export default function ClientesPage() {
   const [zoneFilter, setZoneFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingCustomer, setDeletingCustomer] = useState(false);
   const [syncingCustomers, setSyncingCustomers] = useState(false);
   const [error, setError] = useState('');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(emptyCustomerForm);
@@ -175,6 +180,7 @@ export default function ClientesPage() {
       setSelectedCustomer(customerData);
       setCustomerForm({
         name: customerData.name || '',
+        is_active: customerData.is_active === false ? '0' : '1',
         email: customerData.email || '',
         phone: customerData.phone || '',
         sale_mode: customerData.sale_mode || 'CONTADO',
@@ -257,6 +263,7 @@ export default function ClientesPage() {
     if (!selectedCustomer) return;
     setCustomerForm({
       name: selectedCustomer.name || '',
+      is_active: selectedCustomer.is_active === false ? '0' : '1',
       email: selectedCustomer.email || '',
       phone: selectedCustomer.phone || '',
       sale_mode: selectedCustomer.sale_mode || 'CONTADO',
@@ -385,7 +392,10 @@ export default function ClientesPage() {
         method,
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customerForm),
+        body: JSON.stringify({
+          ...customerForm,
+          is_active: customerForm.is_active === '1',
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -400,6 +410,39 @@ export default function ClientesPage() {
       setError(err instanceof Error ? err.message : 'Error guardando cliente');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteInactiveCustomer = async () => {
+    if (!selectedCustomerId || !selectedCustomer) return;
+    if (selectedCustomer.is_active !== false) {
+      setError('Solo puedes eliminar clientes inactivos.');
+      return;
+    }
+    const confirmed = window.confirm(
+      `Vas a eliminar el cliente inactivo "${selectedCustomer.name}". Esta accion no se puede deshacer.`
+    );
+    if (!confirmed) return;
+    try {
+      setDeletingCustomer(true);
+      setError('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${selectedCustomerId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail || 'No se pudo eliminar el cliente');
+      }
+      setSelectedCustomerId(null);
+      setSelectedCustomer(null);
+      setCustomerForm(emptyCustomerForm());
+      await loadCustomers(search);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error eliminando cliente');
+    } finally {
+      setDeletingCustomer(false);
     }
   };
 
@@ -466,6 +509,14 @@ export default function ClientesPage() {
           >
             Editar cliente
           </button>
+          <button
+            type="button"
+            className={styles.dangerButton}
+            onClick={() => void deleteInactiveCustomer()}
+            disabled={!selectedCustomer || selectedCustomer.is_active !== false || deletingCustomer}
+          >
+            {deletingCustomer ? 'Eliminando...' : 'Eliminar inactivo'}
+          </button>
           <button type="button" className={styles.primaryButton} onClick={resetForNewCustomer}>
             + Nuevo cliente
           </button>
@@ -523,6 +574,7 @@ export default function ClientesPage() {
                 <tr>
                   <th>ID</th>
                   <th>Cliente</th>
+                  <th>Estado</th>
                   <th>Contacto</th>
                   <th>Vendedor</th>
                   <th>Zona</th>
@@ -542,6 +594,11 @@ export default function ClientesPage() {
                     <td>
                       <strong>{customer.name}</strong>
                       <span className={styles.metaLine}>{customer.locality || customer.address || 'Sin localidad'}</span>
+                    </td>
+                    <td>
+                      <span className={customer.is_active === false ? styles.inactiveBadge : styles.activeBadge}>
+                        {customer.is_active === false ? 'Inactivo' : 'Activo'}
+                      </span>
                     </td>
                     <td>{customer.email || customer.phone || 'Sin dato'}</td>
                     <td>{customer.seller_id ? sellerMap.get(customer.seller_id) || `Vendedor ${customer.seller_id}` : '-'}</td>
@@ -573,6 +630,13 @@ export default function ClientesPage() {
               <label>
                 Nombre o razon social
                 <input name="name" value={customerForm.name} onChange={handleCustomerFormChange} required />
+              </label>
+              <label>
+                Estado
+                <select name="is_active" value={customerForm.is_active} onChange={handleCustomerFormChange}>
+                  <option value="1">Activo</option>
+                  <option value="0">Inactivo</option>
+                </select>
               </label>
               <label>
                 Email
@@ -658,6 +722,12 @@ export default function ClientesPage() {
               <div>
                 <strong>{selectedCustomer.name}</strong>
                 <span>{selectedCustomer.locality || selectedCustomer.address || 'Sin localidad cargada'}</span>
+              </div>
+              <div>
+                <strong>Estado</strong>
+                <span className={selectedCustomer.is_active === false ? styles.inactiveBadge : styles.activeBadge}>
+                  {selectedCustomer.is_active === false ? 'Inactivo' : 'Activo'}
+                </span>
               </div>
               <div>
                 <strong>Vendedor</strong>
