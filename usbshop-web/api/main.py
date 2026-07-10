@@ -607,7 +607,33 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
     conn.commit()
 
 
+def _cleanup_duplicate_users(conn: DBConn) -> None:
+    rows = conn.execute(
+        """
+        SELECT id, username
+        FROM users
+        ORDER BY LOWER(TRIM(username)) ASC, id ASC
+        """
+    ).fetchall()
+    seen: set[str] = set()
+    duplicate_ids: list[int] = []
+    for row in rows:
+        username_key = str(row["username"] or "").strip().lower()
+        if not username_key:
+            continue
+        if username_key in seen:
+            duplicate_ids.append(int(row["id"]))
+            continue
+        seen.add(username_key)
+    if not duplicate_ids:
+        return
+    placeholders = ", ".join(["?"] * len(duplicate_ids))
+    conn.execute(f"DELETE FROM users WHERE id IN ({placeholders})", tuple(duplicate_ids))
+    conn.commit()
+
+
 def _ensure_bootstrap_admin(conn: DBConn) -> None:
+    _cleanup_duplicate_users(conn)
     _ensure_bootstrap_user(conn, "USB_ADMIN_USERNAME", "USB_ADMIN_PASSWORD", ROLE_ADMIN)
     _ensure_bootstrap_user(conn, "USB_STAFF_USERNAME", "USB_STAFF_PASSWORD", ROLE_STAFF)
 
