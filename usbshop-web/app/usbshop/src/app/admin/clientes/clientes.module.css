@@ -126,7 +126,7 @@
 
 .table th,
 .table td {
-  padding: 10px 6px;
+  padding: 8px 6px;
   border-bottom: 1px solid #e2e8f0;
   text-align: left;
   font-size: 13px;
@@ -176,7 +176,7 @@
 }
 
 .colZona {
-  width: 10%;
+  display: none;
 }
 
 .colCuit {
@@ -194,6 +194,13 @@
 
 .colAcciones {
   width: 88px;
+}
+
+.colCliente strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rowActions {
@@ -524,8 +531,7 @@
 }
 
 @media (max-width: 920px) {
-  .colContacto,
-  .colZona {
+  .colContacto {
     display: none;
   }
 }

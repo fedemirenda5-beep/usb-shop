@@ -697,9 +697,11 @@ export default function ClientesPage() {
                     title="Click para seleccionar. Doble click para editar."
                   >
                     <td className={styles.colId}>{customer.id}</td>
-                    <td className={styles.colCliente}>
+                    <td
+                      className={`${styles.colCliente} ${styles.truncateCell}`}
+                      title={customer.locality || customer.address || customer.name}
+                    >
                       <strong>{customer.name}</strong>
-                      <span className={`${styles.metaLine} ${styles.truncateText}`}>{customer.locality || customer.address || 'Sin localidad'}</span>
                     </td>
                     <td className={styles.colEstado}>
                       <span className={customer.is_active === false ? styles.inactiveBadge : styles.activeBadge}>
