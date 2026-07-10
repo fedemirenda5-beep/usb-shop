@@ -697,11 +697,8 @@ export default function ClientesPage() {
                     title="Click para seleccionar. Doble click para editar."
                   >
                     <td className={styles.colId}>{customer.id}</td>
-                    <td
-                      className={`${styles.colCliente} ${styles.truncateCell}`}
-                      title={customer.locality || customer.address || customer.name}
-                    >
-                      <strong>{customer.name}</strong>
+                    <td className={styles.colCliente} title={customer.locality || customer.address || customer.name}>
+                      <strong className={styles.clientName}>{customer.name}</strong>
                     </td>
                     <td className={styles.colEstado}>
                       <span className={customer.is_active === false ? styles.inactiveBadge : styles.activeBadge}>

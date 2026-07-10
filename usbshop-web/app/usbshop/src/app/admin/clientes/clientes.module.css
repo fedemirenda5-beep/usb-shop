@@ -126,12 +126,12 @@
 
 .table th,
 .table td {
-  padding: 6px 5px;
+  padding: 7px 6px;
   border-bottom: 1px solid #e2e8f0;
   text-align: left;
   font-size: 12px;
   vertical-align: middle;
-  line-height: 1.15;
+  line-height: 1.25;
 }
 
 .table th {
@@ -162,11 +162,11 @@
 }
 
 .colCliente {
-  width: 18%;
+  width: 22%;
 }
 
 .colEstado {
-  width: 82px;
+  width: 88px;
 }
 
 .colContacto {
@@ -174,7 +174,7 @@
 }
 
 .colVendedor {
-  width: 13%;
+  width: 15%;
 }
 
 .colZona {
@@ -182,42 +182,43 @@
 }
 
 .colCuit {
-  width: 12%;
+  width: 11%;
 }
 
 .colComprobantes {
-  width: 78px;
+  width: 72px;
   text-align: center !important;
 }
 
 .colSaldo {
-  width: 96px;
+  width: 92px;
 }
 
 .colAcciones {
-  width: 72px;
+  width: 78px;
 }
 
-.colCliente strong {
+.clientName {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.2;
 }
 
 .rowActions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
 }
 
 .iconButton,
 .iconDeleteButton {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: 1px solid #d7dee7;
   border-radius: 6px;
   background: #fff;
