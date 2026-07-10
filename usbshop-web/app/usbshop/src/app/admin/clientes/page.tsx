@@ -104,6 +104,18 @@ const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
 };
 
+const monthFormatter = new Intl.DateTimeFormat('es-AR', { month: 'short' });
+
+const getMonthBucket = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return {
+    year: parsed.getFullYear(),
+    month: parsed.getMonth(),
+  };
+};
+
 export default function ClientesPage() {
   const detailRequestRef = useRef(0);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -119,6 +131,7 @@ export default function ClientesPage() {
   const [syncingCustomers, setSyncingCustomers] = useState(false);
   const [error, setError] = useState('');
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(emptyCustomerForm);
+  const [showGrowthChart, setShowGrowthChart] = useState(false);
 
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
@@ -281,6 +294,44 @@ export default function ClientesPage() {
     ).sort((a, b) => a.localeCompare(b, 'es'));
   }, [customers]);
 
+  const customerGrowth = useMemo(() => {
+    const countsByYear = new Map<number, number[]>();
+    for (const customer of customers) {
+      const bucket = getMonthBucket(customer.created_at);
+      if (!bucket) continue;
+      if (!countsByYear.has(bucket.year)) {
+        countsByYear.set(bucket.year, Array.from({ length: 12 }, () => 0));
+      }
+      countsByYear.get(bucket.year)![bucket.month] += 1;
+    }
+
+    const years = Array.from(countsByYear.keys()).sort((a, b) => b - a);
+    const selectedYear = years[0] ?? new Date().getFullYear();
+    const monthlyCounts = countsByYear.get(selectedYear) || Array.from({ length: 12 }, () => 0);
+    const maxCount = Math.max(1, ...monthlyCounts);
+    const points = monthlyCounts
+      .map((count, index) => {
+        const x = 24 + index * 64;
+        const y = 180 - (count / maxCount) * 132;
+        return `${x},${y}`;
+      })
+      .join(' ');
+
+    return {
+      year: selectedYear,
+      years,
+      maxCount,
+      monthlyCounts: monthlyCounts.map((count, index) => ({
+        key: `${selectedYear}-${index}`,
+        label: monthFormatter.format(new Date(selectedYear, index, 1)).replace('.', ''),
+        count,
+        x: 24 + index * 64,
+        y: 180 - (count / maxCount) * 132,
+      })),
+      points,
+    };
+  }, [customers]);
+
   const selectedSellerName =
     (sellerFilter !== 'all' ? sellerMap.get(Number(sellerFilter)) : undefined) ||
     (selectedCustomer?.seller_id ? sellerMap.get(selectedCustomer.seller_id) : undefined) ||
@@ -384,6 +435,13 @@ export default function ClientesPage() {
           <p>Padron unico con asignacion simple por vendedor y zona.</p>
         </div>
         <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setShowGrowthChart(true)}
+          >
+            Grafico clientes
+          </button>
           <button
             type="button"
             className={styles.secondaryButton}
@@ -709,6 +767,56 @@ export default function ClientesPage() {
           corrientes trabajan sobre la misma base real del backoffice.
         </div>
       </section>
+
+      {showGrowthChart ? (
+        <div className={styles.modalOverlay} onClick={() => setShowGrowthChart(false)}>
+          <aside
+            className={styles.chartModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-growth-title"
+          >
+            <div className={styles.panelHeader}>
+              <div>
+                <h2 id="customer-growth-title">Crecimiento de clientes {customerGrowth.year}</h2>
+                <p>Altas mensuales de clientes para visualizar subas y bajas durante el año.</p>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={() => setShowGrowthChart(false)}>
+                Cerrar
+              </button>
+            </div>
+
+            <div className={styles.chartFrame}>
+              <svg viewBox="0 0 752 220" className={styles.chartSvg} role="img" aria-label="Grafico de altas mensuales de clientes">
+                <line x1="24" y1="180" x2="728" y2="180" className={styles.chartAxis} />
+                <line x1="24" y1="28" x2="24" y2="180" className={styles.chartAxis} />
+                <polyline points={customerGrowth.points} className={styles.chartLine} />
+                {customerGrowth.monthlyCounts.map((item) => (
+                  <g key={item.key}>
+                    <circle cx={item.x} cy={item.y} r="5" className={styles.chartPoint} />
+                    <text x={item.x} y={200} textAnchor="middle" className={styles.chartLabel}>
+                      {item.label}
+                    </text>
+                    <text x={item.x} y={item.y - 12} textAnchor="middle" className={styles.chartValue}>
+                      {item.count}
+                    </text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+
+            <div className={styles.chartGrid}>
+              {customerGrowth.monthlyCounts.map((item) => (
+                <article key={item.key} className={styles.chartCard}>
+                  <span>{item.label} {customerGrowth.year}</span>
+                  <strong>{item.count} clientes</strong>
+                </article>
+              ))}
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }

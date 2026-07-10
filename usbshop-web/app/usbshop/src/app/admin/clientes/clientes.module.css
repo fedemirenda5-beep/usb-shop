@@ -222,6 +222,96 @@
   padding: 14px 16px;
 }
 
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 240;
+}
+
+.chartModal {
+  width: min(980px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: white;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 20px;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.2);
+  padding: 20px;
+  display: grid;
+  gap: 18px;
+}
+
+.chartFrame {
+  border: 1px solid #dbe4ee;
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(180deg, #f8fbff, #ffffff);
+}
+
+.chartSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chartAxis {
+  stroke: #cbd5e1;
+  stroke-width: 1.5;
+}
+
+.chartLine {
+  fill: none;
+  stroke: #0f766e;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chartPoint {
+  fill: #1d4ed8;
+}
+
+.chartLabel {
+  fill: #64748b;
+  font-size: 12px;
+}
+
+.chartValue {
+  fill: #132238;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.chartCard {
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  display: grid;
+  gap: 6px;
+}
+
+.chartCard span {
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.chartCard strong {
+  color: #132238;
+  font-size: 16px;
+}
+
 .errorBox {
   background: #fff1f2;
   color: #9f1239;
@@ -250,7 +340,8 @@
 
 @media (max-width: 720px) {
   .filtersBar,
-  .summaryPanel {
+  .summaryPanel,
+  .chartGrid {
     grid-template-columns: 1fr;
   }
 
@@ -265,5 +356,13 @@
 
   .formGrid {
     grid-template-columns: 1fr;
+  }
+
+  .modalOverlay {
+    padding: 12px;
+  }
+
+  .chartModal {
+    padding: 16px;
   }
 }
