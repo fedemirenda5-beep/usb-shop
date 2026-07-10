@@ -168,7 +168,7 @@
 }
 
 .colContacto {
-  width: 16%;
+  display: none;
 }
 
 .colVendedor {
@@ -526,12 +526,6 @@
 
   .colCuit,
   .colComprobantes {
-    display: none;
-  }
-}
-
-@media (max-width: 920px) {
-  .colContacto {
     display: none;
   }
 }
