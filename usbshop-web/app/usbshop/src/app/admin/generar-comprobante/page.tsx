@@ -7,7 +7,15 @@ import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
 
-type CustomerOption = { id: number; name: string; email?: string | null; phone?: string | null; sale_mode?: string | null; cuit?: string | null };
+type CustomerOption = {
+  id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  sale_mode?: string | null;
+  cuit?: string | null;
+  seller_id?: number | null;
+};
 type ProductOption = {
   id: number;
   name: string;
@@ -231,7 +239,7 @@ export default function GenerarComprobantePage() {
           customer_id: matchedCustomer ? String(matchedCustomer.id) : '',
           document_type: 'FACTURA',
           sale_mode: matchedCustomer?.sale_mode || 'CONTADO',
-          seller_id: '',
+          seller_id: matchedCustomer?.seller_id ? String(matchedCustomer.seller_id) : '',
           price_list: '0',
           payment_method: 'EFECTIVO',
           created_at: nowInputValue(),
@@ -302,6 +310,7 @@ export default function GenerarComprobantePage() {
       ...current,
       customer_id: String(matchedCustomer.id),
       sale_mode: matchedCustomer.sale_mode || current.sale_mode,
+      seller_id: matchedCustomer.seller_id ? String(matchedCustomer.seller_id) : '',
     }));
   }, [customerIdParam, orderIdParam, budgetInvoiceIdParam, customers]);
 
@@ -711,6 +720,7 @@ export default function GenerarComprobantePage() {
       ...current,
       customer_id: String(customer.id),
       sale_mode: customer.sale_mode || current.sale_mode,
+      seller_id: customer.seller_id ? String(customer.seller_id) : '',
     }));
   };
 
