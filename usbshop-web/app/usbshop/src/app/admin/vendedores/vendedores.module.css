@@ -129,7 +129,7 @@
 }
 
 .primaryButton {
-  background: linear-gradient(135deg, #0f766e, #1d4ed8);
+  background: linear-gradient(135deg, #a8e637, #9d4edd);
   color: white;
 }
 
@@ -201,7 +201,7 @@
 }
 
 .rowLink {
-  color: #0f766e;
+  color: #7c3aed;
   text-decoration: none;
   font-weight: 600;
 }

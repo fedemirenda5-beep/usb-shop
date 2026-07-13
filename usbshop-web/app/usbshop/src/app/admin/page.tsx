@@ -58,7 +58,7 @@ export default function AdminDashboard() {
 
   const sections = useMemo(
     () =>
-      ADMIN_MODULES.filter((module) => module.id !== 'dashboard' && module.id !== 'reportes').map((module) => {
+      ADMIN_MODULES.filter((module) => module.id !== 'dashboard' && module.id !== 'reportes' && module.id !== 'balances').map((module) => {
         switch (module.id) {
           case 'productos':
             return {
@@ -81,8 +81,8 @@ export default function AdminDashboard() {
           case 'vendedores':
             return {
               ...module,
-              value: 'Equipo',
-              label: 'Ventas, comisiones y rendimiento por vendedor.',
+              value: 'Ventas',
+              label: 'Comisiones y rendimiento comercial por vendedor.',
             };
           case 'gastos':
             return {
@@ -107,20 +107,6 @@ export default function AdminDashboard() {
               ...module,
               value: summary ? money(summary.cc_open_balance) : '...',
               label: 'Saldos, cobranzas y movimientos del modulo.',
-            };
-          case 'balances':
-            return {
-              ...module,
-              value: canViewProfitMetrics(user?.role)
-                ? summary
-                  ? money(summary.estimated_margin || 0)
-                  : '...'
-                : summary
-                  ? money(summary.sales_total)
-                  : '...',
-              label: canViewProfitMetrics(user?.role)
-                ? 'Resultado comercial general y evolucion financiera.'
-                : 'Resumen general de ventas y operacion.',
             };
           case 'usuarios':
             return {

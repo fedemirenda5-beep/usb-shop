@@ -28,7 +28,7 @@
 .table th, .table td { padding: 9px 8px; border-bottom: 1px solid var(--bg-soft); text-align: left; font-size: 13px; }
 .table th { background: var(--bg); color: var(--ink); text-transform: uppercase; font-size: 12px; }
 .table tbody tr { cursor: pointer; }
-.selectedRow { background: rgba(132, 204, 22, 0.08); }
+.selectedRow { background: linear-gradient(90deg, rgba(168, 230, 55, 0.08), rgba(157, 78, 221, 0.06)); }
 .linkButton { border: 0; background: transparent; padding: 0; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
 .colId { width: 68px; }
 .colType { width: 96px; }
@@ -44,7 +44,7 @@
 .rowActionsGroup { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; white-space: nowrap; }
 .rowActionsGroup button { padding: 6px 8px; font-size: 11px; }
 .total { color: var(--purple); font-weight: 700; }
-.originBadge { display: inline-block; padding: 3px 7px; border-radius: 999px; background: rgba(15, 118, 110, 0.12); color: #0f766e; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.originBadge { display: inline-block; padding: 3px 7px; border-radius: 999px; background: rgba(157, 78, 221, 0.12); color: #7c3aed; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .originMuted { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .printArea { display: grid; gap: 16px; }
 .detailInlineActions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
@@ -59,13 +59,13 @@
 .brandHead { text-align: left; display: grid; gap: 4px; }
 .brandName { font-size: 28px; font-weight: 900; letter-spacing: 0.05em; color: #2d0a5b; text-transform: uppercase; line-height: 1; }
 .brandMeta { color: #475569; line-height: 1.2; font-size: 12px; }
-.brandEyebrow, .sectionLabel { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #0f766e; }
+.brandEyebrow, .sectionLabel { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #7c3aed; }
 .detailHeader { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
 .detailHeader h3 { margin: 6px 0 0; color: var(--ink); font-size: 23px; }
 .detailHeader p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .actions { display: flex; gap: 10px; }
 .printButton { border: 0; border-radius: 10px; background: var(--ink); color: white; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
-.pdfButton { border: 0; border-radius: 10px; background: #1d4ed8; color: white; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
+.pdfButton { border: 0; border-radius: 10px; background: #9d4edd; color: white; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
 .documentMeta { min-width: 320px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .detailMeta, .summaryGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .documentMeta div, .detailMeta div, .summaryGrid div { background: var(--bg); border-radius: 12px; padding: 10px; display: grid; gap: 4px; }
@@ -91,10 +91,10 @@
 .sellerEditorHeader span { color: #475569; font-size: 11px; line-height: 1.4; }
 .sellerEditorControls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .sellerEditorControls select { width: 100%; padding: 9px 11px; border: 1px solid var(--bg-soft); border-radius: 10px; font: inherit; font-size: 13px; }
-.sellerEditorHint { color: #0f766e; font-size: 12px; font-weight: 600; }
+.sellerEditorHint { color: #7c3aed; font-size: 12px; font-weight: 600; }
 .inlineError, .inlineSuccess { padding: 10px 12px; border-radius: 10px; font-size: 12px; }
 .inlineError { background: rgba(220,38,38,.1); color: #b91c1c; border: 1px solid rgba(220,38,38,.2); }
-.inlineSuccess { background: rgba(15,118,110,.1); color: #0f766e; border: 1px solid rgba(15,118,110,.2); }
+.inlineSuccess { background: rgba(157,78,221,.1); color: #7c3aed; border: 1px solid rgba(157,78,221,.2); }
 .notesBox { display: grid; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid #0b0b0b; background: #f0fdfa; }
 .notesBox p { margin: 0; color: #0b0b0b; line-height: 1.45; font-size: 12px; }
 .documentTableWrap { border: 1px solid #0b0b0b; border-radius: 12px; overflow: hidden; background: white; }
@@ -120,11 +120,11 @@
 .signatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 16px; }
 .signatureBox { min-height: 88px; border-top: 1px solid #94a3b8; display: flex; align-items: flex-end; padding-top: 10px; color: var(--muted); font-size: 12px; }
 .createButton, .secondaryButton, .removeButton, .deleteButton, .confirmButton { border: 0; border-radius: 10px; padding: 9px 13px; cursor: pointer; font-weight: 700; font-size: 13px; }
-.createButton { background: linear-gradient(135deg, #0f766e, #1d4ed8); color: white; }
+.createButton { background: linear-gradient(135deg, #a8e637, #9d4edd); color: white; }
 .secondaryButton { background: #e2e8f0; color: var(--ink); }
 .removeButton { background: #fff1f2; color: #be123c; }
 .deleteButton { background: #7f1d1d; color: #fff; }
-.confirmButton { background: linear-gradient(135deg, #0f766e, #15803d); color: #fff; }
+.confirmButton { background: linear-gradient(135deg, #a8e637, #7c3aed); color: #fff; }
 .confirmButton:disabled { opacity: 0.7; cursor: wait; }
 .deleteButton:disabled { opacity: 0.7; cursor: wait; }
 .createPanel { background: white; border: 1px solid var(--bg-soft); border-radius: 14px; padding: 18px; box-shadow: 0 4px 16px var(--shadow); display: grid; gap: 16px; }
@@ -132,7 +132,7 @@
 .createHeader h2 { margin: 0; color: var(--ink); }
 .createHeader p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .modelNote { max-width: 760px; }
-.orderDraftInfo { color: #0f766e !important; font-weight: 600; }
+.orderDraftInfo { color: #7c3aed !important; font-weight: 600; }
 .createTotalBar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid var(--bg-soft); border-radius: 14px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); }
 .createTotalBar span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .createTotal { font-size: 22px; font-weight: 700; color: var(--purple); }
@@ -143,18 +143,18 @@
 .fieldHint { color: var(--muted); font-size: 11px; }
 .customerSearchResults { border: 1px solid var(--bg-soft); border-radius: 12px; background: white; max-height: 240px; overflow: auto; display: grid; gap: 8px; padding: 8px; }
 .customerSearchItem { width: 100%; border: 1px solid var(--bg-soft); border-radius: 10px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); padding: 10px 12px; text-align: left; display: grid; gap: 4px; font: inherit; cursor: pointer; }
-.customerSearchItem:hover { border-color: rgba(29, 78, 216, 0.28); background: linear-gradient(180deg, rgba(239,246,255,.95), rgba(255,255,255,1)); }
+.customerSearchItem:hover { border-color: rgba(157, 78, 221, 0.28); background: linear-gradient(180deg, rgba(245,244,255,.96), rgba(255,255,255,1)); }
 .customerSearchItem strong { color: var(--ink); }
 .customerSearchItem span, .customerSelected, .customerSearchEmpty { color: var(--muted); font-size: 12px; }
-.customerSearchItemActive { border-color: rgba(15, 118, 110, 0.28); background: linear-gradient(180deg, rgba(240,253,250,.98), rgba(255,255,255,1)); }
-.customerSelected { display: block; font-weight: 600; color: #0f766e; }
+.customerSearchItemActive { border-color: rgba(168, 230, 55, 0.32); background: linear-gradient(180deg, rgba(248,255,235,.98), rgba(255,255,255,1)); }
+.customerSelected { display: block; font-weight: 600; color: #7c3aed; }
 .customerSearchEmpty { padding: 12px; text-align: center; }
 .fullWidth { grid-column: 1 / -1; }
 .itemRow { display: grid; grid-template-columns: minmax(0, 2fr) 110px 130px minmax(140px, 0.8fr) auto; gap: 10px; align-items: center; }
 .productPicker { display: grid; gap: 6px; min-width: 0; }
 .itemMeta { color: var(--muted); font-size: 12px; }
 .desktopPickerPanel, .invoiceLinesPanel { display: grid; gap: 12px; }
-.specialDiscountPanel { display: grid; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid rgba(15, 118, 110, 0.24); background: linear-gradient(180deg, rgba(240,253,250,.98), rgba(255,255,255,1)); }
+.specialDiscountPanel { display: grid; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid rgba(157, 78, 221, 0.2); background: linear-gradient(180deg, rgba(245,244,255,.96), rgba(248,255,235,.92)); }
 .specialDiscountHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .specialDiscountHeader strong { color: var(--ink); font-size: 15px; }
 .specialDiscountHeader p { margin: 4px 0 0; color: var(--muted); font-size: 13px; max-width: 720px; }
@@ -168,7 +168,7 @@
 .desktopPickerResults { border: 1px solid var(--bg-soft); border-radius: 12px; background: white; overflow: auto; }
 .productSearchList { display: grid; gap: 8px; padding: 10px; }
 .productSearchItem { width: 100%; border: 1px solid var(--bg-soft); border-radius: 12px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(255,255,255,1)); padding: 12px; display: grid; grid-template-columns: minmax(0, 1.2fr) auto auto; gap: 14px; align-items: center; text-align: left; font: inherit; }
-.productSearchItem:hover { border-color: rgba(29, 78, 216, 0.28); background: linear-gradient(180deg, rgba(239,246,255,.95), rgba(255,255,255,1)); }
+.productSearchItem:hover { border-color: rgba(157, 78, 221, 0.28); background: linear-gradient(180deg, rgba(245,244,255,.96), rgba(255,255,255,1)); }
 .productSearchIdentity { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: center; min-width: 0; }
 .productSearchThumb { width: 64px; height: 64px; border: 1px solid var(--bg-soft); border-radius: 10px; background: #f8fafc; overflow: hidden; display: grid; place-items: center; color: var(--muted); font-size: 11px; font-weight: 700; text-align: center; line-height: 1.1; }
 .productSearchThumb img { width: 100%; height: 100%; object-fit: cover; display: block; }

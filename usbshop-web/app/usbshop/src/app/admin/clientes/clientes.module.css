@@ -148,8 +148,8 @@
   align-items: center;
   padding: 14px 16px;
   border-radius: 18px;
-  background: linear-gradient(120deg, rgba(15, 23, 42, 0.04), rgba(20, 184, 166, 0.12));
-  border: 1px solid rgba(20, 184, 166, 0.22);
+  background: linear-gradient(120deg, rgba(15, 23, 42, 0.04), rgba(168, 230, 55, 0.1), rgba(157, 78, 221, 0.08));
+  border: 1px solid rgba(157, 78, 221, 0.18);
 }
 
 .workspaceBannerSummary {
@@ -329,12 +329,12 @@
 }
 
 .iconButton {
-  color: #1d4ed8;
+  color: #7c3aed;
 }
 
 .iconButton:hover {
-  background: #eff6ff;
-  border-color: #93c5fd;
+  background: #f5f3ff;
+  border-color: rgba(157, 78, 221, 0.32);
 }
 
 .iconDeleteButton {
@@ -389,7 +389,7 @@
 }
 
 .primaryButton {
-  background: linear-gradient(135deg, #0f766e, #1d4ed8);
+  background: linear-gradient(135deg, #a8e637, #9d4edd);
   color: white;
 }
 
@@ -544,14 +544,14 @@
 
 .chartLine {
   fill: none;
-  stroke: #0f766e;
+  stroke: #a8e637;
   stroke-width: 4;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
 .chartPoint {
-  fill: #1d4ed8;
+  fill: #9d4edd;
 }
 
 .chartLabel {
@@ -669,8 +669,8 @@
 }
 
 .notice {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  background: linear-gradient(135deg, rgba(245, 244, 255, 0.96), rgba(248, 255, 235, 0.96));
+  border: 1px solid rgba(157, 78, 221, 0.14);
 }
 
 .empty {
