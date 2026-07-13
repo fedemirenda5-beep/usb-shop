@@ -405,9 +405,13 @@ export default function ClientesPage() {
 
   const customerGrowth = useMemo(() => {
     const countsByYear = new Map<number, number[]>();
+    let customersWithoutValidDate = 0;
     for (const customer of customers) {
       const bucket = getMonthBucket(customer.created_at);
-      if (!bucket) continue;
+      if (!bucket) {
+        customersWithoutValidDate += 1;
+        continue;
+      }
       if (!countsByYear.has(bucket.year)) {
         countsByYear.set(bucket.year, Array.from({ length: 12 }, () => 0));
       }
@@ -417,8 +421,12 @@ export default function ClientesPage() {
     const years = Array.from(countsByYear.keys()).sort((a, b) => b - a);
     const selectedYear = years[0] ?? new Date().getFullYear();
     const monthlyCounts = countsByYear.get(selectedYear) || Array.from({ length: 12 }, () => 0);
+    const baseCustomers = Array.from(countsByYear.entries()).reduce((sum, [year, counts]) => {
+      if (year >= selectedYear) return sum;
+      return sum + counts.reduce((subtotal, count) => subtotal + count, 0);
+    }, customersWithoutValidDate);
     const cumulativeCounts = monthlyCounts.reduce<number[]>((acc, count, index) => {
-      const previous = index > 0 ? acc[index - 1] : 0;
+      const previous = index > 0 ? acc[index - 1] : baseCustomers;
       acc.push(previous + count);
       return acc;
     }, []);
