@@ -591,6 +591,77 @@
   font-size: 16px;
 }
 
+.rankingSummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.rankingMetric {
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: #f8fafc;
+  display: grid;
+  gap: 6px;
+}
+
+.rankingMetric span {
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.rankingMetric strong {
+  color: #132238;
+  font-size: 22px;
+}
+
+.rankingTableWrap {
+  overflow-x: auto;
+}
+
+.rankingTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rankingTable th,
+.rankingTable td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.rankingTable th {
+  color: #64748b;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.rankingCustomerCell {
+  display: grid;
+  gap: 3px;
+}
+
+.rankingCustomerCell strong {
+  color: #132238;
+}
+
+.rankingCustomerCell span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.rankingMoney {
+  white-space: nowrap;
+  font-weight: 700;
+  color: #132238;
+}
+
 .errorBox {
   background: #fff1f2;
   color: #9f1239;
@@ -625,7 +696,8 @@
 @media (max-width: 720px) {
   .filtersBar,
   .summaryPanel,
-  .chartGrid {
+  .chartGrid,
+  .rankingSummary {
     grid-template-columns: 1fr;
   }
 

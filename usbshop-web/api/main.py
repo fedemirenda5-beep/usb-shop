@@ -8014,6 +8014,139 @@ def admin_reports_daily(
         conn.close()
 
 
+@app.get("/admin/reports/customer-ranking")
+def admin_reports_customer_ranking(
+    limit: int = 20,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    session_payload = _require_admin(session_token)
+    session_role = str(session_payload.get("role") or "").strip().lower() or ROLE_STAFF
+    safe_limit = max(1, min(int(limit or 20), 50))
+    current_year = _argentina_now().year
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
+        invoice_rows = conn.execute(
+            """
+            SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type, c.name AS customer_name
+            FROM invoices i
+            LEFT JOIN customers c ON c.id = i.customer_id
+            ORDER BY i.created_at ASC, i.id ASC
+            """
+        ).fetchall()
+        selected_invoices: list[dict[str, Any]] = []
+        invoice_ids: list[int] = []
+        customer_summary: dict[int, dict[str, Any]] = {}
+        for row in invoice_rows:
+            created = _argentina_datetime(row["created_at"])
+            if created is None or created.year != current_year:
+                continue
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
+            invoice_id = int(row["id"] or 0)
+            customer_id = int(row["customer_id"] or 0)
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+            total = round(float(row["total"] or 0) * sign, 2)
+            discount = round(float(row["special_discount"] or 0) * sign, 2)
+            invoice_payload = {
+                "id": invoice_id,
+                "customer_id": customer_id,
+                "document_type": document_type,
+                "discount": discount,
+            }
+            selected_invoices.append(invoice_payload)
+            invoice_ids.append(invoice_id)
+            customer_entry = customer_summary.setdefault(
+                customer_id,
+                {
+                    "customer_id": customer_id,
+                    "name": row["customer_name"] or (f"Cliente {customer_id}" if customer_id > 0 else "Cliente"),
+                    "invoice_count": 0,
+                    "sales_total": 0.0,
+                    "profit_total": 0.0,
+                },
+            )
+            customer_entry["invoice_count"] += 1
+            customer_entry["sales_total"] = round(float(customer_entry["sales_total"]) + total, 2)
+
+        if invoice_ids:
+            placeholders = ",".join(["?"] * len(invoice_ids))
+            invoice_item_rows = conn.execute(
+                f"""
+                SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, ii.cost_snapshot, p.cost
+                FROM invoice_items ii
+                LEFT JOIN products p ON p.id = ii.product_id
+                WHERE ii.invoice_id IN ({placeholders})
+                """,
+                tuple(invoice_ids),
+            ).fetchall()
+            invoice_map = {int(item["id"]): item for item in selected_invoices}
+            for row in invoice_item_rows:
+                invoice_id = int(row["invoice_id"] or 0)
+                invoice_payload = invoice_map.get(invoice_id)
+                if invoice_payload is None:
+                    continue
+                customer_id = int(invoice_payload["customer_id"] or 0)
+                customer_entry = customer_summary.get(customer_id)
+                if customer_entry is None:
+                    continue
+                sign = -1.0 if str(invoice_payload["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
+                quantity = int(row["quantity"] or 0)
+                unit_price = float(row["unit_price"] or 0)
+                cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0)
+                margin = quantity * max(0.0, unit_price - cost) * sign
+                customer_entry["profit_total"] = round(float(customer_entry["profit_total"]) + margin, 2)
+            for invoice_payload in selected_invoices:
+                customer_id = int(invoice_payload["customer_id"] or 0)
+                customer_entry = customer_summary.get(customer_id)
+                if customer_entry is None:
+                    continue
+                customer_entry["profit_total"] = round(
+                    float(customer_entry["profit_total"]) - float(invoice_payload["discount"] or 0),
+                    2,
+                )
+
+        ranking = sorted(
+            [
+                {
+                    "customer_id": int(payload["customer_id"] or 0),
+                    "name": payload["name"],
+                    "invoice_count": int(payload["invoice_count"] or 0),
+                    "sales_total": round(float(payload["sales_total"] or 0), 2),
+                    "profit_total": round(float(payload["profit_total"] or 0), 2),
+                }
+                for payload in customer_summary.values()
+                if abs(float(payload["sales_total"] or 0)) > 0
+            ],
+            key=lambda item: (-item["sales_total"], item["name"].lower()),
+        )[:safe_limit]
+
+        response = {
+            "year": current_year,
+            "limit": safe_limit,
+            "customers": ranking,
+            "summary": {
+                "sales_total": round(sum(float(item["sales_total"] or 0) for item in ranking), 2),
+                "profit_total": round(sum(float(item["profit_total"] or 0) for item in ranking), 2),
+            },
+        }
+        if session_role == ROLE_STAFF:
+            return {
+                **response,
+                "customers": [{**item, "profit_total": None} for item in ranking],
+                "summary": {
+                    "sales_total": response["summary"]["sales_total"],
+                    "profit_total": None,
+                },
+            }
+        return response
+    finally:
+        conn.close()
+
+
 # LEGACY: flujo interno previo al backoffice web. No usar para nuevos modulos.
 @app.get("/admin/account-customers/{customer_id}")
 def admin_account_customer_detail(

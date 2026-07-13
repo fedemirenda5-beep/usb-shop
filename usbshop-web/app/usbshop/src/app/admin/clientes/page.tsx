@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
+import { canViewProfitMetrics } from '../adminPermissions';
 import styles from './clientes.module.css';
 
 type Seller = {
@@ -87,6 +89,14 @@ type CustomerFormState = {
   zone: string;
 };
 
+type CustomerRankingItem = {
+  customer_id: number;
+  name: string;
+  invoice_count: number;
+  sales_total: number;
+  profit_total: number | null;
+};
+
 const emptyCustomerForm = (): CustomerFormState => ({
   name: '',
   is_active: '1',
@@ -121,6 +131,8 @@ const getMonthBucket = (value?: string | null) => {
 };
 
 export default function ClientesPage() {
+  const { user } = useAdminSession();
+  const canViewProfit = canViewProfitMetrics(user?.role);
   const detailRequestRef = useRef(0);
   const detailSectionRef = useRef<HTMLElement | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -142,6 +154,14 @@ export default function ClientesPage() {
   const [quickSellerId, setQuickSellerId] = useState('');
   const [printScope, setPrintScope] = useState<'all' | 'seller'>('all');
   const [showGrowthChart, setShowGrowthChart] = useState(false);
+  const [showRankingChart, setShowRankingChart] = useState(false);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [rankingYear, setRankingYear] = useState<number>(new Date().getFullYear());
+  const [rankingCustomers, setRankingCustomers] = useState<CustomerRankingItem[]>([]);
+  const [rankingSummary, setRankingSummary] = useState<{ sales_total: number; profit_total: number | null }>({
+    sales_total: 0,
+    profit_total: 0,
+  });
   const [isMobileLayout, setIsMobileLayout] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth <= 860 : false
   );
@@ -456,6 +476,39 @@ export default function ClientesPage() {
     }
   };
 
+  const openCustomerRanking = async () => {
+    setShowRankingChart(true);
+    setRankingLoading(true);
+    setError('');
+    try {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/reports/customer-ranking?limit=20`, {
+        credentials: 'include',
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.detail || 'No se pudo cargar el ranking de clientes');
+      }
+      const data = await res.json();
+      setRankingYear(Number(data?.year) || new Date().getFullYear());
+      setRankingCustomers(Array.isArray(data?.customers) ? data.customers : []);
+      setRankingSummary({
+        sales_total: Number(data?.summary?.sales_total || 0),
+        profit_total:
+          data?.summary?.profit_total === null || data?.summary?.profit_total === undefined
+            ? null
+            : Number(data.summary.profit_total || 0),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cargar el ranking de clientes');
+      setRankingCustomers([]);
+      setRankingSummary({ sales_total: 0, profit_total: canViewProfit ? 0 : null });
+    } finally {
+      setRankingLoading(false);
+    }
+  };
+
   const saveCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -639,6 +692,13 @@ export default function ClientesPage() {
             onClick={() => setShowGrowthChart(true)}
           >
             Grafico clientes
+          </button>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => void openCustomerRanking()}
+          >
+            Ranking mejores clientes
           </button>
           <div className={styles.printControls}>
             <select
@@ -1146,6 +1206,79 @@ export default function ClientesPage() {
                   <strong>{item.count} clientes</strong>
                 </article>
               ))}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {showRankingChart ? (
+        <div className={styles.modalOverlay} onClick={() => setShowRankingChart(false)}>
+          <aside
+            className={styles.chartModal}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-ranking-title"
+          >
+            <div className={styles.panelHeader}>
+              <div>
+                <h2 id="customer-ranking-title">Ranking mejores clientes {rankingYear}</h2>
+                <p>Top 20 por compra del año corriente con total vendido y ganancia generada.</p>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={() => setShowRankingChart(false)}>
+                Cerrar
+              </button>
+            </div>
+
+            <div className={styles.rankingSummary}>
+              <article className={styles.rankingMetric}>
+                <span>Top 20 facturado</span>
+                <strong>{formatCurrency(rankingSummary.sales_total)}</strong>
+              </article>
+              <article className={styles.rankingMetric}>
+                <span>{canViewProfit ? 'Ganancia estimada' : 'Ganancia estimada oculta'}</span>
+                <strong>{canViewProfit && rankingSummary.profit_total !== null ? formatCurrency(rankingSummary.profit_total) : 'Sin permiso'}</strong>
+              </article>
+            </div>
+
+            <div className={styles.chartFrame}>
+              {rankingLoading ? (
+                <div className={styles.empty}>Cargando ranking anual...</div>
+              ) : rankingCustomers.length === 0 ? (
+                <div className={styles.empty}>No hay compras registradas en el año corriente.</div>
+              ) : (
+                <div className={styles.rankingTableWrap}>
+                  <table className={styles.rankingTable}>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Cliente</th>
+                        <th>Comprobantes</th>
+                        <th>Total comprado</th>
+                        <th>Ganancia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rankingCustomers.map((customer, index) => (
+                        <tr key={customer.customer_id || `${customer.name}-${index}`}>
+                          <td>{index + 1}</td>
+                          <td>
+                            <div className={styles.rankingCustomerCell}>
+                              <strong>{customer.name}</strong>
+                              <span>ID {customer.customer_id}</span>
+                            </div>
+                          </td>
+                          <td>{customer.invoice_count}</td>
+                          <td className={styles.rankingMoney}>{formatCurrency(customer.sales_total)}</td>
+                          <td className={styles.rankingMoney}>
+                            {canViewProfit && customer.profit_total !== null ? formatCurrency(customer.profit_total) : 'Sin permiso'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </aside>
         </div>
