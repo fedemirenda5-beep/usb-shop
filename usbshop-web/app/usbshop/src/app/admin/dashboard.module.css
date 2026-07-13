@@ -25,13 +25,14 @@
   gap: 10px;
   padding: 28px 30px;
   background:
-    radial-gradient(circle at top right, rgba(132, 204, 22, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(168, 230, 55, 0.12), transparent 28%),
+    radial-gradient(circle at 14% 18%, rgba(157, 78, 221, 0.06), transparent 22%),
     linear-gradient(135deg, rgba(255,255,255,0.96), rgba(241,245,249,0.94));
 }
 
 .headerCallout {
   padding: 24px 24px 22px;
-  background: linear-gradient(150deg, rgba(15, 23, 42, 0.96), rgba(15, 118, 110, 0.92));
+  background: linear-gradient(150deg, rgba(15, 23, 42, 0.96), rgba(157, 78, 221, 0.78));
   color: white;
   display: grid;
   gap: 8px;
@@ -39,7 +40,7 @@
 }
 
 .kicker {
-  color: #0f766e;
+  color: #7c3aed;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
@@ -125,11 +126,11 @@
 }
 
 .heroCardPrimary {
-  background: linear-gradient(145deg, rgba(17, 24, 39, 0.98), rgba(29, 78, 216, 0.92));
+  background: linear-gradient(145deg, rgba(17, 24, 39, 0.98), rgba(157, 78, 221, 0.82));
 }
 
 .heroCardAccent {
-  background: linear-gradient(145deg, rgba(11, 18, 32, 0.98), rgba(79, 70, 229, 0.9));
+  background: linear-gradient(145deg, rgba(11, 18, 32, 0.98), rgba(168, 230, 55, 0.24));
 }
 
 .heroCard span {
@@ -174,7 +175,7 @@
 
 .statCard:hover {
   transform: translateY(-3px);
-  border-color: rgba(15, 118, 110, 0.28);
+  border-color: rgba(157, 78, 221, 0.24);
   box-shadow: 0 22px 36px rgba(15, 23, 42, 0.12);
 }
 
@@ -185,7 +186,7 @@
 }
 
 .statEyebrow {
-  color: #0f766e;
+  color: #7c3aed;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -244,7 +245,7 @@
 }
 
 .panelHeader a {
-  color: #0f766e;
+  color: #7c3aed;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -285,9 +286,10 @@
   border-radius: 22px;
   padding: 22px 24px;
   background:
-    radial-gradient(circle at top right, rgba(132, 204, 22, 0.16), transparent 26%),
-    linear-gradient(135deg, rgba(255,255,255,0.94), rgba(239,246,255,0.94));
-  border: 1px solid rgba(59, 130, 246, 0.18);
+    radial-gradient(circle at top right, rgba(168, 230, 55, 0.14), transparent 26%),
+    radial-gradient(circle at 10% 20%, rgba(157, 78, 221, 0.06), transparent 18%),
+    linear-gradient(135deg, rgba(255,255,255,0.94), rgba(245,244,255,0.92));
+  border: 1px solid rgba(157, 78, 221, 0.14);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.06);
 }
 

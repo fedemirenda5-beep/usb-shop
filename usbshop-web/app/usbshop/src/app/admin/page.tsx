@@ -13,22 +13,16 @@ type Summary = {
   products: number;
   active_customers: number;
   stock_units: number;
-  stock_value_cost: number;
-  stock_value_sale: number;
   sales_count: number;
   sales_total: number;
   estimated_margin: number | null;
   expenses_total: number;
   cc_open_balance: number;
-  account_movements: number;
-  debtors: number;
   latest_invoice_at?: string | null;
 };
 
 type OverviewResponse = {
   summary: Summary;
-  top_debtors: Array<{ customer_id: number; name: string; balance: number }>;
-  low_stock: Array<{ id: number; name: string; stock: number; reorder_point: number }>;
 };
 
 const money = (value: number) =>
@@ -43,8 +37,6 @@ const formatDate = (value?: string | null) => {
 export default function AdminDashboard() {
   const { user } = useAdminSession();
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [topDebtors, setTopDebtors] = useState<OverviewResponse['top_debtors']>([]);
-  const [lowStock, setLowStock] = useState<OverviewResponse['low_stock']>([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -57,8 +49,6 @@ export default function AdminDashboard() {
         if (!res.ok) throw new Error('No se pudo cargar el escritorio');
         const data: OverviewResponse = await res.json();
         setSummary(data.summary);
-        setTopDebtors(data.top_debtors || []);
-        setLowStock(data.low_stock || []);
       } catch (err) {
         setError(getFriendlyApiError(err, 'Error cargando el escritorio'));
       }
@@ -69,55 +59,84 @@ export default function AdminDashboard() {
   const sections = useMemo(
     () =>
       ADMIN_MODULES.filter((module) => module.id !== 'dashboard' && module.id !== 'reportes').map((module) => {
-        if (module.id === 'productos') {
-          return {
-            ...module,
-            value: summary ? integer(summary.products) : '...',
-            label: summary ? `${integer(summary.stock_units)} unidades en stock` : module.dashboardLabel,
-          };
+        switch (module.id) {
+          case 'productos':
+            return {
+              ...module,
+              value: summary ? integer(summary.products) : '...',
+              label: 'Productos activos. Stock y precios dentro del modulo.',
+            };
+          case 'pedidos':
+            return {
+              ...module,
+              value: 'Web',
+              label: 'Seguimiento y gestion de pedidos online.',
+            };
+          case 'clientes':
+            return {
+              ...module,
+              value: summary ? integer(summary.active_customers) : '...',
+              label: 'Solo clientes activos. Ranking, historial y analisis dentro del modulo.',
+            };
+          case 'vendedores':
+            return {
+              ...module,
+              value: 'Equipo',
+              label: 'Ventas, comisiones y rendimiento por vendedor.',
+            };
+          case 'gastos':
+            return {
+              ...module,
+              value: summary ? money(summary.expenses_total) : '...',
+              label: 'Gastos operativos registrados en la base actual.',
+            };
+          case 'generar-comprobante':
+            return {
+              ...module,
+              value: 'Emitir',
+              label: 'Alta rapida de comprobantes y notas.',
+            };
+          case 'comprobantes':
+            return {
+              ...module,
+              value: summary ? integer(summary.sales_count) : '...',
+              label: 'Comprobantes emitidos e historial de documentos.',
+            };
+          case 'cuentas-corrientes':
+            return {
+              ...module,
+              value: summary ? money(summary.cc_open_balance) : '...',
+              label: 'Saldos, cobranzas y movimientos del modulo.',
+            };
+          case 'balances':
+            return {
+              ...module,
+              value: canViewProfitMetrics(user?.role)
+                ? summary
+                  ? money(summary.estimated_margin || 0)
+                  : '...'
+                : summary
+                  ? money(summary.sales_total)
+                  : '...',
+              label: canViewProfitMetrics(user?.role)
+                ? 'Resultado comercial general y evolucion financiera.'
+                : 'Resumen general de ventas y operacion.',
+            };
+          case 'usuarios':
+            return {
+              ...module,
+              value: 'Acceso',
+              label: 'Permisos, claves y administracion del panel.',
+            };
+          default:
+            return {
+              ...module,
+              value: 'Panel',
+              label: module.dashboardLabel,
+            };
         }
-        if (module.id === 'pedidos') {
-          return {
-            ...module,
-            value: 'Web',
-            label: module.dashboardLabel,
-          };
-        }
-        if (module.id === 'clientes') {
-          return {
-            ...module,
-            value: summary ? integer(summary.active_customers) : '...',
-            label: 'Clientes reales sincronizados desde la app',
-          };
-        }
-        if (module.id === 'gastos') {
-          return {
-            ...module,
-            value: summary ? money(summary.expenses_total) : '...',
-            label: summary ? 'Gastos operativos acumulados registrados' : module.dashboardLabel,
-          };
-        }
-        if (module.id === 'comprobantes') {
-          return {
-            ...module,
-            value: summary ? integer(summary.sales_count) : '...',
-            label: 'Comprobantes emitidos en la base actual',
-          };
-        }
-        if (module.id === 'cuentas-corrientes') {
-          return {
-            ...module,
-            value: summary ? money(summary.cc_open_balance) : '...',
-            label: summary ? `${integer(summary.account_movements)} movimientos registrados` : module.dashboardLabel,
-          };
-        }
-        return {
-          ...module,
-          value: summary ? money(summary.sales_total) : '...',
-          label: module.dashboardLabel,
-        };
       }),
-    [summary]
+    [summary, user?.role]
   );
 
   const visibleSections = useMemo(
@@ -134,9 +153,9 @@ export default function AdminDashboard() {
           <p>Bienvenido, {user?.username}. El resumen toma datos reales de la base actual y prioriza lo que mas usas en la operacion diaria.</p>
         </div>
         <div className={styles.headerCallout}>
-          <span>Ventas acumuladas</span>
+          <span>Vista general</span>
           <strong>{summary ? money(summary.sales_total) : '...'}</strong>
-          <p>Ultimo registro: {formatDate(summary?.latest_invoice_at)}</p>
+          <p>Ultimo comprobante: {formatDate(summary?.latest_invoice_at)}</p>
         </div>
       </div>
 
@@ -150,26 +169,26 @@ export default function AdminDashboard() {
             <p>Ultimo registro: {formatDate(summary.latest_invoice_at)}</p>
           </article>
           <article className={styles.heroCard}>
-            <span>Saldo abierto en cuentas corrientes</span>
-            <strong>{money(summary.cc_open_balance)}</strong>
-            <p>{integer(summary.debtors)} clientes con saldo pendiente</p>
-          </article>
-          <article className={styles.heroCard}>
             <span>Clientes activos</span>
             <strong>{integer(summary.active_customers)}</strong>
-            <p>{integer(summary.account_movements)} movimientos de cuenta corriente</p>
+            <p>El resto del detalle comercial queda dentro del modulo Clientes.</p>
+          </article>
+          <article className={styles.heroCard}>
+            <span>Productos activos</span>
+            <strong>{integer(summary.products)}</strong>
+            <p>{integer(summary.stock_units)} unidades disponibles en stock.</p>
           </article>
           {canViewProfitMetrics(user?.role) ? (
             <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
-              <span>Balance comercial</span>
+              <span>Margen general</span>
               <strong>{money(summary.estimated_margin || 0)}</strong>
-              <p>Margen estimado sobre ventas por {money(summary.sales_total)}</p>
+              <p>Analisis completo en Balances y Reportes.</p>
             </article>
           ) : (
             <article className={`${styles.heroCard} ${styles.heroCardAccent}`}>
-              <span>Stock operativo</span>
-              <strong>{integer(summary.stock_units)}</strong>
-              <p>Unidades disponibles para la operacion diaria.</p>
+              <span>Gastos registrados</span>
+              <strong>{money(summary.expenses_total)}</strong>
+              <p>Detalle operativo dentro del modulo Gastos.</p>
             </article>
           )}
         </section>
@@ -188,55 +207,10 @@ export default function AdminDashboard() {
           </Link>
         ))}
       </div>
-
-      <section className={styles.insightGrid}>
-        <article className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <h2>Mayores saldos pendientes</h2>
-            <Link href="/admin/cuentas-corrientes">Ver cuentas corrientes</Link>
-          </div>
-          <div className={styles.list}>
-            {topDebtors.length === 0 ? (
-              <p className={styles.empty}>No hay saldos pendientes.</p>
-            ) : (
-              topDebtors.slice(0, 5).map((debtor) => (
-                <div key={debtor.customer_id} className={styles.listRow}>
-                  <strong>{debtor.name}</strong>
-                  <span>{money(debtor.balance)}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
-
-        <article className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <h2>Alertas de stock</h2>
-            <Link href={canAccessAdminModule(user?.role, 'balances') ? '/admin/balances' : '/admin/productos'}>
-              {canAccessAdminModule(user?.role, 'balances') ? 'Ver balances' : 'Ver productos'}
-            </Link>
-          </div>
-          <div className={styles.list}>
-            {lowStock.length === 0 ? (
-              <p className={styles.empty}>No hay alertas de stock bajo.</p>
-            ) : (
-              lowStock.slice(0, 5).map((product) => (
-                <div key={product.id} className={styles.listRow}>
-                  <strong>{product.name}</strong>
-                  <span>
-                    Stock {integer(product.stock)} / Min. {integer(product.reorder_point)}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </article>
-      </section>
-
       <div className={styles.infoBox}>
         <p>
-          El escritorio ya refleja clientes, comprobantes emitidos, saldos de cuentas corrientes y
-          balance comercial desde `controlStock.db`.
+          El escritorio queda como resumen corto. El detalle operativo y los analisis viven dentro de
+          cada modulo.
         </p>
       </div>
     </div>

@@ -2,8 +2,8 @@
   display: flex;
   height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(29, 78, 216, 0.12), transparent 24%),
+    radial-gradient(circle at top left, rgba(168, 230, 55, 0.1), transparent 28%),
+    radial-gradient(circle at top right, rgba(157, 78, 221, 0.1), transparent 24%),
     linear-gradient(180deg, #edf2f7 0%, #dfe6ef 100%);
 }
 
@@ -52,11 +52,13 @@
   width: 54px;
   height: 54px;
   border-radius: 16px;
-  background: linear-gradient(160deg, rgba(255,255,255,0.92), rgba(226, 232, 240, 0.78));
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: linear-gradient(160deg, rgba(255,255,255,0.96), rgba(243, 244, 246, 0.84));
+  border: 1px solid rgba(168, 230, 55, 0.18);
   display: grid;
   place-items: center;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    0 10px 18px rgba(157, 78, 221, 0.08);
   flex: 0 0 auto;
 }
 
@@ -126,8 +128,8 @@
 }
 
 .navItemActive {
-  background: linear-gradient(135deg, rgba(15, 118, 110, 0.28), rgba(29, 78, 216, 0.24));
-  border-color: rgba(132, 204, 22, 0.26);
+  background: linear-gradient(135deg, rgba(168, 230, 55, 0.18), rgba(157, 78, 221, 0.18));
+  border-color: rgba(168, 230, 55, 0.26);
   color: white;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
 }
@@ -278,7 +280,8 @@
   overflow-x: hidden;
   padding: 24px;
   background:
-    radial-gradient(circle at top right, rgba(132, 204, 22, 0.09), transparent 22%),
+    radial-gradient(circle at top right, rgba(168, 230, 55, 0.08), transparent 22%),
+    radial-gradient(circle at 18% 12%, rgba(157, 78, 221, 0.05), transparent 20%),
     linear-gradient(180deg, rgba(241, 245, 249, 0.58) 0%, rgba(226, 232, 240, 0.38) 100%);
 }
 
@@ -350,7 +353,7 @@
 }
 
 .scannerPreviewEyebrow {
-  color: #0f766e;
+  color: #7c3aed;
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
@@ -547,7 +550,7 @@
 
   .mobileQuickLinkActive {
     color: white;
-    background: linear-gradient(135deg, #0f766e, #1d4ed8);
+    background: linear-gradient(135deg, #a8e637, #9d4edd);
     border-color: transparent;
   }
 
