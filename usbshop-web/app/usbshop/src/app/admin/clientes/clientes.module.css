@@ -531,6 +531,37 @@
   background: linear-gradient(180deg, #f8fbff, #ffffff);
 }
 
+.chartLegend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.chartLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chartLegendMonthly,
+.chartLegendTotal {
+  width: 22px;
+  height: 4px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.chartLegendMonthly {
+  background: #a8e637;
+}
+
+.chartLegendTotal {
+  background: #9d4edd;
+}
+
 .chartSvg {
   width: 100%;
   height: auto;
@@ -550,7 +581,20 @@
   stroke-linejoin: round;
 }
 
+.chartLineSecondary {
+  fill: none;
+  stroke: #9d4edd;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.95;
+}
+
 .chartPoint {
+  fill: #a8e637;
+}
+
+.chartPointSecondary {
   fill: #9d4edd;
 }
 
@@ -589,6 +633,11 @@
 .chartCard strong {
   color: #132238;
   font-size: 16px;
+}
+
+.chartCard small {
+  color: #64748b;
+  font-size: 12px;
 }
 
 .rankingSummary {

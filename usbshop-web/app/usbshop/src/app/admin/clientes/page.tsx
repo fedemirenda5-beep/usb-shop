@@ -417,27 +417,44 @@ export default function ClientesPage() {
     const years = Array.from(countsByYear.keys()).sort((a, b) => b - a);
     const selectedYear = years[0] ?? new Date().getFullYear();
     const monthlyCounts = countsByYear.get(selectedYear) || Array.from({ length: 12 }, () => 0);
-    const maxCount = Math.max(1, ...monthlyCounts);
-    const points = monthlyCounts
-      .map((count, index) => {
-        const x = 24 + index * 64;
-        const y = 180 - (count / maxCount) * 132;
-        return `${x},${y}`;
-      })
-      .join(' ');
+    const cumulativeCounts = monthlyCounts.reduce<number[]>((acc, count, index) => {
+      const previous = index > 0 ? acc[index - 1] : 0;
+      acc.push(previous + count);
+      return acc;
+    }, []);
+    const maxCount = Math.max(1, ...monthlyCounts, ...cumulativeCounts);
+    const buildPoints = (values: number[]) =>
+      values
+        .map((count, index) => {
+          const x = 24 + index * 64;
+          const y = 180 - (count / maxCount) * 132;
+          return `${x},${y}`;
+        })
+        .join(' ');
+    const points = buildPoints(monthlyCounts);
+    const cumulativePoints = buildPoints(cumulativeCounts);
 
     return {
       year: selectedYear,
       years,
       maxCount,
-      monthlyCounts: monthlyCounts.map((count, index) => ({
-        key: `${selectedYear}-${index}`,
-        label: monthFormatter.format(new Date(selectedYear, index, 1)).replace('.', ''),
-        count,
-        x: 24 + index * 64,
-        y: 180 - (count / maxCount) * 132,
-      })),
+      monthlyCounts: monthlyCounts.map((count, index) => {
+        const total = cumulativeCounts[index] || 0;
+        const x = 24 + index * 64;
+        const y = 180 - (count / maxCount) * 132;
+        const cumulativeY = 180 - (total / maxCount) * 132;
+        return {
+          key: `${selectedYear}-${index}`,
+          label: monthFormatter.format(new Date(selectedYear, index, 1)).replace('.', ''),
+          count,
+          total,
+          x,
+          y,
+          cumulativeY,
+        };
+      }),
       points,
+      cumulativePoints,
     };
   }, [customers]);
 
@@ -1181,13 +1198,19 @@ export default function ClientesPage() {
             </div>
 
             <div className={styles.chartFrame}>
+              <div className={styles.chartLegend}>
+                <span><i className={styles.chartLegendMonthly} /> Altas del mes</span>
+                <span><i className={styles.chartLegendTotal} /> Total acumulado</span>
+              </div>
               <svg viewBox="0 0 752 220" className={styles.chartSvg} role="img" aria-label="Grafico de altas mensuales de clientes">
                 <line x1="24" y1="180" x2="728" y2="180" className={styles.chartAxis} />
                 <line x1="24" y1="28" x2="24" y2="180" className={styles.chartAxis} />
                 <polyline points={customerGrowth.points} className={styles.chartLine} />
+                <polyline points={customerGrowth.cumulativePoints} className={styles.chartLineSecondary} />
                 {customerGrowth.monthlyCounts.map((item) => (
                   <g key={item.key}>
                     <circle cx={item.x} cy={item.y} r="5" className={styles.chartPoint} />
+                    <circle cx={item.x} cy={item.cumulativeY} r="4" className={styles.chartPointSecondary} />
                     <text x={item.x} y={200} textAnchor="middle" className={styles.chartLabel}>
                       {item.label}
                     </text>
@@ -1203,7 +1226,8 @@ export default function ClientesPage() {
               {customerGrowth.monthlyCounts.map((item) => (
                 <article key={item.key} className={styles.chartCard}>
                   <span>{item.label} {customerGrowth.year}</span>
-                  <strong>{item.count} clientes</strong>
+                  <strong>{item.count} altas</strong>
+                  <small>Total: {item.total} clientes</small>
                 </article>
               ))}
             </div>
