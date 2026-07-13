@@ -609,6 +609,12 @@
   font-weight: 700;
 }
 
+.chartValueSecondary {
+  fill: #7c3aed;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .chartGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

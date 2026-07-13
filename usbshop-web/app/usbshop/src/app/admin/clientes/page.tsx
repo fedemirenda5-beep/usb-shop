@@ -1217,6 +1217,9 @@ export default function ClientesPage() {
                     <text x={item.x} y={item.y - 12} textAnchor="middle" className={styles.chartValue}>
                       {item.count}
                     </text>
+                    <text x={item.x} y={item.cumulativeY - 12} textAnchor="middle" className={styles.chartValueSecondary}>
+                      {item.total}
+                    </text>
                   </g>
                 ))}
               </svg>
