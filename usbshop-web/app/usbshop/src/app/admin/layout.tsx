@@ -48,9 +48,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentModule = getCurrentModule(pathname);
   const visibleModules = NAV_MODULES.filter((module) => canAccessAdminModule(user?.role, module.id));
-  const quickMobileModules = visibleModules.slice(0, 4);
   const isGenerateInvoicePage = Boolean(pathname?.startsWith('/admin/generar-comprobante'));
   const isDashboardPage = pathname === '/admin';
+  const quickMobileModules = isDashboardPage
+    ? visibleModules.filter((module) => module.id === 'pedidos')
+    : visibleModules.slice(0, 4);
   const scannerPreviewImageUrl = scannerPreviewProduct
     ? resolveImageUrl(scannerPreviewProduct.imageUrl || scannerPreviewProduct.image_path, getApiBaseUrl())
     : null;
@@ -332,12 +334,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             </button>
           </div>
           <div className={styles.mobileQuickNav} aria-label="Accesos rapidos del admin">
-            <Link
-              href="/admin"
-              className={`${styles.mobileQuickLink} ${pathname === '/admin' ? styles.mobileQuickLinkActive : ''}`}
-            >
-              Dashboard
-            </Link>
             {quickMobileModules.map((module) => (
               <Link
                 key={module.id}

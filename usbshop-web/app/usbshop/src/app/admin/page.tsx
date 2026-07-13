@@ -58,61 +58,31 @@ export default function AdminDashboard() {
 
   const sections = useMemo(
     () =>
-      ADMIN_MODULES.filter((module) => module.id !== 'dashboard' && module.id !== 'reportes' && module.id !== 'balances').map((module) => {
+      ADMIN_MODULES.filter(
+        (module) =>
+          module.id !== 'dashboard' &&
+          module.id !== 'reportes' &&
+          module.id !== 'balances' &&
+          module.id !== 'productos' &&
+          module.id !== 'pedidos' &&
+          module.id !== 'vendedores' &&
+          module.id !== 'gastos' &&
+          module.id !== 'generar-comprobante' &&
+          module.id !== 'comprobantes' &&
+          module.id !== 'usuarios'
+      ).map((module) => {
         switch (module.id) {
-          case 'productos':
-            return {
-              ...module,
-              value: summary ? integer(summary.products) : '...',
-              label: 'Productos activos. Stock y precios dentro del modulo.',
-            };
-          case 'pedidos':
-            return {
-              ...module,
-              value: 'Web',
-              label: 'Seguimiento y gestion de pedidos online.',
-            };
           case 'clientes':
             return {
               ...module,
               value: summary ? integer(summary.active_customers) : '...',
               label: 'Solo clientes activos. Ranking, historial y analisis dentro del modulo.',
             };
-          case 'vendedores':
-            return {
-              ...module,
-              value: 'Ventas',
-              label: 'Comisiones y rendimiento comercial por vendedor.',
-            };
-          case 'gastos':
-            return {
-              ...module,
-              value: summary ? money(summary.expenses_total) : '...',
-              label: 'Gastos operativos registrados en la base actual.',
-            };
-          case 'generar-comprobante':
-            return {
-              ...module,
-              value: 'Emitir',
-              label: 'Alta rapida de comprobantes y notas.',
-            };
-          case 'comprobantes':
-            return {
-              ...module,
-              value: summary ? integer(summary.sales_count) : '...',
-              label: 'Comprobantes emitidos e historial de documentos.',
-            };
           case 'cuentas-corrientes':
             return {
               ...module,
               value: summary ? money(summary.cc_open_balance) : '...',
               label: 'Saldos, cobranzas y movimientos del modulo.',
-            };
-          case 'usuarios':
-            return {
-              ...module,
-              value: 'Acceso',
-              label: 'Permisos, claves y administracion del panel.',
             };
           default:
             return {
