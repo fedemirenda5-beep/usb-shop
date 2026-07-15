@@ -646,6 +646,17 @@
     grid-template-columns: 1fr;
   }
 
+  .trackingProductCard {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trackingMatchList,
+  .trackingSummaryGrid,
+  .trackingImeiList {
+    grid-template-columns: 1fr;
+  }
+
   .mobileDetailActions,
   .mobileDetailHeader {
     flex-direction: column;
@@ -677,6 +688,177 @@
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   position: relative;
+}
+
+.trackingModalContent {
+  max-width: 1080px;
+}
+
+.trackingHeader h2 {
+  margin: 0 0 6px;
+}
+
+.trackingHeader p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.trackingSearchBlock {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.trackingMatchList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.trackingMatch {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  border: 1px solid var(--bg-soft);
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.trackingMatch strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.trackingMatch span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trackingMatchActive,
+.trackingMatch:hover {
+  border-color: var(--lime);
+  background: var(--glow);
+}
+
+.trackingBody {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.trackingProductCard {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.trackingProductCard h3,
+.trackingImeiBlock h3 {
+  margin: 0 0 6px;
+}
+
+.trackingProductCard p,
+.trackingNote p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.trackingStockBadge {
+  min-width: 140px;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: white;
+  border: 1px solid var(--bg-soft);
+  text-align: center;
+}
+
+.trackingStockBadge span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trackingStockBadge strong {
+  color: var(--ink);
+  font-size: 24px;
+}
+
+.trackingSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.trackingSummaryCard {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 12px;
+  background: white;
+  border: 1px solid var(--bg-soft);
+}
+
+.trackingSummaryCard span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trackingSummaryCard strong {
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.trackingNote {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(132, 204, 22, 0.1);
+  border: 1px solid rgba(132, 204, 22, 0.25);
+}
+
+.trackingTableWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--bg-soft);
+  border-radius: 12px;
+}
+
+.trackingImeiBlock {
+  display: grid;
+  gap: 12px;
+}
+
+.trackingImeiList {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.trackingImeiItem {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--bg-soft);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.trackingImeiItem strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.trackingImeiItem span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .modalClose {

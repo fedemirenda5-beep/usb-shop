@@ -133,6 +133,15 @@ def _normalize_search_text(value: Any) -> str:
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
+def _product_document_stock_effect(document_type: Any) -> int:
+    normalized = str(document_type or "").strip().upper()
+    if normalized in {"FACTURA", "FACTURA_C"}:
+        return -1
+    if normalized == "NOTA_CREDITO":
+        return 1
+    return 0
+
+
 def _effective_db_path() -> Path:
     if DB_IS_POSTGRES:
         return DB_PATH
@@ -4141,6 +4150,148 @@ def admin_imei_lookup(
                 "sold_at": sold_at,
                 "document_type": row["invoice_document_type"],
             },
+        }
+    finally:
+        conn.close()
+
+
+@app.get("/admin/products/{product_id}/tracking")
+def admin_product_tracking(
+    product_id: int,
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
+    _require_admin(session_token)
+
+    conn = _connect()
+    try:
+        product = conn.execute(
+            """
+            SELECT p.id, p.name, p.sku, p.barcode, p.stock, p.price, p.cost, p.category_id,
+                   c.name AS category_name
+            FROM products p
+            LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.id = ? AND p.deleted_at IS NULL
+            """,
+            (product_id,),
+        ).fetchone()
+        if product is None:
+            raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+        history_rows = conn.execute(
+            """
+            SELECT ii.invoice_id, ii.quantity, ii.unit_price,
+                   i.created_at, i.document_type, i.customer_id,
+                   c.name AS customer_name
+            FROM invoice_items ii
+            LEFT JOIN invoices i ON i.id = ii.invoice_id
+            LEFT JOIN customers c ON c.id = i.customer_id
+            WHERE ii.product_id = ?
+            ORDER BY i.created_at DESC, ii.id DESC
+            """,
+            (product_id,),
+        ).fetchall()
+
+        sold_units = 0
+        credited_units = 0
+        invoice_count = 0
+        last_stock_output: Optional[dict[str, Any]] = None
+        history: list[dict[str, Any]] = []
+        for row in history_rows:
+            quantity = int(row["quantity"] or 0)
+            stock_effect = _product_document_stock_effect(row["document_type"]) * quantity
+            if stock_effect < 0:
+                sold_units += abs(stock_effect)
+                if last_stock_output is None:
+                    last_stock_output = {
+                        "invoice_id": int(row["invoice_id"]) if row["invoice_id"] is not None else None,
+                        "created_at": row["created_at"],
+                        "document_type": row["document_type"],
+                        "customer_id": int(row["customer_id"]) if row["customer_id"] is not None else None,
+                        "customer_name": row["customer_name"],
+                        "quantity": quantity,
+                    }
+            elif stock_effect > 0:
+                credited_units += stock_effect
+            if row["invoice_id"] is not None:
+                invoice_count += 1
+            history.append(
+                {
+                    "invoice_id": int(row["invoice_id"]) if row["invoice_id"] is not None else None,
+                    "created_at": row["created_at"],
+                    "document_type": row["document_type"],
+                    "customer_id": int(row["customer_id"]) if row["customer_id"] is not None else None,
+                    "customer_name": row["customer_name"] or "Sin cliente",
+                    "quantity": quantity,
+                    "unit_price": round(float(row["unit_price"] or 0), 2),
+                    "line_total": round(quantity * float(row["unit_price"] or 0), 2),
+                    "stock_effect": stock_effect,
+                }
+            )
+
+        has_imei_table = _has_table(conn, "product_imeis")
+        available_imeis = 0
+        sold_imeis = 0
+        imei_rows: list[dict[str, Any]] = []
+        if has_imei_table:
+            raw_imei_rows = conn.execute(
+                """
+                SELECT imei, sold_invoice_id, sold_at
+                FROM product_imeis
+                WHERE product_id = ?
+                ORDER BY imei ASC
+                """,
+                (product_id,),
+            ).fetchall()
+            for row in raw_imei_rows:
+                sold_invoice_id = int(row["sold_invoice_id"]) if row["sold_invoice_id"] is not None else None
+                if sold_invoice_id is None:
+                    available_imeis += 1
+                else:
+                    sold_imeis += 1
+                imei_rows.append(
+                    {
+                        "imei": str(row["imei"] or "").strip(),
+                        "sold_invoice_id": sold_invoice_id,
+                        "sold_at": row["sold_at"],
+                        "status": "sold" if sold_invoice_id is not None else "available",
+                    }
+                )
+
+        current_stock = int(product["stock"] or 0)
+        summary_note = (
+            "El seguimiento se basa en comprobantes e IMEIs registrados en esta base."
+            if has_imei_table
+            else "El seguimiento se basa en comprobantes registrados. Esta base todavia no tiene tabla de IMEIs."
+        )
+        if last_stock_output is not None and current_stock <= 0:
+            summary_note += " Si el cliente informo una venta reciente, conviene revisar primero el ultimo comprobante listado."
+
+        return {
+            "product": {
+                "id": int(product["id"]),
+                "name": product["name"],
+                "sku": product["sku"],
+                "barcode": product["barcode"],
+                "stock": current_stock,
+                "price": round(float(product["price"] or 0), 2),
+                "cost": round(float(product["cost"] or 0), 2),
+                "category_id": int(product["category_id"]) if product["category_id"] is not None else None,
+                "category_name": product["category_name"],
+            },
+            "summary": {
+                "invoice_count": invoice_count,
+                "sold_units": sold_units,
+                "credited_units": credited_units,
+                "net_units_out": sold_units - credited_units,
+                "available_imeis": available_imeis,
+                "sold_imeis": sold_imeis,
+                "has_imei_tracking": has_imei_table,
+                "last_stock_output": last_stock_output,
+                "note": summary_note,
+            },
+            "history": history,
+            "imeis": imei_rows,
         }
     finally:
         conn.close()

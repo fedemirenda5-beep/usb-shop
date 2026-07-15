@@ -44,6 +44,61 @@ interface Category {
   name: string;
 }
 
+interface ProductTrackingEntry {
+  invoice_id: number | null;
+  created_at: string | null;
+  document_type: string | null;
+  customer_id: number | null;
+  customer_name: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  stock_effect: number;
+}
+
+interface ProductTrackingImei {
+  imei: string;
+  sold_invoice_id: number | null;
+  sold_at: string | null;
+  status: 'available' | 'sold';
+}
+
+interface ProductTrackingSummary {
+  invoice_count: number;
+  sold_units: number;
+  credited_units: number;
+  net_units_out: number;
+  available_imeis: number;
+  sold_imeis: number;
+  has_imei_tracking: boolean;
+  last_stock_output: {
+    invoice_id: number | null;
+    created_at: string | null;
+    document_type: string | null;
+    customer_id: number | null;
+    customer_name: string | null;
+    quantity: number;
+  } | null;
+  note: string;
+}
+
+interface ProductTrackingData {
+  product: {
+    id: number;
+    name: string;
+    sku: string;
+    barcode?: string | null;
+    stock: number;
+    price: number;
+    cost: number;
+    category_id: number | null;
+    category_name?: string | null;
+  };
+  summary: ProductTrackingSummary;
+  history: ProductTrackingEntry[];
+  imeis: ProductTrackingImei[];
+}
+
 const normalizeCategoryName = (value: string) =>
   value
     .normalize('NFD')
@@ -179,6 +234,11 @@ export default function ProductosPage() {
   const [onlyOutOfStock, setOnlyOutOfStock] = useState(false);
   const [page, setPage] = useState(1);
   const [showCategoriesModal, setShowCategoriesModal] = useState(false);
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
+  const [trackingSearch, setTrackingSearch] = useState('');
+  const [trackingLoading, setTrackingLoading] = useState(false);
+  const [trackingError, setTrackingError] = useState('');
+  const [trackingData, setTrackingData] = useState<ProductTrackingData | null>(null);
   const [categoryDraft, setCategoryDraft] = useState('');
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryError, setCategoryError] = useState('');
@@ -317,11 +377,66 @@ export default function ProductosPage() {
     if (editProduct) return editProduct;
     return null;
   }, [editProduct]);
+  const trackingMatches = useMemo(() => {
+    const tokens = buildSearchTokens(trackingSearch);
+    if (tokens.length === 0) {
+      return products.slice(0, 12);
+    }
+    return products
+      .filter((product) => {
+        const haystack = normalizeSearchValue(
+          [product.name, product.sku, product.barcode || '', product.category || ''].join(' ')
+        );
+        return tokens.every((token) => haystack.includes(token));
+      })
+      .slice(0, 12);
+  }, [products, trackingSearch]);
 
   const openEditor = (productId: number) => {
     router.push(`/admin/productos?edit=${productId}`);
     const product = products.find((item) => item.id === productId) || null;
     setEditProduct(product);
+  };
+
+  const loadProductTracking = async (productId: number) => {
+    try {
+      setTrackingLoading(true);
+      setTrackingError('');
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/products/${productId}/tracking`, {
+        credentials: 'include',
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((data && typeof data === 'object' && 'detail' in data && data.detail) || 'No se pudo cargar el seguimiento');
+      }
+      setTrackingData(data as ProductTrackingData);
+    } catch (err) {
+      setTrackingData(null);
+      setTrackingError(err instanceof Error ? err.message : 'Error cargando seguimiento');
+    } finally {
+      setTrackingLoading(false);
+    }
+  };
+
+  const openTrackingModal = (product?: Product | null) => {
+    setShowTrackingModal(true);
+    setTrackingError('');
+    if (product) {
+      setTrackingSearch(product.name);
+      void loadProductTracking(product.id);
+      return;
+    }
+    setTrackingSearch('');
+    setTrackingData(null);
+  };
+
+  const closeTrackingModal = () => {
+    setShowTrackingModal(false);
+    setTrackingLoading(false);
+    setTrackingError('');
+    setTrackingData(null);
+    setTrackingSearch('');
   };
 
   const resolveScannedProduct = async (rawValue: string) => {
@@ -813,6 +928,13 @@ export default function ProductosPage() {
           >
             Rubros
           </button>
+          <button
+            type="button"
+            className={styles.btnSecondary}
+            onClick={() => openTrackingModal()}
+          >
+            Seguimiento productos
+          </button>
           <Link href="/admin/productos/nueva" className={styles.btnNew}>
             + Nuevo producto
           </Link>
@@ -1040,6 +1162,16 @@ export default function ProductosPage() {
                       )}
                     </td>
                     <td className={styles.actions}>
+                      <button
+                        type="button"
+                        className={styles.btnEdit}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openTrackingModal(product);
+                        }}
+                      >
+                        Seguimiento
+                      </button>
                       <Link href={`/admin/productos?edit=${product.id}`} className={styles.btnEdit}>
                         Editar
                       </Link>
@@ -1106,10 +1238,13 @@ export default function ProductosPage() {
                 <div><span>Margen</span><strong>{calculateMargin(selectedProduct.cost, selectedProduct.price)?.toFixed(1) || '0'}%</strong></div>
               ) : null}
             </div>
-            <div className={styles.mobileDetailActions}>
-              <button type="button" className={styles.btnSecondary} onClick={() => void toggleFeatured(selectedProduct)}>
-                {selectedProduct.is_featured ? 'Quitar destacado' : 'Marcar destacado'}
-              </button>
+          <div className={styles.mobileDetailActions}>
+            <button type="button" className={styles.btnSecondary} onClick={() => openTrackingModal(selectedProduct)}>
+              Seguimiento
+            </button>
+            <button type="button" className={styles.btnSecondary} onClick={() => void toggleFeatured(selectedProduct)}>
+              {selectedProduct.is_featured ? 'Quitar destacado' : 'Marcar destacado'}
+            </button>
               <button type="button" className={styles.btnDelete} onClick={() => void handleDelete(selectedProduct)}>
                 {selectedProduct.stock <= 0 ? 'Eliminar agotado' : 'Eliminar'}
               </button>
@@ -1137,6 +1272,172 @@ export default function ProductosPage() {
           >
             Siguiente
           </button>
+        </div>
+      ) : null}
+
+      {showTrackingModal ? (
+        <div className={styles.modal}>
+          <div className={`${styles.modalContent} ${styles.trackingModalContent}`}>
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={closeTrackingModal}
+            >
+              x
+            </button>
+            <div className={styles.trackingHeader}>
+              <div>
+                <h2>Seguimiento productos</h2>
+                <p>Busca un producto para revisar stock actual, comprobantes relacionados y ultimo movimiento detectado.</p>
+              </div>
+            </div>
+
+            <div className={styles.trackingSearchBlock}>
+              <input
+                type="text"
+                value={trackingSearch}
+                onChange={(event) => setTrackingSearch(event.target.value)}
+                placeholder="Buscar por nombre, SKU o codigo..."
+                className={styles.searchInput}
+              />
+              <div className={styles.trackingMatchList}>
+                {trackingMatches.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className={`${styles.trackingMatch} ${trackingData?.product.id === product.id ? styles.trackingMatchActive : ''}`}
+                    onClick={() => void loadProductTracking(product.id)}
+                  >
+                    <strong>{product.name}</strong>
+                    <span>SKU {product.sku || '-'} | Stock {product.stock}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {trackingError ? <div className={styles.error}>{trackingError}</div> : null}
+
+            {trackingLoading ? <div className={styles.loading}>Cargando seguimiento...</div> : null}
+
+            {!trackingLoading && trackingData ? (
+              <div className={styles.trackingBody}>
+                <div className={styles.trackingProductCard}>
+                  <div>
+                    <h3>{trackingData.product.name}</h3>
+                    <p>
+                      SKU {trackingData.product.sku || '-'}
+                      {trackingData.product.category_name ? ` | ${trackingData.product.category_name}` : ''}
+                    </p>
+                  </div>
+                  <div className={styles.trackingStockBadge}>
+                    <span>Stock actual</span>
+                    <strong>{trackingData.product.stock}</strong>
+                  </div>
+                </div>
+
+                <div className={styles.trackingSummaryGrid}>
+                  <article className={styles.trackingSummaryCard}>
+                    <span>Comprobantes</span>
+                    <strong>{trackingData.summary.invoice_count}</strong>
+                  </article>
+                  <article className={styles.trackingSummaryCard}>
+                    <span>Unidades vendidas</span>
+                    <strong>{trackingData.summary.sold_units}</strong>
+                  </article>
+                  <article className={styles.trackingSummaryCard}>
+                    <span>Notas de credito</span>
+                    <strong>{trackingData.summary.credited_units}</strong>
+                  </article>
+                  <article className={styles.trackingSummaryCard}>
+                    <span>Salida neta</span>
+                    <strong>{trackingData.summary.net_units_out}</strong>
+                  </article>
+                  <article className={styles.trackingSummaryCard}>
+                    <span>IMEIs disponibles</span>
+                    <strong>{trackingData.summary.available_imeis}</strong>
+                  </article>
+                  <article className={styles.trackingSummaryCard}>
+                    <span>IMEIs vendidos</span>
+                    <strong>{trackingData.summary.sold_imeis}</strong>
+                  </article>
+                </div>
+
+                <div className={styles.trackingNote}>
+                  <p>{trackingData.summary.note}</p>
+                  {trackingData.summary.last_stock_output ? (
+                    <p>
+                      Ultima salida detectada: {trackingData.summary.last_stock_output.document_type || 'Comprobante'} #
+                      {trackingData.summary.last_stock_output.invoice_id || '-'} el{' '}
+                      {trackingData.summary.last_stock_output.created_at
+                        ? formatArgentinaDateTime(trackingData.summary.last_stock_output.created_at)
+                        : '-'}
+                      {' '}para {trackingData.summary.last_stock_output.customer_name || 'Sin cliente'}.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className={styles.trackingTableWrapper}>
+                  {trackingData.history.length === 0 ? (
+                    <div className={styles.empty}>
+                      <p>No hay comprobantes registrados para este producto.</p>
+                    </div>
+                  ) : (
+                    <table className={styles.table}>
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Comprobante</th>
+                          <th>Cliente</th>
+                          <th>Cantidad</th>
+                          <th>Impacto stock</th>
+                          <th>Precio</th>
+                          <th>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trackingData.history.map((entry) => (
+                          <tr key={`${entry.invoice_id || 'sin'}-${entry.created_at || 'fecha'}-${entry.quantity}-${entry.line_total}`}>
+                            <td>{entry.created_at ? formatArgentinaDateTime(entry.created_at) : '-'}</td>
+                            <td>
+                              {entry.document_type || 'Sin tipo'}
+                              {entry.invoice_id ? ` #${entry.invoice_id}` : ''}
+                            </td>
+                            <td>{entry.customer_name || 'Sin cliente'}</td>
+                            <td>{entry.quantity}</td>
+                            <td>
+                              <span className={entry.stock_effect > 0 ? styles.inStock : entry.stock_effect < 0 ? styles.outOfStock : styles.marginEmpty}>
+                                {entry.stock_effect > 0 ? `+${entry.stock_effect}` : entry.stock_effect}
+                              </span>
+                            </td>
+                            <td>{currencyFormatter.format(entry.unit_price || 0)}</td>
+                            <td>{currencyFormatter.format(entry.line_total || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {trackingData.summary.has_imei_tracking && trackingData.imeis.length > 0 ? (
+                  <div className={styles.trackingImeiBlock}>
+                    <h3>IMEIs</h3>
+                    <div className={styles.trackingImeiList}>
+                      {trackingData.imeis.map((imei) => (
+                        <div key={imei.imei} className={styles.trackingImeiItem}>
+                          <strong>{imei.imei}</strong>
+                          <span>
+                            {imei.status === 'sold'
+                              ? `Vendido${imei.sold_invoice_id ? ` en #${imei.sold_invoice_id}` : ''}${imei.sold_at ? ` el ${formatArgentinaDateTime(imei.sold_at)}` : ''}`
+                              : 'Disponible'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
