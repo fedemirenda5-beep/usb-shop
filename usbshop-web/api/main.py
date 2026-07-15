@@ -415,6 +415,8 @@ _COLUMN_EXISTS_CACHE: dict[tuple[bool, str, str], bool] = {}
 _ADMIN_OVERVIEW_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_ADMIN_OVERVIEW_CACHE_TTL", "30") or "30"))
 _ADMIN_OVERVIEW_CACHE_LOCK = threading.Lock()
 _ADMIN_OVERVIEW_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_RUNTIME_SCHEMA_READY = False
+_RUNTIME_SCHEMA_LOCK = threading.Lock()
 
 app = FastAPI(title="USB Shop API", version="1.0.0")
 
@@ -426,6 +428,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def app_startup() -> None:
+    try:
+        _ensure_runtime_schema()
+    except Exception:
+        LOGGER.exception("No se pudo preparar el esquema runtime al iniciar la API")
 
 
 @app.exception_handler(HTTPException)
@@ -934,6 +944,11 @@ def _invalidate_table_cache(table: str) -> None:
     for key in list(_COLUMN_EXISTS_CACHE.keys()):
         if key[1] == table:
             _COLUMN_EXISTS_CACHE.pop(key, None)
+
+
+def _mark_runtime_schema_dirty() -> None:
+    global _RUNTIME_SCHEMA_READY
+    _RUNTIME_SCHEMA_READY = False
 
 
 def _ensure_products_cost_column(conn: DBConn) -> None:
@@ -2374,6 +2389,7 @@ def _sync_from_source() -> dict:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(source) as src, sqlite3.connect(dest) as dst:
         src.backup(dst)
+    _mark_runtime_schema_dirty()
     return {"status": "ok", "source": str(source), "dest": str(dest)}
 
 
@@ -2472,6 +2488,36 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
                 f"ALTER TABLE {table_name} ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
             )
     conn.commit()
+
+
+def _ensure_runtime_schema(force: bool = False) -> None:
+    global _RUNTIME_SCHEMA_READY
+    if _RUNTIME_SCHEMA_READY and not force:
+        return
+    with _RUNTIME_SCHEMA_LOCK:
+        if _RUNTIME_SCHEMA_READY and not force:
+            return
+        conn = _connect()
+        try:
+            _ensure_users_table(conn)
+            _ensure_bootstrap_admin(conn)
+            _ensure_syncable_tables(conn)
+            _ensure_product_images_table(conn)
+            _ensure_products_barcode_column(conn)
+            _ensure_products_cost_column(conn)
+            _ensure_products_highlight_new_arrivals_column(conn)
+            _ensure_products_flash_offer_columns(conn)
+            _ensure_invoice_payment_method_column(conn)
+            _ensure_invoice_special_discount_column(conn)
+            _ensure_invoice_items_cost_snapshot_column(conn)
+            _ensure_product_imeis_table(conn)
+            _ensure_web_order_tables(conn)
+            _ensure_accounting_tables(conn)
+            _ensure_sellers_table(conn)
+            conn.commit()
+            _RUNTIME_SCHEMA_READY = True
+        finally:
+            conn.close()
 
 
 def _active_account_movements_clause(conn: DBConn, alias: str = "account_movements") -> str:
@@ -2690,7 +2736,9 @@ def sync_db(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="Sync no disponible en Postgres")
     _require_local(request)
     try:
-        return _sync_from_source()
+        result = _sync_from_source()
+        _ensure_runtime_schema(force=True)
+        return result
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -2881,10 +2929,6 @@ def list_products(
 ) -> list[dict]:
     conn = _connect()
     try:
-        _ensure_product_images_table(conn)
-        _ensure_products_cost_column(conn)
-        _ensure_products_highlight_new_arrivals_column(conn)
-        _ensure_products_flash_offer_columns(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -3379,9 +3423,6 @@ def admin_update_order_status(
 def featured_products(limit: int = 6) -> list[dict]:
     conn = _connect()
     try:
-        _ensure_product_images_table(conn)
-        _ensure_products_highlight_new_arrivals_column(conn)
-        _ensure_products_flash_offer_columns(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -3875,12 +3916,6 @@ def admin_list_products(
     
     conn = _connect()
     try:
-        _ensure_product_images_table(conn)
-        _ensure_products_barcode_column(conn)
-        _ensure_products_cost_column(conn)
-        _ensure_products_highlight_new_arrivals_column(conn)
-        _ensure_products_flash_offer_columns(conn)
-        _ensure_product_imeis_table(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
@@ -3917,60 +3952,55 @@ def admin_list_products(
             """,
             params + [limit, offset],
         ).fetchall()
-        
-        total = conn.execute(
-            f"SELECT COUNT(*) as count FROM products {where_clause}",
-            params,
-        ).fetchone()
+
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
         imeis_map = _fetch_product_imeis(conn, product_ids, only_available=True)
-        
-        return [
-            {
-                "id": int(row["id"]),
-                "name": row["name"],
-                "sku": row["sku"],
-                "barcode": row["barcode"],
-                "price": float(row["price"] or 0),
-                "price_list_1": float(row["price_list_1"] or 0),
-                "price_list_2": float(row["price_list_2"] or 0),
-                "storefront_price": _storefront_price(row),
-                "storefront_original_price": _pick_price(row),
-                "storefront_price_source": (
-                    "flash_offer"
-                    if _flash_offer_is_active(row)
-                    else "price_list_1"
-                    if float(row["price_list_1"] or 0) > 0 and float(row["price_list_1"] or 0) != float(row["price"] or 0)
-                    else "price"
-                ),
-                "cost": float(row["cost"] or 0),
-                "stock": int(row["stock"] or 0),
-                "category_id": int(row["category_id"]) if row["category_id"] else None,
-                "is_active": bool(row["is_active"]) if has_is_active else True,
-                "is_featured": bool(row["is_featured"]),
-                "is_offer": bool(row["is_offer"]),
-                "flash_offer_price": float(row["flash_offer_price"] or 0),
-                "flash_offer_ends_at": row["flash_offer_ends_at"],
-                "flash_offer_active": _flash_offer_is_active(row),
-                "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
-                if has_highlight_new_arrivals
-                else False,
-                "image_path": row["image_path"],
-                "imeis": imeis_map.get(int(row["id"])) or [],
-                **_build_product_image_fields(
-                    row["image_path"],
-                    images_map.get(int(row["id"])) or [],
-                    int(row["id"]),
-                ),
-                "image_urls": _build_product_image_fields(
-                    row["image_path"],
-                    images_map.get(int(row["id"])) or [],
-                    int(row["id"]),
-                )["imageUrls"],
-            }
-            for row in rows
-        ]
+        payload: list[dict[str, Any]] = []
+        for row in rows:
+            product_id = int(row["id"])
+            image_fields = _build_product_image_fields(
+                row["image_path"],
+                images_map.get(product_id) or [],
+                product_id,
+            )
+            payload.append(
+                {
+                    "id": product_id,
+                    "name": row["name"],
+                    "sku": row["sku"],
+                    "barcode": row["barcode"],
+                    "price": float(row["price"] or 0),
+                    "price_list_1": float(row["price_list_1"] or 0),
+                    "price_list_2": float(row["price_list_2"] or 0),
+                    "storefront_price": _storefront_price(row),
+                    "storefront_original_price": _pick_price(row),
+                    "storefront_price_source": (
+                        "flash_offer"
+                        if _flash_offer_is_active(row)
+                        else "price_list_1"
+                        if float(row["price_list_1"] or 0) > 0 and float(row["price_list_1"] or 0) != float(row["price"] or 0)
+                        else "price"
+                    ),
+                    "cost": float(row["cost"] or 0),
+                    "stock": int(row["stock"] or 0),
+                    "category_id": int(row["category_id"]) if row["category_id"] else None,
+                    "is_active": bool(row["is_active"]) if has_is_active else True,
+                    "is_featured": bool(row["is_featured"]),
+                    "is_offer": bool(row["is_offer"]),
+                    "flash_offer_price": float(row["flash_offer_price"] or 0),
+                    "flash_offer_ends_at": row["flash_offer_ends_at"],
+                    "flash_offer_active": _flash_offer_is_active(row),
+                    "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
+                    if has_highlight_new_arrivals
+                    else False,
+                    "image_path": row["image_path"],
+                    "imeis": imeis_map.get(product_id) or [],
+                    **image_fields,
+                    "image_urls": image_fields["imageUrls"],
+                }
+            )
+        return payload
     finally:
         conn.close()
 
