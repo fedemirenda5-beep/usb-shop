@@ -250,6 +250,29 @@ def _can_send_order_email() -> bool:
     return False
 
 
+def _mail_configuration_issues(settings: Optional[dict[str, Any]] = None) -> list[str]:
+    current = settings or _mail_settings()
+    provider = current["provider"]
+    missing: list[str] = []
+    if not current["order_notify_email"]:
+        missing.append("USB_ORDER_NOTIFY_EMAIL")
+    if provider == "mailgun":
+        if not current["mail_from"]:
+            missing.append("USB_MAIL_FROM")
+        if not current["mailgun_domain"]:
+            missing.append("USB_MAILGUN_DOMAIN")
+        if not current["mailgun_api_key"]:
+            missing.append("USB_MAILGUN_API_KEY")
+        return missing
+    if not current["smtp_host"]:
+        missing.append("USB_SMTP_HOST")
+    if not current["smtp_user"]:
+        missing.append("USB_SMTP_USER")
+    if not current["smtp_password"]:
+        missing.append("USB_SMTP_PASSWORD")
+    return missing
+
+
 def _mail_settings() -> dict[str, Any]:
     order_notify_email = (os.getenv("USB_ORDER_NOTIFY_EMAIL") or ORDER_NOTIFY_EMAIL or "").strip()
 
@@ -529,9 +552,15 @@ def _send_via_mail_provider(
 
 
 def _send_order_email(order_id: int, total: float, customer: dict, items: list[dict]) -> None:
-    if not _can_send_order_email():
-        return
     settings = _mail_settings()
+    if not _can_send_order_email():
+        LOGGER.warning(
+            "Email de pedido deshabilitado para pedido %s. Proveedor=%s. Faltan: %s",
+            order_id,
+            settings["provider"],
+            ", ".join(_mail_configuration_issues(settings)) or "configuracion desconocida",
+        )
+        return
     notify_subject = f"Nuevo pedido web #{order_id}"
     customer_subject, text_body, html_body = _build_order_email_payloads(
         order_id, total, customer, items, settings
@@ -644,6 +673,23 @@ def app_startup() -> None:
         _ensure_runtime_schema()
     except Exception:
         LOGGER.exception("No se pudo preparar el esquema runtime al iniciar la API")
+    try:
+        mail_settings = _mail_settings()
+        issues = _mail_configuration_issues(mail_settings)
+        if issues:
+            LOGGER.warning(
+                "Email de pedidos no configurado completamente. Proveedor=%s. Faltan: %s",
+                mail_settings["provider"],
+                ", ".join(issues),
+            )
+        else:
+            LOGGER.info(
+                "Email de pedidos configurado. Proveedor=%s. Destino interno=%s",
+                mail_settings["provider"],
+                mail_settings["order_notify_email"],
+            )
+    except Exception:
+        LOGGER.exception("No se pudo validar la configuracion de email al iniciar la API")
 
 
 @app.exception_handler(HTTPException)
