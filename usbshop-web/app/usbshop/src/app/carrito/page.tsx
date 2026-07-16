@@ -129,7 +129,11 @@ export default function CartPage() {
               return;
             }
             const stock = Number.isFinite(live.stock) ? Number(live.stock) : 0;
-            const qty = stock > 0 ? Math.min(entry.qty, stock) : entry.qty;
+            if (stock <= 0) {
+              changed = true;
+              return;
+            }
+            const qty = Math.min(entry.qty, stock);
             if (entry.product !== live || qty !== entry.qty) {
               changed = true;
             }
