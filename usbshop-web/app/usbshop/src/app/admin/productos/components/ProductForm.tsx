@@ -779,7 +779,7 @@ export function ProductForm({
               onChange={handleChange}
               disabled={loading}
             />
-            <span>Destacar en pagina principal</span>
+            <span>Destacar en seccion destacados</span>
           </label>
 
           <label className={styles.checkbox}>
@@ -801,7 +801,7 @@ export function ProductForm({
               onChange={handleChange}
               disabled={loading}
             />
-            <span>Mostrar arriba en Ultimos ingresos</span>
+            <span>Mostrar primero en Ultimos ingresos</span>
           </label>
         </div>
 

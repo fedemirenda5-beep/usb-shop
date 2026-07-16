@@ -1066,10 +1066,11 @@ export default function HomeClient({
     const available = [...source]
       .filter((product) => (product.stock ?? 0) > 0)
       .sort((a, b) => {
-        const highlightedDelta =
-          Number(Boolean(b.highlightNewArrivals)) - Number(Boolean(a.highlightNewArrivals));
-        if (highlightedDelta !== 0) {
-          return highlightedDelta;
+        const pinnedScore = (product: Product) =>
+          Number(Boolean(product.highlightNewArrivals)) * 2 + Number(Boolean(product.isFeatured));
+        const pinnedDelta = pinnedScore(b) - pinnedScore(a);
+        if (pinnedDelta !== 0) {
+          return pinnedDelta;
         }
         return compareByNewest(a, b);
       });

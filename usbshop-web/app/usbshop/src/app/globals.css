@@ -1619,9 +1619,9 @@ a:focus-visible {
 .product-price--offer {
   font-size: 21px;
   font-weight: 800;
-  color: #b9ff4f;
+  color: #2f7d2a;
   letter-spacing: -0.02em;
-  text-shadow: 0 8px 20px rgba(132, 204, 22, 0.18);
+  text-shadow: 0 6px 16px rgba(47, 125, 42, 0.14);
 }
 
 .product-price--before {
