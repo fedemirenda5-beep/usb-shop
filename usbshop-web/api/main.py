@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import html
 import io
 import json
 import logging
@@ -88,6 +89,16 @@ MAILGUN_API_KEY = (
     or os.getenv("API_KEY")
     or ""
 ).strip()
+PUBLIC_API_BASE_URL = (
+    os.getenv("USB_PUBLIC_API_BASE_URL")
+    or os.getenv("NEXT_PUBLIC_API_BASE_URL")
+    or "https://api.usbshop.com.ar"
+).strip().rstrip("/")
+PUBLIC_STORE_BASE_URL = (
+    os.getenv("USB_PUBLIC_STORE_URL")
+    or os.getenv("NEXT_PUBLIC_SITE_URL")
+    or "https://usbshop.com.ar"
+).strip().rstrip("/")
 
 def _adapt_query(query: str) -> str:
     if not DB_IS_POSTGRES:
@@ -268,6 +279,18 @@ def _mail_settings() -> dict[str, Any]:
         or MAILGUN_API_KEY
         or ""
     ).strip()
+    public_api_base_url = (
+        os.getenv("USB_PUBLIC_API_BASE_URL")
+        or os.getenv("NEXT_PUBLIC_API_BASE_URL")
+        or PUBLIC_API_BASE_URL
+        or ""
+    ).strip().rstrip("/")
+    public_store_base_url = (
+        os.getenv("USB_PUBLIC_STORE_URL")
+        or os.getenv("NEXT_PUBLIC_SITE_URL")
+        or PUBLIC_STORE_BASE_URL
+        or ""
+    ).strip().rstrip("/")
 
     provider = (
         (os.getenv("USB_MAIL_PROVIDER") or MAIL_PROVIDER or "").strip().lower()
@@ -289,73 +312,258 @@ def _mail_settings() -> dict[str, Any]:
         "mailgun_api_base_url": mailgun_api_base_url,
         "mailgun_domain": mailgun_domain,
         "mailgun_api_key": mailgun_api_key,
+        "public_api_base_url": public_api_base_url,
+        "public_store_base_url": public_store_base_url,
     }
+
+
+def _absolute_public_url(path_or_url: Optional[str], base_url: str) -> Optional[str]:
+    raw = str(path_or_url or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    if not base_url:
+        return raw
+    if raw.startswith("/"):
+        return f"{base_url}{raw}"
+    return f"{base_url}/{raw}"
+
+
+def _format_money_ars(value: Any) -> str:
+    try:
+        amount = float(value or 0)
+    except Exception:
+        amount = 0.0
+    formatted = f"{amount:,.2f}"
+    return f"${formatted.replace(',', 'X').replace('.', ',').replace('X', '.')}"
+
+
+def _build_order_email_payloads(
+    order_id: int,
+    total: float,
+    customer: dict,
+    items: list[dict],
+    settings: dict[str, Any],
+) -> tuple[str, str, str]:
+    created_at = datetime.now(ARGENTINA_TZ).strftime("%d/%m/%Y %H:%M")
+    store_url = settings.get("public_store_base_url") or ""
+    support_email = settings.get("order_notify_email") or "-"
+    customer_name = str(customer.get("name") or "").strip() or "Cliente"
+    customer_phone = str(customer.get("phone") or "").strip() or "-"
+    customer_email = str(customer.get("email") or "").strip() or "-"
+    customer_notes = str(customer.get("notes") or "").strip() or "-"
+
+    lines = [
+        f"Pedido: #{order_id}",
+        f"Fecha: {created_at}",
+        f"Total: {_format_money_ars(total)}",
+        "",
+        "Cliente:",
+        f"Nombre: {customer_name}",
+        f"Telefono: {customer_phone}",
+        f"Email: {customer_email}",
+        f"Notas: {customer_notes}",
+        "",
+        "Productos:",
+    ]
+    html_cards: list[str] = []
+    for item in items:
+        item_name = str(item.get("name") or "Producto").strip() or "Producto"
+        item_qty = max(1, int(item.get("qty") or 1))
+        unit_price = float(item.get("unit_price") or 0)
+        line_total = unit_price * item_qty
+        description = str(item.get("description") or "").strip()
+        image_url = _absolute_public_url(item.get("image_url"), settings.get("public_api_base_url") or "")
+        lines.append(
+            f"- {item_name} x{item_qty} ({_format_money_ars(unit_price)} c/u) = {_format_money_ars(line_total)}"
+        )
+        if description:
+            lines.append(f"  {description}")
+        html_cards.append(
+            f"""
+            <tr>
+              <td style="padding:16px 0;border-bottom:1px solid #e5e7eb;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td width="112" valign="top" style="padding-right:16px;">
+                      {f'<img src="{html.escape(image_url)}" alt="{html.escape(item_name)}" width="96" style="display:block;width:96px;height:96px;object-fit:cover;border-radius:12px;border:1px solid #e5e7eb;">' if image_url else '<div style="width:96px;height:96px;border-radius:12px;background:#f3f4f6;border:1px solid #e5e7eb;"></div>'}
+                    </td>
+                    <td valign="top" style="font-family:Arial,Helvetica,sans-serif;color:#111827;">
+                      <div style="font-size:16px;font-weight:700;line-height:1.35;">{html.escape(item_name)}</div>
+                      <div style="margin-top:6px;font-size:13px;color:#4b5563;">Cantidad: {item_qty}</div>
+                      <div style="margin-top:4px;font-size:13px;color:#4b5563;">Precio unitario: {_format_money_ars(unit_price)}</div>
+                      <div style="margin-top:4px;font-size:14px;font-weight:700;color:#111827;">Subtotal: {_format_money_ars(line_total)}</div>
+                      {f'<div style="margin-top:8px;font-size:13px;line-height:1.5;color:#4b5563;">{html.escape(description)}</div>' if description else ''}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            """
+        )
+    lines.extend(
+        [
+            "",
+            "Estado: Pendiente",
+            f"Contacto: {customer_phone}",
+            f"Soporte: {support_email}",
+            "",
+            "Gracias por confiar en USB-Shop.",
+            *(["", f"Web: {store_url}"] if store_url else []),
+        ]
+    )
+    text_body = "\n".join(lines)
+    customer_subject = f"Recibimos tu pedido #{order_id} en USB Shop"
+    html_body = f"""
+    <html>
+      <body style="margin:0;padding:24px;background:#f4f4f5;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:720px;background:#ffffff;border-radius:18px;overflow:hidden;">
+                <tr>
+                  <td style="padding:28px 32px;background:linear-gradient(135deg,#111827 0%,#1f2937 100%);font-family:Arial,Helvetica,sans-serif;color:#ffffff;">
+                    <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.8;">USB Shop</div>
+                    <div style="margin-top:8px;font-size:28px;font-weight:700;line-height:1.2;">Pedido recibido</div>
+                    <div style="margin-top:8px;font-size:15px;line-height:1.6;opacity:.92;">Hola {html.escape(customer_name)}, gracias por confiar en USB-Shop. Este es el detalle del pedido que registramos como pendiente.</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:24px 32px 8px;font-family:Arial,Helvetica,sans-serif;color:#111827;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                      <tr>
+                        <td style="padding:0 0 8px;font-size:14px;color:#6b7280;">Pedido</td>
+                        <td align="right" style="padding:0 0 8px;font-size:16px;font-weight:700;">#{order_id}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:0 0 8px;font-size:14px;color:#6b7280;">Fecha</td>
+                        <td align="right" style="padding:0 0 8px;font-size:14px;">{html.escape(created_at)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:0 0 8px;font-size:14px;color:#6b7280;">Estado</td>
+                        <td align="right" style="padding:0 0 8px;font-size:14px;font-weight:700;color:#92400e;">Pendiente</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:0 0 8px;font-size:14px;color:#6b7280;">Total</td>
+                        <td align="right" style="padding:0 0 8px;font-size:20px;font-weight:700;">{_format_money_ars(total)}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 32px 24px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+                      {''.join(html_cards)}
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 32px 24px;font-family:Arial,Helvetica,sans-serif;">
+                    <div style="padding:18px 20px;border-radius:14px;background:#f9fafb;border:1px solid #e5e7eb;">
+                      <div style="font-size:14px;font-weight:700;color:#111827;">Datos del pedido</div>
+                      <div style="margin-top:8px;font-size:13px;line-height:1.7;color:#4b5563;">Nombre: {html.escape(customer_name)}</div>
+                      <div style="font-size:13px;line-height:1.7;color:#4b5563;">Teléfono: {html.escape(customer_phone)}</div>
+                      <div style="font-size:13px;line-height:1.7;color:#4b5563;">Email: {html.escape(customer_email)}</div>
+                      <div style="font-size:13px;line-height:1.7;color:#4b5563;">Notas: {html.escape(customer_notes)}</div>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:0 32px 32px;font-family:Arial,Helvetica,sans-serif;color:#4b5563;font-size:13px;line-height:1.7;">
+                    Este correo confirma que recibimos tu pedido. Si necesitás consultar el detalle más adelante, podés responder a este email o escribirnos al {html.escape(support_email)}.
+                    <div style="margin-top:12px;font-size:14px;font-weight:700;color:#111827;">Gracias por confiar en USB-Shop.</div>
+                    {f'<div style="margin-top:14px;"><a href="{html.escape(store_url)}" style="display:inline-block;padding:12px 18px;border-radius:999px;background:#84cc16;color:#111827;text-decoration:none;font-weight:700;">Volver a la tienda</a></div>' if store_url else ''}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
+    """
+    return customer_subject, text_body, html_body
+
+
+def _send_via_mail_provider(
+    settings: dict[str, Any],
+    *,
+    to_email: str,
+    subject: str,
+    text_body: str,
+    html_body: Optional[str] = None,
+) -> None:
+    if settings["provider"] == "mailgun":
+        endpoint = f"{settings['mailgun_api_base_url']}/v3/{settings['mailgun_domain']}/messages"
+        form_payload = {
+            "from": settings["mail_from"],
+            "to": to_email,
+            "subject": subject,
+            "text": text_body,
+        }
+        if html_body:
+            form_payload["html"] = html_body
+        encoded_form = urlencode(form_payload).encode("utf-8")
+        basic_token = base64.b64encode(f"api:{settings['mailgun_api_key']}".encode("utf-8")).decode("ascii")
+        request = UrlRequest(endpoint, data=encoded_form, method="POST")
+        request.add_header("Authorization", f"Basic {basic_token}")
+        request.add_header("Content-Type", "application/x-www-form-urlencoded")
+        request.add_header("Accept", "application/json")
+        with urlopen(request, timeout=20) as response:
+            response.read()
+        return
+
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = settings["smtp_from"] or settings["smtp_user"]
+    msg["To"] = to_email
+    msg.set_content(text_body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
+    with smtplib.SMTP(settings["smtp_host"], settings["smtp_port"], timeout=20) as smtp:
+        if settings["smtp_use_tls"]:
+            smtp.starttls()
+        smtp.login(settings["smtp_user"], settings["smtp_password"])
+        smtp.send_message(msg)
 
 
 def _send_order_email(order_id: int, total: float, customer: dict, items: list[dict]) -> None:
     if not _can_send_order_email():
         return
     settings = _mail_settings()
-    subject = f"Nuevo pedido web #{order_id}"
-    lines = [
-        f"Pedido: #{order_id}",
-        f"Total: ${total:,.2f}",
-        "",
-        "Cliente:",
-        f"Nombre: {customer.get('name') or '-'}",
-        f"Telefono: {customer.get('phone') or '-'}",
-        f"Email: {customer.get('email') or '-'}",
-        f"Notas: {customer.get('notes') or '-'}",
-        "",
-        "Productos:",
-    ]
-    for item in items:
-        lines.append(
-            f"- {item.get('name') or 'Producto'} x{item.get('qty')} (${item.get('unit_price'):,.2f})"
-        )
-    body = "\n".join(lines)
+    notify_subject = f"Nuevo pedido web #{order_id}"
+    customer_subject, text_body, html_body = _build_order_email_payloads(
+        order_id, total, customer, items, settings
+    )
 
     try:
-        if settings["provider"] == "mailgun":
-            endpoint = f"{settings['mailgun_api_base_url']}/v3/{settings['mailgun_domain']}/messages"
-            form_payload = {
-                "from": settings["mail_from"],
-                "to": settings["order_notify_email"],
-                "subject": subject,
-                "text": body,
-            }
-            encoded_form = urlencode(form_payload).encode("utf-8")
-            basic_token = base64.b64encode(
-                f"api:{settings['mailgun_api_key']}".encode("utf-8")
-            ).decode("ascii")
-            request = Request(endpoint, data=encoded_form, method="POST")
-            request.add_header("Authorization", f"Basic {basic_token}")
-            request.add_header("Content-Type", "application/x-www-form-urlencoded")
-            request.add_header("Accept", "application/json")
-            with urlopen(request, timeout=20) as response:
-                response.read()
-            LOGGER.info(
-                "Email de pedido enviado a %s (pedido %s) via Mailgun.",
-                settings["order_notify_email"],
-                order_id,
-            )
-            return
-
-        msg = EmailMessage()
-        msg["Subject"] = subject
-        msg["From"] = settings["smtp_from"] or settings["smtp_user"]
-        msg["To"] = settings["order_notify_email"]
-        msg.set_content(body)
-        with smtplib.SMTP(settings["smtp_host"], settings["smtp_port"], timeout=20) as smtp:
-            if settings["smtp_use_tls"]:
-                smtp.starttls()
-            smtp.login(settings["smtp_user"], settings["smtp_password"])
-            smtp.send_message(msg)
+        _send_via_mail_provider(
+            settings,
+            to_email=settings["order_notify_email"],
+            subject=notify_subject,
+            text_body=text_body,
+            html_body=html_body,
+        )
         LOGGER.info(
-            "Email de pedido enviado a %s (pedido %s) via SMTP.",
+            "Email de pedido enviado a %s (pedido %s).",
             settings["order_notify_email"],
             order_id,
         )
+        customer_email = str(customer.get("email") or "").strip()
+        if customer_email:
+            _send_via_mail_provider(
+                settings,
+                to_email=customer_email,
+                subject=customer_subject,
+                text_body=text_body,
+                html_body=html_body,
+            )
+            LOGGER.info(
+                "Email de confirmacion enviado a %s (pedido %s).",
+                customer_email,
+                order_id,
+            )
     except HTTPError as exc:
         detail = ""
         try:
@@ -363,7 +571,7 @@ def _send_order_email(order_id: int, total: float, customer: dict, items: list[d
         except Exception:
             detail = ""
         LOGGER.error(
-            "Mailgun respondio %s en pedido %s. %s",
+            "Proveedor de email respondio %s en pedido %s. %s",
             exc.code,
             order_id,
             detail[:400],
@@ -3101,14 +3309,27 @@ def create_order(payload: OrderPayload) -> dict:
     try:
         _ensure_web_order_tables(conn)
         _ensure_products_flash_offer_columns(conn)
+        has_description = _has_column(conn, "products", "description")
+        has_image_path = _has_column(conn, "products", "image_path")
         total = 0.0
         items: list[tuple[int, int, float]] = []
         items_details: list[dict] = []
         for item in payload.items:
+            select_fields = [
+                "id",
+                "name",
+                "price",
+                "price_list_1",
+                "price_list_2",
+                "stock",
+                "flash_offer_price",
+                "flash_offer_ends_at",
+            ]
+            select_fields.append("description" if has_description else "NULL AS description")
+            select_fields.append("image_path" if has_image_path else "NULL AS image_path")
             row = conn.execute(
-                """
-                SELECT id, name, price, price_list_1, price_list_2, stock,
-                       flash_offer_price, flash_offer_ends_at
+                f"""
+                SELECT {", ".join(select_fields)}
                 FROM products
                 WHERE id = ? AND deleted_at IS NULL
                 """,
@@ -3126,12 +3347,18 @@ def create_order(payload: OrderPayload) -> dict:
             unit_price = submitted_price if submitted_price > 0 else _storefront_price(row)
             total += unit_price * int(item.quantity)
             items.append((int(row["id"]), int(item.quantity), float(unit_price)))
+            image_url = _public_image_url(
+                row.get("image_path") if isinstance(row, dict) else row["image_path"],
+                int(row["id"]),
+            )
             items_details.append(
                 {
                     "id": int(row["id"]),
                     "name": row.get("name") if isinstance(row, dict) else row["name"],
                     "qty": int(item.quantity),
                     "unit_price": float(unit_price),
+                    "description": row.get("description") if isinstance(row, dict) else row["description"],
+                    "image_url": image_url,
                 }
             )
 
