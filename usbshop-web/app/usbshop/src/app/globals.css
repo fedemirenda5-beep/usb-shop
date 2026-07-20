@@ -1934,6 +1934,24 @@ input.button {
   object-fit: cover;
 }
 
+.modal-media-image {
+  cursor: zoom-in;
+}
+
+.modal-zoom-hint {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 1;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.68);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .modal-thumbs {
   position: absolute;
   left: 70px;
@@ -2036,6 +2054,52 @@ input.button {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: rgba(15, 23, 42, 0.6);
+}
+
+.image-lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(2, 6, 23, 0.88);
+  backdrop-filter: blur(8px);
+}
+
+.image-lightbox {
+  position: relative;
+  width: min(1200px, 96vw);
+  height: min(92vh, 900px);
+  display: grid;
+  place-items: center;
+}
+
+.image-lightbox-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.image-lightbox-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
 }
 
 .modal-content {

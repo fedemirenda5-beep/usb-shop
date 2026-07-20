@@ -335,6 +335,7 @@ export default function HomeClient({
   const [quickView, setQuickView] = useState<Product | null>(null);
   const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
   const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
+  const [isQuickViewImageExpanded, setIsQuickViewImageExpanded] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const isPublic =
     typeof window !== "undefined" &&
@@ -430,6 +431,7 @@ export default function HomeClient({
   };
 
   const handleCloseQuickView = () => {
+    setIsQuickViewImageExpanded(false);
     if (
       typeof window !== "undefined" &&
       quickViewHistoryActiveRef.current &&
@@ -456,9 +458,21 @@ export default function HomeClient({
     setQuickViewImageFailed(false);
   };
 
+  const handleOpenExpandedQuickViewImage = () => {
+    if (!quickViewImages[quickViewImageIndex]) {
+      return;
+    }
+    setIsQuickViewImageExpanded(true);
+  };
+
+  const handleCloseExpandedQuickViewImage = () => {
+    setIsQuickViewImageExpanded(false);
+  };
+
   useEffect(() => {
     setQuickViewImageFailed(false);
     setQuickViewImageIndex(0);
+    setIsQuickViewImageExpanded(false);
   }, [quickView?.id, quickView?.imageUrl, quickView?.imageUrls]);
 
   const quickViewImages = useMemo(() => {
@@ -799,6 +813,10 @@ export default function HomeClient({
     }
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (isQuickViewImageExpanded) {
+          setIsQuickViewImageExpanded(false);
+          return;
+        }
         setQuickView(null);
       }
     };
@@ -809,7 +827,7 @@ export default function HomeClient({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [quickView]);
+  }, [isQuickViewImageExpanded, quickView]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1916,7 +1934,7 @@ export default function HomeClient({
               onClick={handleCloseQuickView}
               aria-label="Cerrar"
             >
-              ✕
+              Ã¢Å“â€¢
             </button>
             <div className="modal-media">
               {quickViewImages[quickViewImageIndex] && !quickViewImageFailed ? (
@@ -1925,8 +1943,23 @@ export default function HomeClient({
                   <img
                     src={quickViewImages[quickViewImageIndex]}
                     alt={quickView.name}
+                    className="modal-media-image"
+                    onDoubleClick={handleOpenExpandedQuickViewImage}
+                    onClick={isMobileLayout ? handleOpenExpandedQuickViewImage : undefined}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        handleOpenExpandedQuickViewImage();
+                      }
+                    }}
                     onError={() => setQuickViewImageFailed(true)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Abrir imagen completa de ${quickView.name}`}
                   />
+                  <span className="modal-zoom-hint">
+                    {isMobileLayout ? "Toca para ampliar" : "Doble click para ampliar"}
+                  </span>
                   {quickViewImages.length > 1 ? (
                     <>
                       <button
@@ -1935,7 +1968,7 @@ export default function HomeClient({
                         onClick={showPreviousQuickViewImage}
                         aria-label="Imagen anterior"
                       >
-                        ‹
+                        {"<"}
                       </button>
                       <button
                         type="button"
@@ -1943,7 +1976,7 @@ export default function HomeClient({
                         onClick={showNextQuickViewImage}
                         aria-label="Imagen siguiente"
                       >
-                        ›
+                        {">"}
                       </button>
                       <div className="modal-thumbs">
                         {quickViewImages.map((imageUrl, index) => (
@@ -2010,6 +2043,53 @@ export default function HomeClient({
                 </a>
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {quickView && isQuickViewImageExpanded && quickViewImages[quickViewImageIndex] ? (
+        <div className="image-lightbox-backdrop" onClick={handleCloseExpandedQuickViewImage}>
+          <div
+            className="image-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Imagen ampliada de ${quickView.name}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="image-lightbox-close"
+              onClick={handleCloseExpandedQuickViewImage}
+              aria-label="Cerrar imagen"
+            >
+              x
+            </button>
+            {quickViewImages.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="modal-arrow modal-arrow--prev"
+                  onClick={showPreviousQuickViewImage}
+                  aria-label="Imagen anterior"
+                >
+                  {"<"}
+                </button>
+                <button
+                  type="button"
+                  className="modal-arrow modal-arrow--next"
+                  onClick={showNextQuickViewImage}
+                  aria-label="Imagen siguiente"
+                >
+                  {">"}
+                </button>
+              </>
+            ) : null}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={quickViewImages[quickViewImageIndex]}
+              alt={quickView.name}
+              className="image-lightbox-image"
+            />
           </div>
         </div>
       ) : null}
