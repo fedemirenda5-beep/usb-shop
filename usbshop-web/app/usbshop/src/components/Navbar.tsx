@@ -23,20 +23,13 @@ type CampaignBanner = {
   message: string;
 };
 
-const defaultCampaignBanner: CampaignBanner = {
-  variant: "standard",
-  eyebrow: "Temporada especial",
-  title: "Fechas para regalar mejor",
-  message: "Elegi regalos y oportunidades pensadas para cada fecha importante del ano.",
-};
-
 const getNthWeekdayOfMonth = (year: number, monthIndex: number, weekday: number, occurrence: number) => {
   const firstDay = new Date(year, monthIndex, 1);
   const offset = (weekday - firstDay.getDay() + 7) % 7;
   return new Date(year, monthIndex, 1 + offset + (occurrence - 1) * 7);
 };
 
-const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
+const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
   const year = now.getFullYear();
   const currentTime = now.getTime();
   const dayMs = 24 * 60 * 60 * 1000;
@@ -101,7 +94,7 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner => {
     };
   }
 
-  return defaultCampaignBanner;
+  return null;
 };
 
 export default function Navbar({
@@ -110,7 +103,7 @@ export default function Navbar({
   onCartClick,
   showTrust = true,
 }: NavbarProps) {
-  const [campaignBanner, setCampaignBanner] = useState<CampaignBanner>(defaultCampaignBanner);
+  const [campaignBanner, setCampaignBanner] = useState<CampaignBanner | null>(null);
   const cartIsFull = cartCount > 0;
 
   useEffect(() => {
@@ -172,7 +165,7 @@ export default function Navbar({
             </div>
           </Link>
         </div>
-        {showTrust ? (
+        {showTrust && campaignBanner ? (
           <div className={`navbar-note navbar-note--${campaignBanner.variant}`}>
             {campaignBanner.variant === "worldcup" ? (
               <div className="navbar-note-visual" aria-hidden="true">
