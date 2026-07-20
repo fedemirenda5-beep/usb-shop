@@ -1945,7 +1945,6 @@ export default function HomeClient({
                     alt={quickView.name}
                     className="modal-media-image"
                     onDoubleClick={handleOpenExpandedQuickViewImage}
-                    onClick={isMobileLayout ? handleOpenExpandedQuickViewImage : undefined}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
@@ -1958,7 +1957,7 @@ export default function HomeClient({
                     aria-label={`Abrir imagen completa de ${quickView.name}`}
                   />
                   <span className="modal-zoom-hint">
-                    {isMobileLayout ? "Toca para ampliar" : "Doble click para ampliar"}
+                    Doble click para ampliar
                   </span>
                   {quickViewImages.length > 1 ? (
                     <>
