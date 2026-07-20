@@ -1934,7 +1934,7 @@ export default function HomeClient({
               onClick={handleCloseQuickView}
               aria-label="Cerrar"
             >
-              Ã¢Å“â€¢
+              x
             </button>
             <div className="modal-media">
               {quickViewImages[quickViewImageIndex] && !quickViewImageFailed ? (
