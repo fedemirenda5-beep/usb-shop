@@ -176,6 +176,7 @@ export default function GenerarComprobantePage() {
   const [productSearch, setProductSearch] = useState('');
   const [scannedDraft, setScannedDraft] = useState<ScannedProductDraft | null>(null);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
+  const [imeiDrafts, setImeiDrafts] = useState<Record<number, string>>({});
   const [showSpecialDiscountEditor, setShowSpecialDiscountEditor] = useState(false);
   const productSearchInputRef = useRef<HTMLInputElement | null>(null);
   const scannerBufferRef = useRef('');
@@ -724,6 +725,65 @@ export default function GenerarComprobantePage() {
     }));
   };
 
+  const appendImeiToItem = async (index: number, rawValue: string) => {
+    const scannedValue = rawValue.trim();
+    if (!scannedValue) return;
+    const targetItem = form.items[index];
+    if (!targetItem) return;
+    const productId = Number(targetItem.product_id || 0);
+    const selectedProduct = productMap.get(productId);
+    if (!selectedProduct) {
+      setError('No se encontro el producto para cargar el IMEI');
+      return;
+    }
+    try {
+      const imeiLookup = await lookupImeiValue(scannedValue);
+      if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
+        setError(`El IMEI ${scannedValue} no esta registrado como propio`);
+        return;
+      }
+      if (Number(imeiLookup.product.id) !== productId) {
+        setError(`El IMEI ${scannedValue} no pertenece al producto ${selectedProduct.name}`);
+        return;
+      }
+      if (imeiLookup.status === 'sold') {
+        const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
+        const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
+        setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
+        return;
+      }
+
+      let wasAdded = true;
+      setForm((current) => {
+        const duplicateInInvoice = current.items.some((item) => item.imeis.includes(scannedValue));
+        if (duplicateInInvoice) {
+          wasAdded = false;
+          return current;
+        }
+        return {
+          ...current,
+          items: current.items.map((item, itemIndex) => {
+            if (itemIndex !== index) return item;
+            const nextImeis = [...item.imeis, scannedValue];
+            return {
+              ...item,
+              quantity: String(Math.max(Number(item.quantity || 0), nextImeis.length)),
+              imeis: nextImeis,
+            };
+          }),
+        };
+      });
+      if (!wasAdded) {
+        setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
+        return;
+      }
+      setImeiDrafts((current) => ({ ...current, [index]: '' }));
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cargar el IMEI');
+    }
+  };
+
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
     if (hasPendingOrderCellphoneImeis) {
@@ -1111,9 +1171,32 @@ export default function GenerarComprobantePage() {
                                 : 'Producto no encontrado'}
                             </div>
                             {selectedProduct?.category_id && celularesCategoryIds.has(selectedProduct.category_id) && form.order_id ? (
-                              <div className={styles.itemMeta}>
-                                IMEIs cargados: {item.imeis.length}/{Math.max(0, Number(item.quantity || 0))}
-                              </div>
+                              <>
+                                <div className={styles.itemMeta}>
+                                  IMEIs cargados: {item.imeis.length}/{Math.max(0, Number(item.quantity || 0))}
+                                </div>
+                                <div className={styles.imeiRowEditor}>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder={`Escanear IMEI ${item.imeis.length + 1}`}
+                                    value={imeiDrafts[index] || ''}
+                                    onChange={(e) => setImeiDrafts((current) => ({ ...current, [index]: e.target.value }))}
+                                    onKeyDown={(e) => {
+                                      if (e.key !== 'Enter') return;
+                                      e.preventDefault();
+                                      void appendImeiToItem(index, imeiDrafts[index] || '');
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className={styles.secondaryButton}
+                                    onClick={() => void appendImeiToItem(index, imeiDrafts[index] || '')}
+                                  >
+                                    Agregar IMEI
+                                  </button>
+                                </div>
+                              </>
                             ) : null}
                           </td>
                           <td>{selectedProduct?.stock ?? '-'}</td>

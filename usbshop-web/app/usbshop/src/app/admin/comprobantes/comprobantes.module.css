@@ -153,6 +153,17 @@
 .itemRow { display: grid; grid-template-columns: minmax(0, 2fr) 110px 130px minmax(140px, 0.8fr) auto; gap: 10px; align-items: center; }
 .productPicker { display: grid; gap: 6px; min-width: 0; }
 .itemMeta { color: var(--muted); font-size: 12px; }
+.imeiRowEditor {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.imeiRowEditor input {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
 .desktopPickerPanel, .invoiceLinesPanel { display: grid; gap: 12px; }
 .specialDiscountPanel { display: grid; gap: 12px; padding: 14px; border-radius: 14px; border: 1px solid rgba(157, 78, 221, 0.2); background: linear-gradient(180deg, rgba(245,244,255,.96), rgba(248,255,235,.92)); }
 .specialDiscountHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
