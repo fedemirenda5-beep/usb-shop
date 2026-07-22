@@ -3534,9 +3534,11 @@ def admin_list_orders(
             items = conn.execute(
                 f"""
                 SELECT i.order_id, i.product_id, i.quantity, i.unit_price,
-                       p.name AS product_name, p.sku AS sku
+                       p.name AS product_name, p.sku AS sku, p.category_id,
+                       c.name AS category_name
                 FROM web_order_items i
                 LEFT JOIN products p ON p.id = i.product_id
+                LEFT JOIN categories c ON c.id = p.category_id
                 WHERE i.order_id IN ({placeholders})
                 ORDER BY i.id
                 """,
@@ -3551,6 +3553,9 @@ def admin_list_orders(
                             "product_id": int(item.get("product_id") or 0),
                             "sku": item.get("sku"),
                             "name": item.get("product_name"),
+                            "category_id": int(item.get("category_id") or 0) or None,
+                            "category_name": item.get("category_name"),
+                            "requires_imei": _is_celulares_category_name(str(item.get("category_name") or "")),
                             "quantity": int(item.get("quantity") or 0),
                             "unit_price": float(item.get("unit_price") or 0.0),
                         }
@@ -3562,6 +3567,9 @@ def admin_list_orders(
                             "product_id": int(item[1]),
                             "sku": item[5],
                             "name": item[4],
+                            "category_id": int(item[6] or 0) or None,
+                            "category_name": item[7],
+                            "requires_imei": _is_celulares_category_name(str(item[7] or "")),
                             "quantity": int(item[2] or 0),
                             "unit_price": float(item[3] or 0.0),
                         }
@@ -3600,9 +3608,11 @@ def admin_order_detail(
         items = conn.execute(
             """
             SELECT i.order_id, i.product_id, i.quantity, i.unit_price,
-                   p.name AS product_name, p.sku AS sku
+                   p.name AS product_name, p.sku AS sku, p.category_id,
+                   c.name AS category_name
             FROM web_order_items i
             LEFT JOIN products p ON p.id = i.product_id
+            LEFT JOIN categories c ON c.id = p.category_id
             WHERE i.order_id = ?
             ORDER BY i.id ASC
             """,
@@ -3624,6 +3634,9 @@ def admin_order_detail(
                     "product_id": int(item["product_id"] or 0),
                     "sku": item["sku"],
                     "name": item["product_name"],
+                    "category_id": int(item["category_id"] or 0) or None,
+                    "category_name": item["category_name"],
+                    "requires_imei": _is_celulares_category_name(str(item["category_name"] or "")),
                     "quantity": int(item["quantity"] or 0),
                     "unit_price": float(item["unit_price"] or 0),
                 }
@@ -6382,7 +6395,7 @@ def admin_create_invoice(
         _ensure_products_barcode_column(conn)
         _ensure_product_imeis_table(conn)
         _ensure_sellers_table(conn)
-        if customer_id <= 0 and document_type == "PRESUPUESTO" and order_id:
+        if customer_id <= 0 and order_id and document_type in {"FACTURA", "PRESUPUESTO"}:
             web_order = conn.execute(
                 """
                 SELECT customer_name, customer_phone, customer_email

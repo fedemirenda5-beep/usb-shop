@@ -377,7 +377,7 @@ export default function GenerarComprobantePage() {
   }, [form.order_id, form.document_type, form.items, productMap, celularesCategoryIds]);
   const hasPendingOrderCellphoneImeis = pendingOrderCellphoneImeiItems.length > 0;
 
-  const canSubmitWithoutCustomer = form.document_type === 'PRESUPUESTO' && Boolean(form.order_id);
+  const canSubmitWithoutCustomer = Boolean(form.order_id) && form.document_type !== 'NOTA_CREDITO';
 
   const clearScannerTimer = () => {
     if (scannerTimeoutRef.current) {
@@ -841,7 +841,7 @@ export default function GenerarComprobantePage() {
                   {selectedCustomer
                     ? `${filteredCustomerOptions.length} cliente${filteredCustomerOptions.length === 1 ? '' : 's'} encontrado${filteredCustomerOptions.length === 1 ? '' : 's'}`
                     : canSubmitWithoutCustomer
-                      ? 'Si no seleccionas un cliente, se crea uno basico automaticamente con los datos del pedido web.'
+                      ? 'Si no seleccionas un cliente, se crea uno basico automaticamente con los datos del pedido web al emitir.'
                       : `${filteredCustomerOptions.length} cliente${filteredCustomerOptions.length === 1 ? '' : 's'} encontrado${filteredCustomerOptions.length === 1 ? '' : 's'}`}
                 </small>
               </label>

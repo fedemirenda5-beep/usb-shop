@@ -12,6 +12,9 @@ interface OrderItem {
   product_id: number;
   sku?: string | null;
   name?: string | null;
+  category_id?: number | null;
+  category_name?: string | null;
+  requires_imei?: boolean;
   quantity: number;
   unit_price: number;
 }
@@ -143,9 +146,12 @@ export default function PedidosPage() {
     }
   };
 
+  const orderRequiresImei = (order: Order) => order.items.some((item) => item.requires_imei);
+
   const renderRows = (source: Order[], history = false) =>
     source.flatMap((order) => {
       const color = statusColors[order.status];
+      const requiresImei = orderRequiresImei(order);
       const rows = [
         <tr key={`row-${history ? 'history' : 'pending'}-${order.id}`} className={styles.orderRow}>
           <td className={styles.orderCode}>Orden de compra #{order.id}</td>
@@ -167,7 +173,7 @@ export default function PedidosPage() {
             </button>
             {order.status === 'PENDING' ? (
               <Link href={`/admin/generar-comprobante?order_id=${order.id}`} className={styles.btnInvoice}>
-                Procesar orden
+                {requiresImei ? 'Escanear IMEIs y emitir' : 'Procesar orden'}
               </Link>
             ) : null}
             <button
@@ -210,11 +216,20 @@ export default function PedidosPage() {
 
                 {order.items.length > 0 ? (
                   <div className={styles.itemsSection}>
-                    <h4>Detalle de articulos</h4>
+                    <div className={styles.itemsHeader}>
+                      <h4>Detalle de articulos</h4>
+                      {requiresImei ? <span className={styles.imeiBadge}>Requiere IMEIs</span> : null}
+                    </div>
+                    {requiresImei ? (
+                      <div className={styles.imeiHint}>
+                        Este pedido tiene celulares. Desde este mismo pedido usa <strong>Escanear IMEIs y emitir</strong> para cargar los IMEIs antes de confirmar.
+                      </div>
+                    ) : null}
                     <table className={styles.itemsTable}>
                       <thead>
                         <tr>
                           <th>Producto</th>
+                          <th>Categoria</th>
                           <th>SKU</th>
                           <th>Cantidad</th>
                           <th>Precio unitario</th>
@@ -225,6 +240,7 @@ export default function PedidosPage() {
                         {order.items.map((item, idx) => (
                           <tr key={`${order.id}-${idx}`}>
                             <td>{item.name || `Producto ${item.product_id}`}</td>
+                            <td>{item.category_name || '-'}</td>
                             <td>{item.sku || '-'}</td>
                             <td>{item.quantity}</td>
                             <td>{money(item.unit_price)}</td>
