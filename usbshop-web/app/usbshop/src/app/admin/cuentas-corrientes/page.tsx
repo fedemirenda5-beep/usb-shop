@@ -564,6 +564,11 @@ export default function CuentasCorrientesPage() {
   };
 
   const openMovementForm = (mode: 'payment' | 'debt') => {
+    if (!selectedId) {
+      setError('Selecciona una cuenta corriente antes de registrar un movimiento.');
+      return;
+    }
+    setError('');
     setMode(mode);
     window.requestAnimationFrame(() => {
       movementFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -679,6 +684,10 @@ export default function CuentasCorrientesPage() {
 
   const exitDesktopWorkspace = () => {
     setDesktopWorkspaceMode(false);
+    setSelectedId(null);
+    setDetail(null);
+    setInvoices([]);
+    resetMovementForm();
     setOutputRange(null);
     window.requestAnimationFrame(() => {
       document.querySelector(`.${styles.customerBoard}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
