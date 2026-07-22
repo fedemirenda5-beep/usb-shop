@@ -1185,7 +1185,7 @@ export default function GenerarComprobantePage() {
                                     onKeyDown={(e) => {
                                       if (e.key !== 'Enter') return;
                                       e.preventDefault();
-                                      void appendImeiToItem(index, imeiDrafts[index] || '');
+                                      void appendImeiToItem(index, e.currentTarget.value || '');
                                     }}
                                   />
                                   <button
