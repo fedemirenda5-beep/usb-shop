@@ -31,6 +31,7 @@ type InvoiceDetail = {
     quantity: number;
     unit_price: number;
     line_total: number;
+    imeis?: string[];
   }>;
   payments: Array<{
     id: number;
@@ -71,12 +72,19 @@ const escapeHtml = (value: unknown) =>
 const buildPrintableHtml = (detail: InvoiceDetail, apiBaseUrl: string) => {
   const itemRows = detail.items
     .map((item) => {
+      const imeisHtml =
+        Array.isArray(item.imeis) && item.imeis.length > 0
+          ? `<div class="imei-list">IMEI${item.imeis.length === 1 ? '' : 's'}: ${escapeHtml(item.imeis.join(', '))}</div>`
+          : '';
       return `
         <tr>
           <td>${escapeHtml(item.quantity)}</td>
           <td>
             <div class="product-cell">
-              <span>${escapeHtml(item.product_name)}</span>
+              <div class="product-info">
+                <span>${escapeHtml(item.product_name)}</span>
+                ${imeisHtml}
+              </div>
             </div>
           </td>
           <td>${escapeHtml(money(item.unit_price))}</td>
@@ -164,8 +172,10 @@ const buildPrintableHtml = (detail: InvoiceDetail, apiBaseUrl: string) => {
     th, td { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 13px; vertical-align: top; }
     th { background: #f8fafc; text-transform: uppercase; font-size: 12px; }
     .product-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .product-info { display: grid; gap: 4px; min-width: 0; }
     .product-image { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; flex: 0 0 auto; }
     .product-cell span { overflow-wrap: anywhere; }
+    .imei-list { font-size: 11px; color: #475569; overflow-wrap: anywhere; }
     .total-cell { color: #111827; font-weight: 700; }
     .footer { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(260px,.9fr); gap: 16px; align-items: start; }
     .payments { display: grid; gap: 10px; }
