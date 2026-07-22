@@ -92,6 +92,20 @@ const normalizeSearchValue = (value: string) =>
     .trim()
     .toLowerCase();
 const normalizeCategoryName = (value?: string | null) => normalizeSearchValue(String(value || ''));
+const sameProductIdentity = (
+  left?: { id?: number | null; name?: string | null; sku?: string | null } | null,
+  right?: { id?: number | null; name?: string | null; sku?: string | null } | null
+) => {
+  const leftId = Number(left?.id || 0);
+  const rightId = Number(right?.id || 0);
+  if (leftId > 0 && rightId > 0 && leftId === rightId) return true;
+  const leftSku = normalizeSearchValue(String(left?.sku || ''));
+  const rightSku = normalizeSearchValue(String(right?.sku || ''));
+  if (leftSku && rightSku && leftSku === rightSku) return true;
+  const leftName = normalizeSearchValue(String(left?.name || ''));
+  const rightName = normalizeSearchValue(String(right?.name || ''));
+  return Boolean(leftName && rightName && leftName === rightName);
+};
 const normalizePhoneValue = (value?: string | null) => {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -547,6 +561,31 @@ export default function GenerarComprobantePage() {
           setError(`El IMEI ${scannedValue} es propio, pero el producto no esta disponible en la lista actual`);
           return;
         }
+        if (form.order_id) {
+          const targetIndex = form.items.findIndex((item) => {
+            const currentProduct = productMap.get(Number(item.product_id));
+            return sameProductIdentity(
+              currentProduct
+                ? { id: currentProduct.id, name: currentProduct.name, sku: currentProduct.sku }
+                : { id: Number(item.product_id || 0), name: null, sku: null },
+              imeiLookup.product
+            );
+          });
+          if (targetIndex >= 0) {
+            setError('');
+            await appendImeiToItem(targetIndex, scannedValue, imeiLookup);
+            setScannedDraft((current) => {
+              if (current?.product.id === imeiProduct.id) {
+                return {
+                  product: imeiProduct,
+                  quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
+                };
+              }
+              return { product: imeiProduct, quantity: '1' };
+            });
+            return;
+          }
+        }
         setError('');
         if (!addProductToInvoice(imeiProduct, 1, scannedValue)) {
           return;
@@ -725,7 +764,7 @@ export default function GenerarComprobantePage() {
     }));
   };
 
-  const appendImeiToItem = async (index: number, rawValue: string) => {
+  const appendImeiToItem = async (index: number, rawValue: string, prefetchedLookup?: ImeiLookupResponse) => {
     const scannedValue = rawValue.trim();
     if (!scannedValue) return;
     const targetItem = form.items[index];
@@ -737,12 +776,18 @@ export default function GenerarComprobantePage() {
       return;
     }
     try {
-      const imeiLookup = await lookupImeiValue(scannedValue);
+      const imeiLookup = prefetchedLookup || (await lookupImeiValue(scannedValue));
       if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
         setError(`El IMEI ${scannedValue} no esta registrado como propio`);
         return;
       }
-      if (Number(imeiLookup.product.id) !== productId) {
+      if (
+        Number(imeiLookup.product.id) !== productId &&
+        !sameProductIdentity(
+          { id: productId, name: selectedProduct.name, sku: selectedProduct.sku },
+          imeiLookup.product
+        )
+      ) {
         setError(`El IMEI ${scannedValue} no pertenece al producto ${selectedProduct.name}`);
         return;
       }
