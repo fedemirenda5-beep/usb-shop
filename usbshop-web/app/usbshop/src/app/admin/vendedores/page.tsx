@@ -49,10 +49,14 @@ type SellerRangeSummary = {
   profit_month: number | null;
   commission_month: number;
   invoice_count_month: number;
+  sales_year: number;
+  profit_year: number | null;
+  commission_year: number;
+  invoice_count_year: number;
 };
 
 type DashboardPanel = 'overview' | 'ranking' | 'seller';
-type PerformanceWindow = 'day' | 'week' | 'month';
+type PerformanceWindow = 'day' | 'week' | 'month' | 'year';
 
 type SellerMonthlyInvoiceItem = {
   product_id?: number | null;
@@ -199,6 +203,14 @@ const getWindowMetrics = (summary: SellerRangeSummary | null | undefined, window
       invoices: Number(summary?.invoice_count_week || 0),
     };
   }
+  if (window === 'year') {
+    return {
+      sales: Number(summary?.sales_year || 0),
+      profit: summary?.profit_year ?? null,
+      commission: Number(summary?.commission_year || 0),
+      invoices: Number(summary?.invoice_count_year || 0),
+    };
+  }
   return {
     sales: Number(summary?.sales_month || 0),
     profit: summary?.profit_month ?? null,
@@ -237,7 +249,7 @@ export default function VendedoresPage() {
   const [rangeSummary, setRangeSummary] = useState<SellerRangeSummary[]>([]);
   const [selectedSellerId, setSelectedSellerId] = useState<number | null>(null);
   const [activePanel, setActivePanel] = useState<DashboardPanel>('overview');
-  const [activeWindow, setActiveWindow] = useState<PerformanceWindow>('month');
+  const [activeWindow, setActiveWindow] = useState<PerformanceWindow>('day');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -277,6 +289,12 @@ export default function VendedoresPage() {
       ? sellerDetail.period
       : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
   }, [sellerDetail?.period]);
+  const selectedWindowLabel = useMemo(() => {
+    if (activeWindow === 'day') return `Dia ${formatShortDate(referenceDate)}`;
+    if (activeWindow === 'week') return `Semana ${formatShortDate(weekRange.start)} al ${formatShortDate(weekRange.end)}`;
+    if (activeWindow === 'year') return `Ano ${referenceDate.slice(0, 4)}`;
+    return `Mes ${formattedMonthlyPeriod}`;
+  }, [activeWindow, formattedMonthlyPeriod, referenceDate, weekRange.end, weekRange.start]);
   const sortedSellerDetailItems = useMemo(() => {
     if (!sellerDetail?.items) return [];
     return [...sellerDetail.items].sort((a, b) => {
@@ -382,6 +400,10 @@ export default function VendedoresPage() {
         profit_month: null,
         commission_month: 0,
         invoice_count_month: 0,
+        sales_year: 0,
+        profit_year: null,
+        commission_year: 0,
+        invoice_count_year: 0,
       });
     });
 
@@ -409,6 +431,10 @@ export default function VendedoresPage() {
         profit_month: null,
         commission_month: 0,
         invoice_count_month: 0,
+        sales_year: 0,
+        profit_year: null,
+        commission_year: 0,
+        invoice_count_year: 0,
       };
       if (dateKey === baseDate) {
         current.sales_day = roundMoney(current.sales_day + salesValue);
@@ -424,6 +450,11 @@ export default function VendedoresPage() {
         current.sales_month = roundMoney(current.sales_month + salesValue);
         current.commission_month = roundMoney(current.commission_month + commissionValue);
         current.invoice_count_month += 1;
+      }
+      if (dateKey.slice(0, 4) === baseDate.slice(0, 4)) {
+        current.sales_year = roundMoney(current.sales_year + salesValue);
+        current.commission_year = roundMoney(current.commission_year + commissionValue);
+        current.invoice_count_year += 1;
       }
       summaryMap.set(sellerId, current);
     });
@@ -757,7 +788,20 @@ export default function VendedoresPage() {
       }
       setRangeSummary(Array.isArray(data?.items) ? (data.items as SellerRangeSummary[]) : []);
     } catch (err) {
-      setError(getErrorMessage(err, 'Error cargando comisiones por dia y semana'));
+      try {
+        const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const listData = await listRes.json().catch(() => null);
+        if (!listRes.ok) {
+          throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
+        }
+        const invoices = Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
+        setRangeSummary(buildRangeSummaryFromInvoices(invoices, sellers, referenceDate));
+      } catch (fallbackErr) {
+        setError(getErrorMessage(fallbackErr, 'Error cargando resumen por periodo'));
+      }
     } finally {
       if (!silent) {
         setSummaryLoading(false);
@@ -975,8 +1019,8 @@ export default function VendedoresPage() {
       <div className={styles.page}>
         <section className={styles.header}>
           <div>
-            <h1>Detalle mensual del vendedor</h1>
-            <p>Ventas, comisiones y ganancia estimada del periodo con acceso a cada comprobante.</p>
+            <h1>Detalle del vendedor</h1>
+            <p>Solo lo necesario para leer el periodo y revisar sus ventas.</p>
           </div>
           <div className={styles.headerActions}>
             <label className={styles.periodField}>
@@ -1007,46 +1051,31 @@ export default function VendedoresPage() {
                   <h2>{sellerDetail.seller.name}</h2>
                   <p>Periodo {formattedDetailMonthlyPeriod}.</p>
                 </div>
-                <span className={sellerDetail.seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
-                  {sellerDetail.seller.is_active ? 'Activo' : 'Inactivo'}
-                </span>
               </div>
 
               <div className={styles.detailGrid}>
                 <div className={styles.detailItem}>
-                  <span>Comision actual</span>
-                  <strong>{formatPercent(sellerDetail.seller.commission_percent)}</strong>
-                </div>
-                <div className={styles.detailItem}>
-                  <span>Venta del mes</span>
+                  <span>Vendio</span>
                   <strong>{money(sellerDetail.summary.sales)}</strong>
                 </div>
                 <div className={styles.detailItem}>
-                  <span>Comprobantes</span>
-                  <strong>{sellerDetail.summary.invoice_count}</strong>
-                </div>
-                <div className={styles.detailItem}>
-                  <span>Comision acumulada</span>
+                  <span>Gana vendedor</span>
                   <strong>{money(sellerDetail.summary.commission)}</strong>
                 </div>
                 {canViewProfit && sellerDetail.summary.profit !== null ? (
                   <div className={styles.detailItem}>
-                    <span>Ganancia empresa</span>
-                    <strong>{money(sellerDetail.summary.profit)}</strong>
+                    <span>Gana empresa</span>
+                    <strong>{money(roundMoney(sellerDetail.summary.profit - sellerDetail.summary.commission))}</strong>
                   </div>
                 ) : null}
-                <div className={styles.detailItem}>
-                  <span>Ultima actualizacion</span>
-                  <strong>{formatDate(sellerDetail.seller.updated_at || sellerDetail.seller.created_at)}</strong>
-                </div>
               </div>
             </section>
 
             <section className={styles.panel}>
               <div className={styles.panelHeader}>
                 <div>
-                  <h3>Ventas del mes</h3>
-                  <p>Listado compacto por venta para administrar mejor el espacio.</p>
+                  <h3>Ventas del periodo</h3>
+                  <p>{formattedDetailMonthlyPeriod}.</p>
                 </div>
               </div>
 
@@ -1059,10 +1088,9 @@ export default function VendedoresPage() {
                       <tr>
                         <th>Cliente</th>
                         <th>Fecha</th>
-                        <th>Comprobante</th>
-                        <th>Modo</th>
-                        <th>Total</th>
-                        <th>Saldo</th>
+                        <th>Vendio</th>
+                        <th>Gana vendedor</th>
+                        {canViewProfit ? <th>Gana empresa</th> : null}
                         <th>Accion</th>
                       </tr>
                     </thead>
@@ -1076,10 +1104,9 @@ export default function VendedoresPage() {
                             </div>
                           </td>
                           <td>{formatDate(item.created_at)}</td>
-                          <td>#{item.invoice_id} {item.document_type || 'Comprobante'}</td>
-                          <td>{item.sale_mode || '-'}</td>
                           <td>{money(item.total)}</td>
-                          <td>{money(item.balance_due)}</td>
+                          <td>{money(item.commission)}</td>
+                          {canViewProfit ? <td>{money(roundMoney(Number(item.profit || 0) - Number(item.commission || 0)))}</td> : null}
                           <td>
                             <Link href={`/admin/comprobantes?invoice=${item.invoice_id}`} className={styles.rowLink}>
                               Ver comprobante
@@ -1170,6 +1197,9 @@ export default function VendedoresPage() {
             <button type="button" className={activeWindow === 'month' ? styles.segmentedActive : styles.segmentedButton} onClick={() => setActiveWindow('month')}>
               Mes
             </button>
+            <button type="button" className={activeWindow === 'year' ? styles.segmentedActive : styles.segmentedButton} onClick={() => setActiveWindow('year')}>
+              Ano
+            </button>
           </div>
         </div>
         <div className={styles.boardHint}>
@@ -1177,33 +1207,27 @@ export default function VendedoresPage() {
             ? `Corte del dia ${formatShortDate(referenceDate)}.`
             : activeWindow === 'week'
               ? `Semana del ${formatShortDate(weekRange.start)} al ${formatShortDate(weekRange.end)}.`
-              : `Mes ${formattedMonthlyPeriod}.`}
+              : activeWindow === 'year'
+                ? `Ano calendario ${referenceDate.slice(0, 4)}.`
+                : `Mes ${formattedMonthlyPeriod}.`}
           {' '}Doble click sobre un vendedor para abrir su detalle mensual.
         </div>
         <div className={styles.kpiGrid}>
           <article className={styles.kpiCard}>
-            <span>Ventas del periodo</span>
+            <span>Vendio</span>
             <strong>{money(totalWindowMetrics.sales)}</strong>
           </article>
           <article className={styles.kpiCard}>
-            <span>Comision del periodo</span>
+            <span>Gana vendedor</span>
             <strong>{money(totalWindowMetrics.commission)}</strong>
           </article>
           <article className={styles.kpiCard}>
-            <span>Ganancia estimada</span>
-            <strong>{canViewProfit && totalWindowMetrics.profit !== null ? money(totalWindowMetrics.profit) : 'Sin permiso'}</strong>
-          </article>
-          <article className={styles.kpiCard}>
-            <span>Neto empresa</span>
+            <span>Ganancia empresa</span>
             <strong>{canViewProfit && totalWindowNet !== null ? money(totalWindowNet) : 'Sin permiso'}</strong>
           </article>
           <article className={styles.kpiCard}>
-            <span>Ticket promedio</span>
-            <strong>{money(averageTicket)}</strong>
-          </article>
-          <article className={styles.kpiCard}>
-            <span>Vendedores con ventas</span>
-            <strong>{activeSellersWithSales}/{sellers.length}</strong>
+            <span>Periodo consultado</span>
+            <strong>{selectedWindowLabel}</strong>
           </article>
         </div>
       </section>
@@ -1212,7 +1236,7 @@ export default function VendedoresPage() {
         <>
           <div className={styles.tablePanel}>
             <div className={styles.tableMeta}>
-              <span>{sellers.length} vendedores{search ? ` para "${search}"` : ''} | vista {activeWindow === 'day' ? 'diaria' : activeWindow === 'week' ? 'semanal' : 'mensual'}</span>
+              <span>{sellers.length} vendedores{search ? ` para "${search}"` : ''} | {selectedWindowLabel}</span>
             </div>
             <div className={styles.tableWrap}>
               {loading ? (
@@ -1224,13 +1248,9 @@ export default function VendedoresPage() {
                   <thead>
                     <tr>
                       <th>Vendedor</th>
-                      <th>Ventas</th>
-                      <th>Comision</th>
-                      {canViewProfit ? <th>Ganancia</th> : null}
-                      {canViewProfit ? <th>Neto empresa</th> : null}
-                      <th>Comprobantes</th>
-                      {canViewProfit ? <th>Prod./comprobante</th> : null}
-                      <th>Estado</th>
+                      <th>Vendio</th>
+                      <th>Gana vendedor</th>
+                      {canViewProfit ? <th>Gana empresa</th> : null}
                       <th>Acciones</th>
                     </tr>
                   </thead>
@@ -1251,15 +1271,7 @@ export default function VendedoresPage() {
                         </td>
                         <td>{money(row.windowMetrics.sales)}</td>
                         <td>{money(row.windowMetrics.commission)}</td>
-                        {canViewProfit ? <td>{row.windowMetrics.profit !== null ? money(row.windowMetrics.profit) : 'Sin permiso'}</td> : null}
                         {canViewProfit ? <td>{row.windowNet !== null ? money(row.windowNet) : 'Sin permiso'}</td> : null}
-                        <td>{row.windowMetrics.invoices}</td>
-                        {canViewProfit ? <td>{row.productivity !== null ? money(row.productivity) : '-'}</td> : null}
-                        <td>
-                          <span className={row.seller.is_active ? styles.activeBadge : styles.inactiveBadge}>
-                            {row.seller.is_active ? 'Activo' : 'Inactivo'}
-                          </span>
-                        </td>
                         <td>
                           <button
                             type="button"
@@ -1280,50 +1292,6 @@ export default function VendedoresPage() {
               )}
             </div>
           </div>
-
-          <section className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div>
-                <h3>Resumen mensual por vendedor</h3>
-                <p>{`Ventas, comisiones y rentabilidad de ${formattedMonthlyPeriod} para los vendedores activos.`}</p>
-              </div>
-            </div>
-            {summaryLoading ? (
-              <div className={styles.empty}>Cargando resumen mensual...</div>
-            ) : monthlySummary.length === 0 ? (
-              <div className={styles.empty}>No hay ventas registradas este mes para vendedores activos.</div>
-            ) : (
-              <div className={styles.monthlySummaryGrid}>
-                {monthlySummary.map((item) => {
-                  const monthNet = item.profit === null ? null : roundMoney(item.profit - item.commission);
-                  return (
-                    <article key={item.seller_id} className={styles.summaryCard}>
-                      <div className={styles.summaryHeader}>
-                        <strong>{item.name}</strong>
-                        <span>{formatPercent(item.commission_percent)}</span>
-                      </div>
-                      <div className={styles.summaryMetrics}>
-                        <div>
-                          <span>Venta mes</span>
-                          <strong>{money(item.sales)}</strong>
-                        </div>
-                        <div>
-                          <span>Comision</span>
-                          <strong>{money(item.commission)}</strong>
-                        </div>
-                        {canViewProfit && item.profit !== null ? (
-                          <div>
-                            <span>Neto empresa</span>
-                            <strong>{money(monthNet || 0)}</strong>
-                          </div>
-                        ) : null}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
         </>
       ) : null}
 
@@ -1354,11 +1322,8 @@ export default function VendedoresPage() {
                   </div>
                   <div className={styles.rankingMetrics}>
                     <div><span>Ventas</span><strong>{money(row.windowMetrics.sales)}</strong></div>
-                    <div><span>Comision</span><strong>{money(row.windowMetrics.commission)}</strong></div>
-                    <div><span>Comprobantes</span><strong>{row.windowMetrics.invoices}</strong></div>
-                    <div><span>Neto empresa</span><strong>{canViewProfit && row.windowNet !== null ? money(row.windowNet) : 'Sin permiso'}</strong></div>
-                    <div><span>Margen neto</span><strong>{canViewProfit && row.efficiency !== null ? `${row.efficiency}%` : 'Sin permiso'}</strong></div>
-                    <div><span>Prod./comprobante</span><strong>{canViewProfit && row.productivity !== null ? money(row.productivity) : 'Sin permiso'}</strong></div>
+                    <div><span>Gana vendedor</span><strong>{money(row.windowMetrics.commission)}</strong></div>
+                    <div><span>Gana empresa</span><strong>{canViewProfit && row.windowNet !== null ? money(row.windowNet) : 'Sin permiso'}</strong></div>
                   </div>
                 </article>
               ))}
@@ -1439,60 +1404,24 @@ export default function VendedoresPage() {
 
             <div className={styles.detailGrid}>
               <div className={styles.detailItem}>
-                <span>Nombre</span>
-                <strong>{selectedSeller.name}</strong>
-              </div>
-              <div className={styles.detailItem}>
-                <span>Comision actual</span>
-                <strong>{formatPercent(selectedSeller.commission_percent)}</strong>
-              </div>
-              <div className={styles.detailItem}>
-                <span>Venta del mes</span>
-                <strong>{money(selectedSellerSummary?.sales || 0)}</strong>
-              </div>
-              <div className={styles.detailItem}>
-                <span>Ventas del periodo</span>
+                <span>Vendio en el periodo</span>
                 <strong>{money(selectedSellerPerformance?.windowMetrics.sales || 0)}</strong>
               </div>
               {canViewCommissionBreakdown ? (
                 <div className={styles.detailItem}>
-                  <span>Comision del periodo</span>
+                  <span>Gana vendedor</span>
                   <strong>{money(selectedSellerPerformance?.windowMetrics.commission || 0)}</strong>
                 </div>
               ) : null}
               {canViewProfit && selectedSellerPerformance?.windowMetrics.profit !== null ? (
                 <div className={styles.detailItem}>
-                  <span>Ganancia del periodo</span>
-                  <strong>{money(selectedSellerPerformance.windowMetrics.profit)}</strong>
+                  <span>Gana empresa</span>
+                  <strong>{money(selectedSellerPerformance.windowNet || 0)}</strong>
                 </div>
               ) : null}
               <div className={styles.detailItem}>
-                <span>Comprobantes del periodo</span>
-                <strong>{selectedSellerPerformance?.windowMetrics.invoices || 0}</strong>
-              </div>
-              <div className={styles.detailItem}>
-                <span>Comision acumulada</span>
-                <strong>{money(canViewCommissionBreakdown ? (selectedSellerRangeSummary?.commission_month || selectedSellerSummary?.commission || 0) : (selectedSellerSummary?.commission || 0))}</strong>
-              </div>
-              {canViewProfit && selectedSellerSummary && selectedSellerSummary.profit !== null ? (
-                <div className={styles.detailItem}>
-                  <span>Ganancia empresa</span>
-                  <strong>{money(selectedSellerSummary.profit)}</strong>
-                </div>
-              ) : null}
-              {canViewProfit && selectedSellerPerformance?.windowNet !== null ? (
-                <div className={styles.detailItem}>
-                  <span>Neto empresa del periodo</span>
-                  <strong>{money(selectedSellerPerformance.windowNet)}</strong>
-                </div>
-              ) : null}
-              <div className={styles.detailItem}>
-                <span>Estado</span>
-                <strong>{selectedSeller.is_active ? 'Activo' : 'Inactivo'}</strong>
-              </div>
-              <div className={styles.detailItem}>
-                <span>Ultima actualizacion</span>
-                <strong>{formatDate(selectedSeller.updated_at || selectedSeller.created_at)}</strong>
+                <span>Periodo consultado</span>
+                <strong>{selectedWindowLabel}</strong>
               </div>
             </div>
             <div className={styles.inlineActions}>

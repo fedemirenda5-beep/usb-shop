@@ -5163,6 +5163,7 @@ def admin_sellers_performance_summary(
 
         base_date = _argentina_date_for_filter(reference_date) or _argentina_now().date()
         month_key = base_date.strftime("%Y-%m")
+        year_key = base_date.strftime("%Y")
         week_start = base_date - timedelta(days=base_date.weekday())
         week_end = week_start + timedelta(days=6)
 
@@ -5191,6 +5192,10 @@ def admin_sellers_performance_summary(
                 "profit_month": 0.0,
                 "commission_month": 0.0,
                 "invoice_count_month": 0,
+                "sales_year": 0.0,
+                "profit_year": 0.0,
+                "commission_year": 0.0,
+                "invoice_count_year": 0,
             }
             for row in active_sellers
         }
@@ -5222,7 +5227,8 @@ def admin_sellers_performance_summary(
             in_day = created_date == base_date
             in_week = week_start <= created_date <= week_end
             in_month = created_date.strftime("%Y-%m") == month_key
-            if not in_day and not in_week and not in_month:
+            in_year = created_date.strftime("%Y") == year_key
+            if not in_day and not in_week and not in_month and not in_year:
                 continue
 
             sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
@@ -5243,9 +5249,13 @@ def admin_sellers_performance_summary(
                 payload["sales_month"] = round(payload["sales_month"] + sales_value, 2)
                 payload["commission_month"] = round(payload["commission_month"] + commission_value, 2)
                 payload["invoice_count_month"] += 1
+            if in_year:
+                payload["sales_year"] = round(payload["sales_year"] + sales_value, 2)
+                payload["commission_year"] = round(payload["commission_year"] + commission_value, 2)
+                payload["invoice_count_year"] += 1
 
             invoice_ids.append(invoice_id)
-            invoice_scope_map[invoice_id] = {"day": in_day, "week": in_week, "month": in_month}
+            invoice_scope_map[invoice_id] = {"day": in_day, "week": in_week, "month": in_month, "year": in_year}
             invoice_seller_map[invoice_id] = seller_id
             invoice_sign_map[invoice_id] = sign
             invoice_discount_map[invoice_id] = float(row["special_discount"] or 0)
@@ -5278,6 +5288,8 @@ def admin_sellers_performance_summary(
                     payload["profit_week"] = round(payload["profit_week"] + margin_value, 2)
                 if scopes.get("month"):
                     payload["profit_month"] = round(payload["profit_month"] + margin_value, 2)
+                if scopes.get("year"):
+                    payload["profit_year"] = round(payload["profit_year"] + margin_value, 2)
 
             for invoice_id, discount in invoice_discount_map.items():
                 if discount <= 0:
@@ -5295,12 +5307,15 @@ def admin_sellers_performance_summary(
                     payload["profit_week"] = round(payload["profit_week"] - discount_value, 2)
                 if scopes.get("month"):
                     payload["profit_month"] = round(payload["profit_month"] - discount_value, 2)
+                if scopes.get("year"):
+                    payload["profit_year"] = round(payload["profit_year"] - discount_value, 2)
 
         return {
             "reference_date": base_date.isoformat(),
             "week_start": week_start.isoformat(),
             "week_end": week_end.isoformat(),
             "month": month_key,
+            "year": year_key,
             "items": [
                 {
                     "seller_id": seller_id,
@@ -5318,6 +5333,10 @@ def admin_sellers_performance_summary(
                     "profit_month": round(float(payload["profit_month"] or 0), 2) if _can_view_profit_metrics(session_payload.get("role")) else None,
                     "commission_month": round(float(payload["commission_month"] or 0), 2),
                     "invoice_count_month": int(payload["invoice_count_month"] or 0),
+                    "sales_year": round(float(payload["sales_year"] or 0), 2),
+                    "profit_year": round(float(payload["profit_year"] or 0), 2) if _can_view_profit_metrics(session_payload.get("role")) else None,
+                    "commission_year": round(float(payload["commission_year"] or 0), 2),
+                    "invoice_count_year": int(payload["invoice_count_year"] or 0),
                 }
                 for seller_id, payload in sorted(summary_map.items(), key=lambda item: str(item[1]["name"]).lower())
             ],
