@@ -301,6 +301,7 @@ export default function HomeClient({
     (initialProducts ?? []).map((item) => normalizeProductWithBase(item, initialBase))
   );
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [imageRefreshKey, setImageRefreshKey] = useState(0);
   const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE_SIZE);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
@@ -659,6 +660,10 @@ export default function HomeClient({
         if (active) {
           setCategories([]);
         }
+      } finally {
+        if (active) {
+          setCategoriesLoaded(true);
+        }
       }
     };
     void loadCategories();
@@ -894,6 +899,9 @@ export default function HomeClient({
   }, [totalItems]);
 
   const orderedCategories = useMemo(() => {
+    if (!categoriesLoaded) {
+      return fallbackCategories;
+    }
     const source = products.length > 0 ? products : featured;
     const sourceCategories = Array.from(
       new Set(
@@ -905,7 +913,7 @@ export default function HomeClient({
     const apiCategories = categories.map((category) => category.name).filter(Boolean);
     const preferred = apiCategories.length > 0 ? apiCategories : fallbackCategories;
     return collectOrderedCategories(preferred, sourceCategories);
-  }, [categories, products, featured]);
+  }, [categories, categoriesLoaded, products, featured]);
   const categoryRank = useMemo(
     () => new Map(orderedCategories.map((category, index) => [normalizeLabel(category), index])),
     [orderedCategories]
