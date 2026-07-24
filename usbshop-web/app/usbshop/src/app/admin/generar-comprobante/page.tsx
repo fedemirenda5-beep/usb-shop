@@ -377,7 +377,7 @@ export default function GenerarComprobantePage() {
     return 'La factura descuenta stock y, si la operación es por cuenta corriente, genera deuda del cliente.';
   }, [form.document_type]);
   const pendingOrderCellphoneImeiItems = useMemo(() => {
-    if (!form.order_id || form.document_type !== 'FACTURA') return [];
+    if (form.document_type !== 'FACTURA') return [];
     return form.items
       .map((item, index) => {
         const product = productMap.get(Number(item.product_id));
@@ -389,7 +389,7 @@ export default function GenerarComprobantePage() {
         return { index, product, quantity, imeiCount, missingCount };
       })
       .filter(Boolean) as Array<{ index: number; product: ProductOption; quantity: number; imeiCount: number; missingCount: number }>;
-  }, [form.order_id, form.document_type, form.items, productMap, celularesCategoryIds]);
+  }, [form.document_type, form.items, productMap, celularesCategoryIds]);
   const hasPendingOrderCellphoneImeis = pendingOrderCellphoneImeiItems.length > 0;
 
   const canSubmitWithoutCustomer = Boolean(form.order_id) && form.document_type !== 'NOTA_CREDITO';
@@ -439,6 +439,7 @@ export default function GenerarComprobantePage() {
   const addProductToInvoice = (product: ProductOption, quantityOverride?: number, scannedImei?: string) => {
     const inlineQuantity = searchQuantities[product.id];
     const normalizedQuantity = Math.max(1, Number(quantityOverride || inlineQuantity || 1));
+    const requiresImei = Boolean(product.category_id && celularesCategoryIds.has(product.category_id));
     let wasAdded = true;
     setForm((current) => {
       const existingIndex = current.items.findIndex((item) => Number(item.product_id) === product.id);
@@ -479,6 +480,10 @@ export default function GenerarComprobantePage() {
     setSearchQuantities((current) => ({ ...current, [product.id]: '1' }));
     if (!wasAdded && scannedImei) {
       setError(`El IMEI ${scannedImei} ya esta cargado en este comprobante`);
+      return wasAdded;
+    }
+    if (requiresImei && !scannedImei && form.document_type === 'FACTURA') {
+      setError(`Agrega ${normalizedQuantity} IMEI${normalizedQuantity === 1 ? '' : 's'} para ${product.name} antes de emitir la factura`);
     }
     return wasAdded;
   };
@@ -835,7 +840,7 @@ export default function GenerarComprobantePage() {
       const pendingLabels = pendingOrderCellphoneImeiItems
         .map((item) => `${item.product.name}: faltan ${item.missingCount} IMEI${item.missingCount === 1 ? '' : 's'}`)
         .join(' · ');
-      setError(`Antes de confirmar el pedido web, escanea los IMEIs pendientes. ${pendingLabels}`);
+      setError(`Antes de emitir la factura, carga los IMEIs pendientes. ${pendingLabels}`);
       return;
     }
     try {
@@ -1187,7 +1192,7 @@ export default function GenerarComprobantePage() {
               </div>
               {hasPendingOrderCellphoneImeis ? (
                 <div className={styles.orderDraftInfo}>
-                  Pedido web con celulares: escanea los IMEIs antes de emitir la factura.
+                  Hay celulares pendientes de IMEI. Escanealos o elegilos desde la lista antes de emitir la factura.
                 </div>
               ) : null}
               <div className={styles.tableWrap}>
@@ -1215,7 +1220,7 @@ export default function GenerarComprobantePage() {
                                 ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
                                 : 'Producto no encontrado'}
                             </div>
-                            {selectedProduct?.category_id && celularesCategoryIds.has(selectedProduct.category_id) && form.order_id ? (
+                            {selectedProduct?.category_id && celularesCategoryIds.has(selectedProduct.category_id) && form.document_type === 'FACTURA' ? (
                               <>
                                 <div className={styles.itemMeta}>
                                   IMEIs cargados: {item.imeis.length}/{Math.max(0, Number(item.quantity || 0))}
@@ -1226,6 +1231,7 @@ export default function GenerarComprobantePage() {
                                     inputMode="numeric"
                                     placeholder={`Escanear IMEI ${item.imeis.length + 1}`}
                                     value={imeiDrafts[index] || ''}
+                                    list={`imei-options-${index}`}
                                     onChange={(e) => setImeiDrafts((current) => ({ ...current, [index]: e.target.value }))}
                                     onKeyDown={(e) => {
                                       if (e.key !== 'Enter') return;
@@ -1233,6 +1239,11 @@ export default function GenerarComprobantePage() {
                                       void appendImeiToItem(index, e.currentTarget.value || '');
                                     }}
                                   />
+                                  <datalist id={`imei-options-${index}`}>
+                                    {(selectedProduct.imeis || []).map((imei) => (
+                                      <option key={imei} value={imei} />
+                                    ))}
+                                  </datalist>
                                   <button
                                     type="button"
                                     className={styles.secondaryButton}
@@ -1241,6 +1252,11 @@ export default function GenerarComprobantePage() {
                                     Agregar IMEI
                                   </button>
                                 </div>
+                                {selectedProduct.imeis && selectedProduct.imeis.length > 0 ? (
+                                  <div className={styles.itemMeta}>
+                                    Disponibles para elegir: {selectedProduct.imeis.join(', ')}
+                                  </div>
+                                ) : null}
                               </>
                             ) : null}
                           </td>

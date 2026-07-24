@@ -1294,6 +1294,17 @@ def _is_celulares_category_name(value: str) -> bool:
     return _normalize_category_label(value) == "celulares"
 
 
+def _category_requires_imei(conn: DBConn, category_id: Any) -> bool:
+    parsed_category_id = int(category_id or 0)
+    if parsed_category_id <= 0:
+        return False
+    row = conn.execute("SELECT name FROM categories WHERE id = ?", (parsed_category_id,)).fetchone()
+    if not row:
+        return False
+    category_name = str(row["name"] if isinstance(row, dict) else row[0] or "")
+    return _is_celulares_category_name(category_name)
+
+
 def _normalize_imei_value(value: Any) -> str:
     digits = "".join(char for char in str(value or "") if char.isdigit())
     return digits.strip()
@@ -4325,6 +4336,11 @@ def admin_create_product(
         _ensure_products_flash_offer_columns(conn)
         _ensure_product_imeis_table(conn)
         imeis = _normalize_imei_list(payload.get("imeis") or [])
+        requires_imei = _category_requires_imei(conn, category_id)
+        if requires_imei and stock > 0 and not imeis:
+            raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
+        if requires_imei and len(imeis) < stock:
+            raise HTTPException(status_code=400, detail="Carga todos los IMEIs disponibles del equipo antes de guardar")
         if conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone():
             raise HTTPException(status_code=400, detail="Ya existe un producto con ese SKU")
         if barcode and conn.execute("SELECT id FROM products WHERE barcode = ?", (barcode,)).fetchone():
@@ -4735,13 +4751,33 @@ def admin_update_product(
             updates.append("flash_offer_ends_at = ?")
             params.append(raw_ends_at or None)
 
+        next_category_id = (
+            int(payload.get("category_id") or 0)
+            if "category_id" in payload and payload.get("category_id") not in (None, "", 0, "0")
+            else int(row["category_id"] if isinstance(row, dict) else row[1] or 0)
+        )
+        next_stock = int(payload.get("stock") or 0) if "stock" in payload else 0
+        if "stock" not in payload:
+            stock_row = conn.execute("SELECT stock FROM products WHERE id = ?", (product_id,)).fetchone()
+            next_stock = int(stock_row["stock"] if isinstance(stock_row, dict) else stock_row[0] or 0) if stock_row else 0
+        next_imeis = (
+            _normalize_imei_list(payload.get("imeis") or [])
+            if "imeis" in payload
+            else _fetch_product_imeis(conn, [product_id], only_available=False).get(product_id, [])
+        )
+        if _category_requires_imei(conn, next_category_id):
+            if next_stock > 0 and not next_imeis:
+                raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
+            if len(next_imeis) < next_stock:
+                raise HTTPException(status_code=400, detail="Carga todos los IMEIs disponibles del equipo antes de guardar")
+
         if updates:
             updates.append("updated_at = CURRENT_TIMESTAMP")
             params.append(product_id)
             query = f"UPDATE products SET {', '.join(updates)} WHERE id = ?"
             conn.execute(query, params)
         if "imeis" in payload:
-            _replace_product_imeis(conn, product_id, _normalize_imei_list(payload.get("imeis") or []))
+            _replace_product_imeis(conn, product_id, next_imeis)
         conn.commit()
         
         return {"id": product_id, "message": "Producto actualizado"}
@@ -6532,6 +6568,12 @@ def admin_create_invoice(
             if unit_price < 0:
                 raise HTTPException(status_code=400, detail="Precio invalido")
             item_imeis = _normalize_imei_list((raw or {}).get("imeis") or [])
+            requires_imei = _category_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7])
+            if document_type == "FACTURA" and requires_imei and len(item_imeis) < quantity:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Debes cargar {quantity} IMEI{'s' if quantity != 1 else ''} para {product['name']}",
+                )
             if len(item_imeis) > quantity:
                 raise HTTPException(
                     status_code=400,

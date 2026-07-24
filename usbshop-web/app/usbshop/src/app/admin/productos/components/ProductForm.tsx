@@ -242,6 +242,7 @@ export function ProductForm({
   const isUploadingAnyImage = uploadingSlots.some(Boolean);
   const selectedCategory = categories.find((category) => String(category.id) === formData.category_id);
   const isCellphonesCategory = normalizeCategoryName(selectedCategory?.name || '') === 'celulares';
+  const parsedStock = parseInteger(formData.stock);
 
   const handleBarcodeKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') {
@@ -451,6 +452,12 @@ export function ProductForm({
         throw new Error('Stock no puede ser negativo');
       }
       const imeis = parseImeiValues(formData.imeis);
+      if (isCellphonesCategory && stock > 0 && imeis.length === 0) {
+        throw new Error('Para guardar un celular tenes que cargar al menos un IMEI');
+      }
+      if (isCellphonesCategory && imeis.length < stock) {
+        throw new Error('Carga todos los IMEIs disponibles del equipo antes de guardar');
+      }
       if (isCellphonesCategory && imeis.length > stock) {
         throw new Error('No podes cargar mas IMEIs que stock disponible');
       }
@@ -572,7 +579,7 @@ export function ProductForm({
 
         {isCellphonesCategory ? (
           <div className={styles.field}>
-            <label htmlFor="imeis">IMEIs</label>
+            <label htmlFor="imeis">IMEIs *</label>
             <textarea
               id="imeis"
               name="imeis"
@@ -582,9 +589,10 @@ export function ProductForm({
               disabled={loading}
               className={styles.textarea}
               rows={6}
+              required={isCellphonesCategory && parsedStock > 0}
             />
             <p className={styles.help}>
-              Solo para celulares. Carga un IMEI por linea para validar si el equipo es tuyo y cuando se vendio.
+              Solo para celulares. Carga un IMEI por linea. Si el stock es {Math.max(0, Number.isFinite(parsedStock) ? parsedStock : 0)}, tenes que ingresar esa misma cantidad para guardarlo.
             </p>
           </div>
         ) : null}
