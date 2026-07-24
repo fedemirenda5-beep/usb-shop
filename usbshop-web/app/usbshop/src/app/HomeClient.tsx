@@ -902,6 +902,12 @@ export default function HomeClient({
     if (!categoriesLoaded) {
       return fallbackCategories;
     }
+    const apiCategories = categories
+      .map((category) => String(category.name || "").trim())
+      .filter(Boolean);
+    if (apiCategories.length > 0) {
+      return collectOrderedCategories(apiCategories, []);
+    }
     const source = products.length > 0 ? products : featured;
     const sourceCategories = Array.from(
       new Set(
@@ -910,9 +916,7 @@ export default function HomeClient({
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b, "es"));
-    const apiCategories = categories.map((category) => category.name).filter(Boolean);
-    const preferred = apiCategories.length > 0 ? apiCategories : fallbackCategories;
-    return collectOrderedCategories(preferred, sourceCategories);
+    return collectOrderedCategories(sourceCategories, fallbackCategories);
   }, [categories, categoriesLoaded, products, featured]);
   const categoryRank = useMemo(
     () => new Map(orderedCategories.map((category, index) => [normalizeLabel(category), index])),
