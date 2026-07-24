@@ -1058,17 +1058,17 @@ a:focus-visible {
 }
 
 .category-strip {
-  padding: 16px 18px 18px;
-  border-radius: 22px;
+  padding: 14px 16px 16px;
+  border-radius: 20px;
   background:
     linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(236, 242, 248, 0.94));
   border: 1px solid rgba(124, 58, 237, 0.16);
   box-shadow:
-    0 18px 40px rgba(15, 23, 42, 0.12),
+    0 14px 30px rgba(15, 23, 42, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .category-strip--hero {
@@ -1079,57 +1079,62 @@ a:focus-visible {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .category-strip-title {
   font-family: var(--font-head);
-  font-size: 14px;
-  letter-spacing: 0.16em;
+  font-size: 12px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #334155;
+  color: #1e293b;
 }
 
 .category-strip-meta {
-  font-size: 11px;
-  color: rgba(51, 65, 85, 0.74);
+  font-size: 10px;
+  color: rgba(51, 65, 85, 0.68);
   letter-spacing: 0.02em;
 }
 
 .category-strip-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 8px;
 }
 
 .category-strip .category-chip {
   text-align: center;
   white-space: normal;
-  min-height: 44px;
+  min-height: 38px;
   height: 100%;
-  padding: 11px 12px;
-  border-radius: 16px;
-  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1.25;
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(148, 163, 184, 0.28);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 .category-strip .category-chip:hover {
   transform: translateY(-1px);
-  border-color: rgba(132, 204, 22, 0.52);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.08);
+  border-color: rgba(59, 130, 246, 0.26);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 6px 14px rgba(15, 23, 42, 0.06);
 }
 
 .category-strip .category-chip.is-active {
-  border-color: rgba(132, 204, 22, 0.72);
-  background: linear-gradient(180deg, rgba(236, 252, 203, 0.98), rgba(220, 252, 231, 0.96));
-  color: #2f7d2a;
+  border-color: rgba(15, 23, 42, 0.18);
+  background: linear-gradient(180deg, rgba(224, 242, 254, 0.96), rgba(239, 246, 255, 0.98));
+  color: #0f172a;
   box-shadow:
-    0 12px 22px rgba(132, 204, 22, 0.16),
+    0 8px 18px rgba(15, 23, 42, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -2593,13 +2598,13 @@ input.button {
 
   .category-strip-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+    gap: 7px;
   }
 
   .category-strip .category-chip {
-    min-height: 42px;
-    padding: 10px;
-    font-size: 11px;
+    min-height: 36px;
+    padding: 8px 9px;
+    font-size: 10.5px;
   }
 
   .logo-icon {
