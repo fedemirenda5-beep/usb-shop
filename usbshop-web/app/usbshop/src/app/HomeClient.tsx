@@ -1048,11 +1048,6 @@ export default function HomeClient({
       .sort(selectedCategory ? compareByNewest : compareByCategoryThenName);
   }, [catalogSource, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
 
-  const visibleCatalog = useMemo(
-    () => filteredCatalog.slice(0, catalogLimit),
-    [filteredCatalog, catalogLimit]
-  );
-
   const newestIds = useMemo(() => {
     return new Set(products.slice(0, 6).map((product) => product.id));
   }, [products]);
@@ -1313,6 +1308,20 @@ export default function HomeClient({
       return filteredFeatured[pos];
     });
   }, [filteredFeatured, featuredIndex]);
+  const catalogWithoutFeatured = useMemo(() => {
+    if (isSearching || selectedCategory) {
+      return filteredCatalog;
+    }
+    const featuredIds = new Set(featuredWindow.map((product) => product.id));
+    if (featuredIds.size === 0) {
+      return filteredCatalog;
+    }
+    return filteredCatalog.filter((product) => !featuredIds.has(product.id));
+  }, [filteredCatalog, featuredWindow, isSearching, selectedCategory]);
+  const visibleCatalog = useMemo(
+    () => catalogWithoutFeatured.slice(0, catalogLimit),
+    [catalogWithoutFeatured, catalogLimit]
+  );
 
   const toggleFeatured = async (product: Product) => {
     if (isPublic) {
