@@ -1507,7 +1507,7 @@ export default function HomeClient({
       </section>
       ) : null}
 
-      {!isSearching && !selectedCategory && (isLoadingProducts || filteredDiscountedProducts.length > 0) ? (
+      {!isSearching && !selectedCategory && (isLoadingProducts || filteredDiscountedProducts.length > 1) ? (
         <section id="bajaron-de-precio" className="section">
           <div className="section-header">
             <div>
