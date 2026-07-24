@@ -51,6 +51,37 @@
   display: grid;
 }
 
+.segmentedBar {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.segmentedGroup {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.segmentedButton,
+.segmentedActive {
+  border: 1px solid #d7dee7;
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+.segmentedActive {
+  background: linear-gradient(135deg, #132238, #2d4a6b);
+  color: #fff;
+  border-color: transparent;
+}
+
 .periodField {
   display: grid;
   gap: 6px;
@@ -157,6 +188,34 @@
   gap: 14px;
 }
 
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.kpiCard {
+  border: 1px solid #dbe4ee;
+  border-radius: 16px;
+  padding: 14px;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+  display: grid;
+  gap: 8px;
+}
+
+.kpiCard span {
+  color: #64748b;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpiCard strong {
+  color: #132238;
+  font-size: 1.2rem;
+}
+
 .salesList {
   display: grid;
   gap: 16px;
@@ -217,6 +276,63 @@
   background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
   display: grid;
   gap: 12px;
+}
+
+.rankingList {
+  display: grid;
+  gap: 14px;
+}
+
+.rankingCard {
+  border: 1px solid #dbe4ee;
+  border-radius: 18px;
+  padding: 16px;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, #ffffff 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.rankingHeader,
+.rankingMetrics {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.rankingHeader strong {
+  color: #132238;
+  display: block;
+}
+
+.rankBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 4px 10px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: #132238;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rankingMetrics > div {
+  min-width: 140px;
+  display: grid;
+  gap: 4px;
+}
+
+.rankingMetrics span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.rankingMetrics strong {
+  color: #132238;
 }
 
 .summaryHeader,

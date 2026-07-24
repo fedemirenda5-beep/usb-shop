@@ -5146,6 +5146,186 @@ def admin_sellers_monthly_summary(
         conn.close()
 
 
+@app.get("/admin/sellers/performance-summary")
+def admin_sellers_performance_summary(
+    request: Request,
+    reference_date: Optional[str] = None,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    session_payload = _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
+        _ensure_products_cost_column(conn)
+        _ensure_sellers_table(conn)
+
+        base_date = _argentina_date_for_filter(reference_date) or _argentina_now().date()
+        month_key = base_date.strftime("%Y-%m")
+        week_start = base_date - timedelta(days=base_date.weekday())
+        week_end = week_start + timedelta(days=6)
+
+        active_sellers = conn.execute(
+            """
+            SELECT id, name, commission_percent
+            FROM sellers
+            WHERE COALESCE(is_active, 1) = 1
+            ORDER BY LOWER(TRIM(name)) ASC, id ASC
+            """
+        ).fetchall()
+        summary_map: dict[int, dict[str, Any]] = {
+            int(row["id"]): {
+                "seller_id": int(row["id"]),
+                "name": row["name"],
+                "commission_percent": float(row["commission_percent"] or 0),
+                "sales_day": 0.0,
+                "profit_day": 0.0,
+                "commission_day": 0.0,
+                "invoice_count_day": 0,
+                "sales_week": 0.0,
+                "profit_week": 0.0,
+                "commission_week": 0.0,
+                "invoice_count_week": 0,
+                "sales_month": 0.0,
+                "profit_month": 0.0,
+                "commission_month": 0.0,
+                "invoice_count_month": 0,
+            }
+            for row in active_sellers
+        }
+
+        invoices = conn.execute(
+            """
+            SELECT id, seller_id, total, special_discount, commission_amount, created_at, document_type
+            FROM invoices
+            WHERE seller_id IS NOT NULL
+            """
+        ).fetchall()
+
+        invoice_ids: list[int] = []
+        invoice_scope_map: dict[int, dict[str, bool]] = {}
+        invoice_seller_map: dict[int, int] = {}
+        invoice_sign_map: dict[int, float] = {}
+        invoice_discount_map: dict[int, float] = {}
+
+        for row in invoices:
+            seller_id = int(row["seller_id"] or 0)
+            if seller_id <= 0 or seller_id not in summary_map:
+                continue
+            document_type = str(row["document_type"] or "").strip().upper()
+            if document_type == "PRESUPUESTO":
+                continue
+            created_date = _argentina_date_for_filter(row["created_at"])
+            if created_date is None:
+                continue
+            in_day = created_date == base_date
+            in_week = week_start <= created_date <= week_end
+            in_month = created_date.strftime("%Y-%m") == month_key
+            if not in_day and not in_week and not in_month:
+                continue
+
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+            invoice_id = int(row["id"] or 0)
+            payload = summary_map[seller_id]
+            sales_value = round(float(row["total"] or 0) * sign, 2)
+            commission_value = round(float(row["commission_amount"] or 0) * sign, 2)
+
+            if in_day:
+                payload["sales_day"] = round(payload["sales_day"] + sales_value, 2)
+                payload["commission_day"] = round(payload["commission_day"] + commission_value, 2)
+                payload["invoice_count_day"] += 1
+            if in_week:
+                payload["sales_week"] = round(payload["sales_week"] + sales_value, 2)
+                payload["commission_week"] = round(payload["commission_week"] + commission_value, 2)
+                payload["invoice_count_week"] += 1
+            if in_month:
+                payload["sales_month"] = round(payload["sales_month"] + sales_value, 2)
+                payload["commission_month"] = round(payload["commission_month"] + commission_value, 2)
+                payload["invoice_count_month"] += 1
+
+            invoice_ids.append(invoice_id)
+            invoice_scope_map[invoice_id] = {"day": in_day, "week": in_week, "month": in_month}
+            invoice_seller_map[invoice_id] = seller_id
+            invoice_sign_map[invoice_id] = sign
+            invoice_discount_map[invoice_id] = float(row["special_discount"] or 0)
+
+        if invoice_ids:
+            placeholders = ",".join(["?"] * len(invoice_ids))
+            invoice_items = conn.execute(
+                f"""
+                SELECT ii.invoice_id, ii.quantity, ii.unit_price, ii.cost_snapshot, p.cost
+                FROM invoice_items ii
+                LEFT JOIN products p ON p.id = ii.product_id
+                WHERE ii.invoice_id IN ({placeholders})
+                """,
+                tuple(invoice_ids),
+            ).fetchall()
+            for row in invoice_items:
+                invoice_id = int(row["invoice_id"] or 0)
+                seller_id = invoice_seller_map.get(invoice_id)
+                if seller_id is None:
+                    continue
+                payload = summary_map[seller_id]
+                sign = invoice_sign_map.get(invoice_id, 1.0)
+                quantity = float(row["quantity"] or 0)
+                unit_cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0)
+                margin_value = round(_line_margin_value(quantity, float(row["unit_price"] or 0), unit_cost) * sign, 2)
+                scopes = invoice_scope_map.get(invoice_id, {})
+                if scopes.get("day"):
+                    payload["profit_day"] = round(payload["profit_day"] + margin_value, 2)
+                if scopes.get("week"):
+                    payload["profit_week"] = round(payload["profit_week"] + margin_value, 2)
+                if scopes.get("month"):
+                    payload["profit_month"] = round(payload["profit_month"] + margin_value, 2)
+
+            for invoice_id, discount in invoice_discount_map.items():
+                if discount <= 0:
+                    continue
+                seller_id = invoice_seller_map.get(invoice_id)
+                if seller_id is None:
+                    continue
+                payload = summary_map[seller_id]
+                sign = invoice_sign_map.get(invoice_id, 1.0)
+                discount_value = round(discount * sign, 2)
+                scopes = invoice_scope_map.get(invoice_id, {})
+                if scopes.get("day"):
+                    payload["profit_day"] = round(payload["profit_day"] - discount_value, 2)
+                if scopes.get("week"):
+                    payload["profit_week"] = round(payload["profit_week"] - discount_value, 2)
+                if scopes.get("month"):
+                    payload["profit_month"] = round(payload["profit_month"] - discount_value, 2)
+
+        return {
+            "reference_date": base_date.isoformat(),
+            "week_start": week_start.isoformat(),
+            "week_end": week_end.isoformat(),
+            "month": month_key,
+            "items": [
+                {
+                    "seller_id": seller_id,
+                    "name": payload["name"],
+                    "commission_percent": round(float(payload["commission_percent"] or 0), 2),
+                    "sales_day": round(float(payload["sales_day"] or 0), 2),
+                    "profit_day": round(float(payload["profit_day"] or 0), 2) if _can_view_profit_metrics(session_payload.get("role")) else None,
+                    "commission_day": round(float(payload["commission_day"] or 0), 2),
+                    "invoice_count_day": int(payload["invoice_count_day"] or 0),
+                    "sales_week": round(float(payload["sales_week"] or 0), 2),
+                    "profit_week": round(float(payload["profit_week"] or 0), 2) if _can_view_profit_metrics(session_payload.get("role")) else None,
+                    "commission_week": round(float(payload["commission_week"] or 0), 2),
+                    "invoice_count_week": int(payload["invoice_count_week"] or 0),
+                    "sales_month": round(float(payload["sales_month"] or 0), 2),
+                    "profit_month": round(float(payload["profit_month"] or 0), 2) if _can_view_profit_metrics(session_payload.get("role")) else None,
+                    "commission_month": round(float(payload["commission_month"] or 0), 2),
+                    "invoice_count_month": int(payload["invoice_count_month"] or 0),
+                }
+                for seller_id, payload in sorted(summary_map.items(), key=lambda item: str(item[1]["name"]).lower())
+            ],
+        }
+    finally:
+        conn.close()
+
+
 @app.get("/admin/sellers/{seller_id}/monthly-detail")
 def admin_seller_monthly_detail(
     seller_id: int,
