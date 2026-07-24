@@ -1294,6 +1294,54 @@ def _is_celulares_category_name(value: str) -> bool:
     return _normalize_category_label(value) == "celulares"
 
 
+def _is_nokia_106_exception_product_name(value: Any) -> bool:
+    normalized = _normalize_search_text(value or "")
+    return normalized == "nokia 106" or normalized.startswith("nokia 106 ")
+
+
+def _seller_commission_percent_for_item(
+    conn: DBConn,
+    category_id: Any,
+    product_name: Any,
+    default_percent: float,
+) -> float:
+    if _is_nokia_106_exception_product_name(product_name):
+        return float(default_percent or 0)
+    return 5.0 if _category_requires_imei(conn, category_id) else float(default_percent or 0)
+
+
+def _calculate_invoice_seller_commission(
+    conn: DBConn,
+    items: list[dict[str, Any]],
+    seller_commission_percent: float,
+    special_discount: float = 0.0,
+) -> float:
+    subtotal = round(
+        sum(max(0.0, float(item.get("quantity") or 0) * float(item.get("unit_price") or 0)) for item in items),
+        2,
+    )
+    if subtotal <= 0:
+        return 0.0
+    normalized_discount = max(0.0, round(float(special_discount or 0), 2))
+    total_commission = 0.0
+    for item in items:
+        quantity = max(0.0, float(item.get("quantity") or 0))
+        unit_price = max(0.0, float(item.get("unit_price") or 0))
+        line_total = round(quantity * unit_price, 2)
+        if line_total <= 0:
+            continue
+        discount_share = round((normalized_discount * line_total) / subtotal, 2) if normalized_discount > 0 else 0.0
+        commissionable_total = max(0.0, round(line_total - discount_share, 2))
+        effective_percent = _seller_commission_percent_for_item(
+            conn,
+            item.get("category_id"),
+            item.get("product_name"),
+            seller_commission_percent,
+        )
+        total_commission += (commissionable_total * effective_percent) / 100
+    return round(total_commission, 2)
+
+
 def _category_requires_imei(conn: DBConn, category_id: Any) -> bool:
     parsed_category_id = int(category_id or 0)
     if parsed_category_id <= 0:
@@ -6787,6 +6835,7 @@ def admin_create_invoice(
             normalized_items.append(
                 {
                     "product_id": product_id,
+                    "category_id": product["category_id"] if isinstance(product, dict) else product[7],
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "cost_snapshot": round(float(product["cost"] or 0), 2),
@@ -6800,7 +6849,12 @@ def admin_create_invoice(
         total = round(subtotal_total - special_discount, 2)
         sale_mode = sale_mode_input or str(customer["sale_mode"] or "").strip().upper() or "CONTADO"
         commission_percent = float(seller["commission_percent"] or 0) if seller is not None else 0.0
-        commission_amount = round((round(total, 2) * commission_percent) / 100, 2)
+        commission_amount = _calculate_invoice_seller_commission(
+            conn,
+            normalized_items,
+            commission_percent,
+            special_discount,
+        )
         if DB_IS_POSTGRES:
             # Serialize manual external_ref generation to avoid duplicate values
             # when multiple invoice creations hit the API at the same time.
@@ -7003,7 +7057,7 @@ def admin_invoice_detail(
             raise HTTPException(status_code=404, detail="Comprobante no encontrado")
         items = conn.execute(
             """
-            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.image_path, p.cost
+            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.image_path, p.cost, p.category_id
             FROM invoice_items ii
             LEFT JOIN products p ON p.id = ii.product_id
             WHERE ii.invoice_id = ?
@@ -7047,6 +7101,8 @@ def admin_invoice_detail(
                 {
                     "id": int(row["id"]),
                     "product_id": int(row["product_id"]) if row["product_id"] is not None else None,
+                    "category_id": int(row["category_id"]) if row["category_id"] is not None else None,
+                    "is_cellphone": _category_requires_imei(conn, row["category_id"]),
                     "product_name": row["product_name"] or f"Producto {row['product_id']}",
                     "quantity": quantity,
                     "unit_price": unit_price,
@@ -7134,7 +7190,7 @@ def admin_update_invoice_seller(
         _ensure_sellers_table(conn)
         invoice = conn.execute(
             """
-            SELECT id, total, document_type, seller_id
+            SELECT id, total, special_discount, document_type, seller_id
             FROM invoices
             WHERE id = ?
             """,
@@ -7156,10 +7212,34 @@ def admin_update_invoice_seller(
         if not bool(seller["is_active"]):
             raise HTTPException(status_code=400, detail="El vendedor seleccionado esta inactivo")
 
+        invoice_items = conn.execute(
+            """
+            SELECT ii.product_id, ii.quantity, ii.unit_price, p.category_id
+            FROM invoice_items ii
+            LEFT JOIN products p ON p.id = ii.product_id
+            WHERE ii.invoice_id = ?
+            ORDER BY ii.id ASC
+            """,
+            (invoice_id,),
+        ).fetchall()
+
         current_seller_id = int(invoice["seller_id"] or 0)
         next_seller_id = int(seller["id"] or 0)
         commission_percent = float(seller["commission_percent"] or 0)
-        commission_amount = round((float(invoice["total"] or 0) * commission_percent) / 100, 2)
+        commission_amount = _calculate_invoice_seller_commission(
+            conn,
+            [
+                {
+                    "product_id": int(row["product_id"]) if row["product_id"] is not None else None,
+                    "category_id": int(row["category_id"]) if row["category_id"] is not None else None,
+                    "quantity": float(row["quantity"] or 0),
+                    "unit_price": float(row["unit_price"] or 0),
+                }
+                for row in invoice_items
+            ],
+            commission_percent,
+            float(invoice["special_discount"] or 0),
+        )
 
         conn.execute(
             """

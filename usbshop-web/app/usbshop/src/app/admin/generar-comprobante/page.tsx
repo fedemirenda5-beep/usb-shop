@@ -85,6 +85,7 @@ type ImeiLookupResponse = {
 };
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+const CELULARES_COMMISSION_PERCENT = 5;
 const normalizeSearchValue = (value: string) =>
   value
     .normalize('NFD')
@@ -92,6 +93,10 @@ const normalizeSearchValue = (value: string) =>
     .trim()
     .toLowerCase();
 const normalizeCategoryName = (value?: string | null) => normalizeSearchValue(String(value || ''));
+const isNokia106ExceptionProduct = (value?: string | null) => {
+  const normalized = normalizeSearchValue(String(value || ''));
+  return normalized === 'nokia 106' || normalized.startsWith('nokia 106 ');
+};
 const sameProductIdentity = (
   left?: { id?: number | null; name?: string | null; sku?: string | null } | null,
   right?: { id?: number | null; name?: string | null; sku?: string | null } | null
@@ -114,6 +119,48 @@ const normalizePhoneValue = (value?: string | null) => {
   if (digits.startsWith('9') && digits.length >= 11) return digits.slice(1);
   if (digits.startsWith('0') && digits.length >= 11) return digits.slice(1);
   return digits;
+};
+const calculateCommissionPreview = ({
+  items,
+  sellerPercent,
+  celularesCategoryIds,
+  productMap,
+  specialDiscount,
+}: {
+  items: InvoiceFormItem[];
+  sellerPercent: number;
+  celularesCategoryIds: Set<number>;
+  productMap: Map<number, ProductOption>;
+  specialDiscount: number;
+}) => {
+  const normalizedItems = items
+    .map((item) => {
+      const productId = Number(item.product_id || 0);
+      const quantity = Math.max(0, Number(item.quantity || 0));
+      const unitPrice = Math.max(0, Number(item.unit_price || 0));
+      const product = productMap.get(productId);
+      const lineTotal = round(quantity * unitPrice, 2);
+      return {
+        category_id: product?.category_id ?? null,
+        product_name: product?.name ?? '',
+        line_total: lineTotal,
+      };
+    })
+    .filter((item) => item.line_total > 0);
+  const subtotal = round(normalizedItems.reduce((acc, item) => acc + item.line_total, 0), 2);
+  if (subtotal <= 0) return 0;
+  return round(
+    normalizedItems.reduce((acc, item) => {
+      const discountShare = specialDiscount > 0 ? round((specialDiscount * item.line_total) / subtotal, 2) : 0;
+      const commissionable = Math.max(0, round(item.line_total - discountShare, 2));
+      const percent =
+        !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id)
+          ? CELULARES_COMMISSION_PERCENT
+          : Number(sellerPercent || 0);
+      return acc + (commissionable * percent) / 100;
+    }, 0),
+    2
+  );
 };
 const tokenizeName = (value?: string | null) =>
   normalizeSearchValue(String(value || ''))
@@ -366,7 +413,19 @@ export default function GenerarComprobantePage() {
   const hasSpecialDiscount = specialDiscountPercent > 0;
   const isSpecialDiscountOpen = showSpecialDiscountEditor || hasSpecialDiscount;
   const formTotal = useMemo(() => Math.max(0, round(formSubtotal - specialDiscount, 2)), [formSubtotal, specialDiscount]);
-  const commissionPreview = useMemo(() => (selectedSeller ? (formTotal * Number(selectedSeller.commission_percent || 0)) / 100 : 0), [formTotal, selectedSeller]);
+  const commissionPreview = useMemo(
+    () =>
+      selectedSeller
+        ? calculateCommissionPreview({
+            items: form.items,
+            sellerPercent: Number(selectedSeller.commission_percent || 0),
+            celularesCategoryIds,
+            productMap,
+            specialDiscount,
+          })
+        : 0,
+    [celularesCategoryIds, form.items, productMap, selectedSeller, specialDiscount]
+  );
   const documentBehavior = useMemo(() => {
     if (form.document_type === 'NOTA_CREDITO') {
       return 'La nota de crédito repone stock y, si la operación es por cuenta corriente, genera crédito a favor del cliente.';

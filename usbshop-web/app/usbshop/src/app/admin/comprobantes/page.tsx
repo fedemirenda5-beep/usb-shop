@@ -47,6 +47,8 @@ type InvoiceDetail = {
   items: Array<{
     id: number;
     product_id?: number | null;
+    category_id?: number | null;
+    is_cellphone?: boolean;
     product_name: string;
     quantity: number;
     unit_price: number;
@@ -80,6 +82,39 @@ type SellerOption = {
 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+const CELULARES_COMMISSION_PERCENT = 5;
+const normalizeSearchValue = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+const isNokia106ExceptionProduct = (value?: string | null) => {
+  const normalized = normalizeSearchValue(String(value || ''));
+  return normalized === 'nokia 106' || normalized.startsWith('nokia 106 ');
+};
+const calculateCommissionPreview = ({
+  items,
+  sellerPercent,
+  specialDiscount,
+}: {
+  items: InvoiceDetail['items'];
+  sellerPercent: number;
+  specialDiscount: number;
+}) => {
+  const normalizedItems = items.filter((item) => Number(item.line_total || 0) > 0);
+  const subtotal = normalizedItems.reduce((acc, item) => acc + Number(item.line_total || 0), 0);
+  if (subtotal <= 0) return 0;
+  return normalizedItems.reduce((acc, item) => {
+    const lineTotal = Number(item.line_total || 0);
+    const discountShare = specialDiscount > 0 ? (specialDiscount * lineTotal) / subtotal : 0;
+    const commissionable = Math.max(0, lineTotal - discountShare);
+    const percent = item.is_cellphone && !isNokia106ExceptionProduct(item.product_name)
+      ? CELULARES_COMMISSION_PERCENT
+      : Number(sellerPercent || 0);
+    return acc + (commissionable * percent) / 100;
+  }, 0);
+};
 
 const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
@@ -653,7 +688,11 @@ export default function ComprobantesPage() {
                           </div>
                           {selectedSellerOption ? (
                             <div className={styles.sellerEditorHint}>
-                              Nueva comision estimada: {money((Number(detail.invoice.total || 0) * Number(selectedSellerOption.commission_percent || 0)) / 100)}
+                              Nueva comision estimada: {money(calculateCommissionPreview({
+                                items: detail.items,
+                                sellerPercent: Number(selectedSellerOption.commission_percent || 0),
+                                specialDiscount: Number(detail.invoice.special_discount || 0),
+                              }))}
                             </div>
                           ) : null}
                           {sellerActionError ? <div className={styles.inlineError}>{sellerActionError}</div> : null}
