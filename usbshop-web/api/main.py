@@ -2815,6 +2815,7 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _ensure_users_table(conn)
             _ensure_bootstrap_admin(conn)
             _ensure_syncable_tables(conn)
+            _ensure_reporting_indexes(conn)
             _ensure_product_images_table(conn)
             _ensure_products_barcode_column(conn)
             _ensure_products_cost_column(conn)
@@ -2831,6 +2832,44 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _RUNTIME_SCHEMA_READY = True
         finally:
             conn.close()
+
+
+def _ensure_reporting_indexes(conn: DBConn) -> None:
+    statements: list[str] = []
+    if _has_table(conn, "invoices"):
+        statements.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_invoices_created_at_id ON invoices(created_at, id)",
+                "CREATE INDEX IF NOT EXISTS idx_invoices_customer_id ON invoices(customer_id)",
+                "CREATE INDEX IF NOT EXISTS idx_invoices_seller_id ON invoices(seller_id)",
+            ]
+        )
+    if _has_table(conn, "invoice_items"):
+        statements.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice_id ON invoice_items(invoice_id)",
+                "CREATE INDEX IF NOT EXISTS idx_invoice_items_product_id ON invoice_items(product_id)",
+            ]
+        )
+    if _has_table(conn, "account_movements"):
+        statements.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_account_movements_created_at ON account_movements(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_account_movements_customer_created_at ON account_movements(customer_id, created_at)",
+            ]
+        )
+    if _has_table(conn, "expenses"):
+        statements.append("CREATE INDEX IF NOT EXISTS idx_expenses_created_at ON expenses(created_at)")
+    if _has_table(conn, "purchases"):
+        statements.append("CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)")
+    if _has_table(conn, "products"):
+        statements.append("CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id)")
+    for statement in statements:
+        try:
+            conn.execute(statement)
+        except Exception:
+            continue
+    conn.commit()
 
 
 def _active_account_movements_clause(conn: DBConn, alias: str = "account_movements") -> str:
@@ -5204,6 +5243,7 @@ def admin_sellers_performance_summary(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_reporting_indexes(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_invoice_items_cost_snapshot_column(conn)
         _ensure_products_cost_column(conn)
@@ -7818,6 +7858,7 @@ def admin_reports_overview(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_reporting_indexes(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_invoice_items_cost_snapshot_column(conn)
         products = conn.execute(
@@ -8624,6 +8665,7 @@ def admin_reports_daily(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_reporting_indexes(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_sellers_table(conn)
         invoices = conn.execute(
@@ -8637,6 +8679,7 @@ def admin_reports_daily(
             """
         ).fetchall()
         selected_invoices: list[dict[str, Any]] = []
+        selected_invoice_map: dict[int, dict[str, Any]] = {}
         invoice_ids: list[int] = []
         customer_summary: dict[int, dict[str, Any]] = {}
         seller_summary: dict[int, dict[str, Any]] = {}
@@ -8651,17 +8694,17 @@ def admin_reports_daily(
             sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
             total = round(float(row["total"] or 0) * sign, 2)
             customer_id = int(row["customer_id"] or 0)
-            selected_invoices.append(
-                {
-                    "id": invoice_id,
-                    "customer_id": customer_id,
-                    "customer_name": row["customer_name"] or (f"Cliente {customer_id}" if customer_id > 0 else "Cliente"),
-                    "total": total,
-                    "special_discount": float(row["special_discount"] or 0),
-                    "created_at": row["created_at"],
-                    "document_type": row["document_type"],
-                }
-            )
+            invoice_payload = {
+                "id": invoice_id,
+                "customer_id": customer_id,
+                "customer_name": row["customer_name"] or (f"Cliente {customer_id}" if customer_id > 0 else "Cliente"),
+                "total": total,
+                "special_discount": float(row["special_discount"] or 0),
+                "created_at": row["created_at"],
+                "document_type": row["document_type"],
+            }
+            selected_invoices.append(invoice_payload)
+            selected_invoice_map[invoice_id] = invoice_payload
             invoice_ids.append(invoice_id)
             customer_entry = customer_summary.setdefault(
                 customer_id,
@@ -8717,7 +8760,7 @@ def admin_reports_daily(
             quantity = int(row.get("quantity") or 0)
             unit_price = float(row.get("unit_price") or 0)
             invoice_id = int(row.get("invoice_id") or 0)
-            related_invoice = next((item for item in selected_invoices if int(item["id"]) == invoice_id), None)
+            related_invoice = selected_invoice_map.get(invoice_id)
             sign = -1.0 if related_invoice and str(related_invoice.get("document_type") or "").strip().upper() == "NOTA_CREDITO" else 1.0
             revenue = round(quantity * unit_price * sign, 2)
             cost = float(row.get("cost") or 0)

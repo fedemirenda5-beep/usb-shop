@@ -5,6 +5,8 @@ import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { getArgentinaNowDateInput } from '@/lib/datetime';
 import styles from './reportes.module.css';
 
+const REPORTS_AUTO_REFRESH_MS = 5 * 60 * 1000;
+
 type Summary = {
   products: number;
   active_customers: number;
@@ -212,7 +214,7 @@ export default function ReportesPage() {
         return;
       }
       setRefreshTick((current) => current + 1);
-    }, 30_000);
+    }, REPORTS_AUTO_REFRESH_MS);
 
     const refreshOnFocus = () => {
       if (document.visibilityState === 'visible') {
