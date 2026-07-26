@@ -36,6 +36,23 @@
   align-items: flex-end;
 }
 
+.closeYearButton {
+  border: 0;
+  border-radius: 12px;
+  padding: 11px 16px;
+  background: linear-gradient(135deg, #0f766e, #0ea5a4);
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(15, 118, 110, 0.18);
+}
+
+.closeYearButton:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .kicker {
   color: var(--muted);
   font-size: 11px;
@@ -153,6 +170,31 @@
   background: white;
   color: var(--ink);
   font: inherit;
+}
+
+.yearCell {
+  display: grid;
+  gap: 6px;
+}
+
+.frozenBadge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+  color: #0f766e;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.frozenMeta {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .comparisonStrip {
@@ -357,6 +399,14 @@
   background: rgba(220, 38, 38, 0.1);
   color: #b91c1c;
   border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+.success {
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.24);
 }
 
 @media (max-width: 1180px) {

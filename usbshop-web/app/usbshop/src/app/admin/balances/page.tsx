@@ -84,6 +84,9 @@ type AnnualHistoryEntry = {
   capital_total: number;
   sales_growth_pct?: number | null;
   capital_growth_pct?: number | null;
+  is_frozen?: boolean;
+  closure_mode?: string | null;
+  closed_at?: string | null;
 };
 
 const money = (value: number) =>
@@ -103,6 +106,13 @@ const formatDate = (value?: string | null) => {
   return value ? formatArgentinaDate(value) : 'Sin registros';
 };
 
+const formatFrozenLabel = (value?: string | null) => {
+  if (!value) return 'Congelado';
+  if (value === 'source-import') return 'Congelado PC';
+  if (value === 'auto-january') return 'Auto enero';
+  return 'Congelado';
+};
+
 const formatMonthLabel = (value: string) => formatArgentinaMonth(value);
 
 const formatPercent = (value?: number | null) => {
@@ -117,22 +127,25 @@ export default function BalancesPage() {
   const [monthlySalesAll, setMonthlySalesAll] = useState<MonthlySalesPoint[]>([]);
   const [selectedHistoryYear, setSelectedHistoryYear] = useState('');
   const [error, setError] = useState('');
+  const [closeYearError, setCloseYearError] = useState('');
+  const [closeYearMessage, setCloseYearMessage] = useState('');
+  const [isClosingYear, setIsClosingYear] = useState(false);
+  const loadOverview = async () => {
+    try {
+      setError('');
+      const res = await fetchApiResponse('/admin/reports/overview', { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudieron cargar los balances');
+      const data = await res.json();
+      setSummary(data.summary || null);
+      setCurrentYear(data.current_year_detail || null);
+      setMonthlySalesAll(Array.isArray(data.monthly_sales_all) ? data.monthly_sales_all : []);
+      setAnnualHistory((data.annual_history || []).filter((item: AnnualHistoryEntry) => item.year < (data.current_year_detail?.year || 9999)));
+    } catch (err) {
+      setError(getFriendlyApiError(err, 'Error cargando balances'));
+    }
+  };
   useEffect(() => {
-    const load = async () => {
-      try {
-        setError('');
-        const res = await fetchApiResponse('/admin/reports/overview', { cache: 'no-store' });
-        if (!res.ok) throw new Error('No se pudieron cargar los balances');
-        const data = await res.json();
-        setSummary(data.summary || null);
-        setCurrentYear(data.current_year_detail || null);
-        setMonthlySalesAll(Array.isArray(data.monthly_sales_all) ? data.monthly_sales_all : []);
-        setAnnualHistory((data.annual_history || []).filter((item: AnnualHistoryEntry) => item.year < (data.current_year_detail?.year || 9999)));
-      } catch (err) {
-        setError(getFriendlyApiError(err, 'Error cargando balances'));
-      }
-    };
-    void load();
+    void loadOverview();
   }, []);
 
   const latestMonth = useMemo(
@@ -256,6 +269,42 @@ export default function BalancesPage() {
     [monthlySalesAll, selectedHistoryYear]
   );
 
+  const previousYear = currentYear ? currentYear.year - 1 : 0;
+  const previousYearSnapshot = useMemo(
+    () => annualHistory.find((item) => item.year === previousYear),
+    [annualHistory, previousYear]
+  );
+  const canClosePreviousYear =
+    Boolean(currentYear) &&
+    new Date().getMonth() === 0 &&
+    previousYear > 0 &&
+    !previousYearSnapshot?.is_frozen;
+
+  const handleClosePreviousYear = async () => {
+    if (!currentYear || previousYear <= 0 || !canClosePreviousYear) return;
+    const confirmed = window.confirm(
+      `Se va a congelar el balance contable de ${previousYear}. Hace esto solo antes de mover stock o registrar movimientos del nuevo año.`
+    );
+    if (!confirmed) return;
+    try {
+      setIsClosingYear(true);
+      setCloseYearError('');
+      setCloseYearMessage('');
+      const res = await fetchApiResponse('/admin/reports/annual-close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year: previousYear }),
+      });
+      if (!res.ok) throw new Error('No se pudo cerrar el año');
+      setCloseYearMessage(`Cierre anual ${previousYear} guardado.`);
+      await loadOverview();
+    } catch (err) {
+      setCloseYearError(getFriendlyApiError(err, 'Error cerrando el año'));
+    } finally {
+      setIsClosingYear(false);
+    }
+  };
+
   return (
     <div className={styles.page}>
       <section className={styles.header}>
@@ -263,9 +312,16 @@ export default function BalancesPage() {
           <h1>Balances</h1>
           <p>Separado entre año corriente e historial anual para leer rápido los números clave.</p>
         </div>
+        {canClosePreviousYear ? (
+          <button type="button" className={styles.closeYearButton} onClick={handleClosePreviousYear} disabled={isClosingYear}>
+            {isClosingYear ? `Cerrando ${previousYear}...` : `Cerrar ${previousYear}`}
+          </button>
+        ) : null}
       </section>
 
       {error ? <div className={styles.error}>{error}</div> : null}
+      {closeYearError ? <div className={styles.error}>{closeYearError}</div> : null}
+      {closeYearMessage ? <div className={styles.success}>{closeYearMessage}</div> : null}
 
       {summary && currentYear ? (
         <>
@@ -511,7 +567,15 @@ export default function BalancesPage() {
                   ) : (
                     previousYears.map((item) => (
                       <tr key={item.year}>
-                        <td>{item.year}</td>
+                        <td>
+                          <div className={styles.yearCell}>
+                            <strong>{item.year}</strong>
+                            {item.is_frozen ? <span className={styles.frozenBadge}>{formatFrozenLabel(item.closure_mode)}</span> : null}
+                            {item.is_frozen && item.closed_at ? (
+                              <span className={styles.frozenMeta}>Cierre: {formatDate(item.closed_at)}</span>
+                            ) : null}
+                          </div>
+                        </td>
                         <td>{money(item.sales)}</td>
                         <td>{money(item.margin)}</td>
                         <td>{money(item.purchases)}</td>

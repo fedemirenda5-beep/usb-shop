@@ -2784,6 +2784,27 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
     ],
 }
 
+ANNUAL_REPORT_SNAPSHOT_SCHEMA = [
+    ("year", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+    ("sales_total", "REAL", "NUMERIC(12, 2)"),
+    ("margin_total", "REAL", "NUMERIC(12, 2)"),
+    ("purchases_total", "REAL", "NUMERIC(12, 2)"),
+    ("expenses_total", "REAL", "NUMERIC(12, 2)"),
+    ("commissions_total", "REAL", "NUMERIC(12, 2)"),
+    ("operating_result_total", "REAL", "NUMERIC(12, 2)"),
+    ("invoice_count", "INTEGER", "INTEGER"),
+    ("stock_units", "INTEGER", "INTEGER"),
+    ("stock_value_cost", "REAL", "NUMERIC(12, 2)"),
+    ("stock_value_sale", "REAL", "NUMERIC(12, 2)"),
+    ("cc_balance_end", "REAL", "NUMERIC(12, 2)"),
+    ("cash_balance_end", "REAL", "NUMERIC(12, 2)"),
+    ("capital_total", "REAL", "NUMERIC(12, 2)"),
+    ("closure_mode", "TEXT", "TEXT"),
+    ("notes", "TEXT", "TEXT"),
+    ("created_at", "TEXT", "TIMESTAMP"),
+    ("updated_at", "TEXT", "TIMESTAMP"),
+]
+
 
 def _ensure_syncable_tables(conn: DBConn) -> None:
     for table_name, columns in SYNC_TABLE_SCHEMAS.items():
@@ -2803,6 +2824,368 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
     conn.commit()
 
 
+def _ensure_annual_report_snapshots_table(conn: DBConn) -> None:
+    table_name = "annual_report_snapshots"
+    if not _has_table(conn, table_name):
+        definitions = ", ".join(
+            f"{name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+            for name, sqlite_type, pg_type in ANNUAL_REPORT_SNAPSHOT_SCHEMA
+        )
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({definitions})")
+        conn.commit()
+        return
+    for name, sqlite_type, pg_type in ANNUAL_REPORT_SNAPSHOT_SCHEMA:
+        if _has_column(conn, table_name, name):
+            continue
+        conn.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+        )
+    conn.commit()
+
+
+def _annual_report_snapshot_to_payload(row: Any) -> dict[str, Any]:
+    return {
+        "year": int(row["year"]),
+        "sales": round(float(row["sales_total"] or 0), 2),
+        "margin": round(float(row["margin_total"] or 0), 2),
+        "purchases": round(float(row["purchases_total"] or 0), 2),
+        "expenses": round(float(row["expenses_total"] or 0), 2),
+        "commissions": round(float(row["commissions_total"] or 0), 2),
+        "operating_result": round(float(row["operating_result_total"] or 0), 2),
+        "invoice_count": int(row["invoice_count"] or 0),
+        "stock_units": int(row["stock_units"] or 0),
+        "stock_value_cost": round(float(row["stock_value_cost"] or 0), 2),
+        "stock_value_sale": round(float(row["stock_value_sale"] or 0), 2),
+        "cc_balance_end": round(float(row["cc_balance_end"] or 0), 2),
+        "cash_balance_end": round(float(row["cash_balance_end"] or 0), 2),
+        "capital_total": round(float(row["capital_total"] or 0), 2),
+        "closure_mode": row["closure_mode"] or "manual",
+        "notes": row["notes"],
+        "closed_at": row["updated_at"] or row["created_at"],
+        "is_frozen": True,
+    }
+
+
+def _load_annual_report_snapshots(conn: DBConn) -> dict[int, dict[str, Any]]:
+    _ensure_annual_report_snapshots_table(conn)
+    rows = conn.execute(
+        """
+        SELECT year, sales_total, margin_total, purchases_total, expenses_total, commissions_total,
+               operating_result_total, invoice_count, stock_units, stock_value_cost, stock_value_sale,
+               cc_balance_end, cash_balance_end, capital_total, closure_mode, notes, created_at, updated_at
+        FROM annual_report_snapshots
+        ORDER BY year ASC
+        """
+    ).fetchall()
+    payload: dict[int, dict[str, Any]] = {}
+    for row in rows:
+        if row["year"] is None:
+            continue
+        payload[int(row["year"])] = _annual_report_snapshot_to_payload(row)
+    return payload
+
+
+def _load_source_annual_balances() -> dict[int, dict[str, Any]]:
+    if not SOURCE_DB_PATH.exists():
+        return {}
+    try:
+        source_conn = sqlite3.connect(str(SOURCE_DB_PATH))
+    except Exception:
+        return {}
+    try:
+        table_row = source_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='annual_balances'"
+        ).fetchone()
+        if table_row is None:
+            return {}
+        source_conn.row_factory = sqlite3.Row
+        rows = source_conn.execute(
+            """
+            SELECT year, total_sales, capital_ars, total_profit, cash_closure, created_at, updated_at
+            FROM annual_balances
+            ORDER BY year ASC
+            """
+        ).fetchall()
+        payload: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            if row["year"] is None:
+                continue
+            payload[int(row["year"])] = {
+                "year": int(row["year"]),
+                "total_sales": round(float(row["total_sales"] or 0), 2),
+                "capital_ars": round(float(row["capital_ars"] or 0), 2),
+                "total_profit": round(float(row["total_profit"] or 0), 2),
+                "cash_closure": round(float(row["cash_closure"] or 0), 2),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        return payload
+    except Exception:
+        return {}
+    finally:
+        source_conn.close()
+
+
+def _compute_annual_report_snapshot(conn: DBConn, target_year: int, closure_mode: str = "manual") -> dict[str, Any]:
+    products = conn.execute(
+        """
+        SELECT id, stock, price, cost
+        FROM products
+        WHERE deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+        """
+    ).fetchall()
+    invoice_rows = conn.execute(
+        """
+        SELECT id, total, special_discount, created_at, document_type, sale_mode, commission_amount
+        FROM invoices
+        ORDER BY created_at ASC, id ASC
+        """
+    ).fetchall()
+    invoice_items_rows = conn.execute(
+        """
+        SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, ii.cost_snapshot, i.created_at, i.document_type
+        FROM invoice_items ii
+        LEFT JOIN invoices i ON i.id = ii.invoice_id
+        """
+    ).fetchall()
+    cc_rows = conn.execute(
+        """
+        SELECT amount, movement_type, created_at
+        FROM account_movements
+        WHERE 1 = 1
+        """
+        + _active_account_movements_clause(conn)
+        + """
+        ORDER BY created_at ASC, id ASC
+        """
+    ).fetchall()
+    purchase_rows = (
+        conn.execute(
+            """
+            SELECT total, created_at
+            FROM purchases
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+        if _has_table(conn, "purchases")
+        else []
+    )
+    expense_rows = (
+        conn.execute(
+            """
+            SELECT amount, created_at
+            FROM expenses
+            ORDER BY created_at ASC, id ASC
+            """
+        ).fetchall()
+        if _has_table(conn, "expenses")
+        else []
+    )
+
+    cost_by_product = {int(row["id"]): float(row["cost"] or 0) for row in products if row["id"] is not None}
+    year_invoices = []
+    invoice_sign_map: dict[int, float] = {}
+    for row in invoice_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year != target_year:
+            continue
+        document_type = str(row["document_type"] or "").strip().upper()
+        if document_type == "PRESUPUESTO":
+            continue
+        sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+        year_invoices.append(row)
+        invoice_sign_map[int(row["id"] or 0)] = sign
+
+    sales_total = round(
+        sum(float(row["total"] or 0) * invoice_sign_map.get(int(row["id"] or 0), 0.0) for row in year_invoices),
+        2,
+    )
+    invoice_count = len(year_invoices)
+    commissions_total = round(
+        sum(float(row["commission_amount"] or 0) * invoice_sign_map.get(int(row["id"] or 0), 0.0) for row in year_invoices),
+        2,
+    )
+    margin_total = 0.0
+    for row in invoice_items_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year != target_year:
+            continue
+        document_type = str(row["document_type"] or "").strip().upper()
+        if document_type == "PRESUPUESTO":
+            continue
+        sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+        product_id = int(row["product_id"] or 0)
+        quantity = int(row["quantity"] or 0)
+        unit_price = float(row["unit_price"] or 0)
+        unit_cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else cost_by_product.get(product_id, 0.0))
+        margin_total += quantity * max(0.0, unit_price - unit_cost) * sign
+    margin_total = round(
+        margin_total
+        - sum(float(row["special_discount"] or 0) * invoice_sign_map.get(int(row["id"] or 0), 0.0) for row in year_invoices),
+        2,
+    )
+    now_dt = _argentina_now()
+    purchases_total = round(
+        sum(float(row["total"] or 0) for row in purchase_rows if (_argentina_datetime(row["created_at"]) or now_dt).year == target_year),
+        2,
+    )
+    expenses_total = round(
+        sum(float(row["amount"] or 0) for row in expense_rows if (_argentina_datetime(row["created_at"]) or now_dt).year == target_year),
+        2,
+    )
+    operating_result_total = round(margin_total - expenses_total - commissions_total, 2)
+
+    stock_units = sum(int(row["stock"] or 0) for row in products)
+    stock_value_cost = round(sum(float(row["cost"] or 0) * int(row["stock"] or 0) for row in products), 2)
+    stock_value_sale = round(sum(float(row["price"] or 0) * int(row["stock"] or 0) for row in products), 2)
+
+    cc_balance_end = 0.0
+    for row in cc_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year > target_year:
+            continue
+        amount = float(row["amount"] or 0)
+        cc_balance_end += amount if str(row["movement_type"] or "").strip().upper() == "DEBIT" else -amount
+    cc_balance_end = round(cc_balance_end, 2)
+
+    cash_events: list[tuple[datetime, float]] = []
+    for row in invoice_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year > target_year:
+            continue
+        document_type = str(row["document_type"] or "").strip().upper()
+        if document_type == "PRESUPUESTO":
+            continue
+        if str(row["sale_mode"] or "").strip().upper() != "CUENTA_CORRIENTE":
+            sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
+            cash_events.append((created, round(float(row["total"] or 0) * sign, 2)))
+    for row in cc_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year > target_year:
+            continue
+        if str(row["movement_type"] or "").strip().upper() == "CREDIT":
+            cash_events.append((created, round(float(row["amount"] or 0), 2)))
+    for row in purchase_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year > target_year:
+            continue
+        cash_events.append((created, -round(float(row["total"] or 0), 2)))
+    for row in expense_rows:
+        created = _argentina_datetime(row["created_at"])
+        if created is None or created.year > target_year:
+            continue
+        cash_events.append((created, -round(float(row["amount"] or 0), 2)))
+    cash_events.sort(key=lambda item: item[0])
+    cash_balance_end = 0.0
+    for _, amount in cash_events:
+        cash_balance_end = round(cash_balance_end + amount, 2)
+
+    capital_total = round(stock_value_sale + cc_balance_end, 2)
+    closed_at = now_dt.isoformat()
+    return {
+        "year": int(target_year),
+        "sales_total": sales_total,
+        "margin_total": margin_total,
+        "purchases_total": purchases_total,
+        "expenses_total": expenses_total,
+        "commissions_total": commissions_total,
+        "operating_result_total": operating_result_total,
+        "invoice_count": invoice_count,
+        "stock_units": stock_units,
+        "stock_value_cost": stock_value_cost,
+        "stock_value_sale": stock_value_sale,
+        "cc_balance_end": cc_balance_end,
+        "cash_balance_end": cash_balance_end,
+        "capital_total": capital_total,
+        "closure_mode": closure_mode,
+        "notes": f"Cierre anual {target_year}",
+        "created_at": closed_at,
+        "updated_at": closed_at,
+    }
+
+
+def _apply_source_annual_balance_override(snapshot: dict[str, Any], source_payload: dict[str, Any]) -> dict[str, Any]:
+    next_snapshot = dict(snapshot)
+    next_snapshot["sales_total"] = round(float(source_payload.get("total_sales") or next_snapshot["sales_total"] or 0), 2)
+    next_snapshot["margin_total"] = round(float(source_payload.get("total_profit") or next_snapshot["margin_total"] or 0), 2)
+    next_snapshot["cash_balance_end"] = round(
+        float(source_payload.get("cash_closure") or next_snapshot.get("cash_balance_end") or 0),
+        2,
+    )
+    capital_total = round(float(source_payload.get("capital_ars") or next_snapshot.get("capital_total") or 0), 2)
+    next_snapshot["capital_total"] = capital_total
+    next_snapshot["operating_result_total"] = round(
+        float(next_snapshot["margin_total"] or 0)
+        - float(next_snapshot["expenses_total"] or 0)
+        - float(next_snapshot["commissions_total"] or 0),
+        2,
+    )
+    cc_balance_end = round(float(next_snapshot.get("cc_balance_end") or 0), 2)
+    next_snapshot["stock_value_sale"] = round(max(0.0, capital_total - cc_balance_end), 2)
+    next_snapshot["stock_value_cost"] = round(min(float(next_snapshot.get("stock_value_cost") or 0), next_snapshot["stock_value_sale"]), 2)
+    next_snapshot["closure_mode"] = "source-import"
+    next_snapshot["notes"] = f"Importado desde annual_balances fuente ({next_snapshot['year']})"
+    next_snapshot["created_at"] = source_payload.get("created_at") or next_snapshot["created_at"]
+    next_snapshot["updated_at"] = source_payload.get("updated_at") or next_snapshot["updated_at"]
+    return next_snapshot
+
+
+def _upsert_annual_report_snapshot(conn: DBConn, snapshot: dict[str, Any]) -> None:
+    _ensure_annual_report_snapshots_table(conn)
+    existing = conn.execute(
+        "SELECT created_at FROM annual_report_snapshots WHERE year = ?",
+        (int(snapshot["year"]),),
+    ).fetchone()
+    created_at = existing["created_at"] if existing and existing["created_at"] else snapshot["created_at"]
+    conn.execute(
+        """
+        INSERT INTO annual_report_snapshots (
+            year, sales_total, margin_total, purchases_total, expenses_total, commissions_total,
+            operating_result_total, invoice_count, stock_units, stock_value_cost, stock_value_sale,
+            cc_balance_end, cash_balance_end, capital_total, closure_mode, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(year) DO UPDATE SET
+            sales_total = excluded.sales_total,
+            margin_total = excluded.margin_total,
+            purchases_total = excluded.purchases_total,
+            expenses_total = excluded.expenses_total,
+            commissions_total = excluded.commissions_total,
+            operating_result_total = excluded.operating_result_total,
+            invoice_count = excluded.invoice_count,
+            stock_units = excluded.stock_units,
+            stock_value_cost = excluded.stock_value_cost,
+            stock_value_sale = excluded.stock_value_sale,
+            cc_balance_end = excluded.cc_balance_end,
+            cash_balance_end = excluded.cash_balance_end,
+            capital_total = excluded.capital_total,
+            closure_mode = excluded.closure_mode,
+            notes = excluded.notes,
+            created_at = excluded.created_at,
+            updated_at = excluded.updated_at
+        """,
+        (
+            int(snapshot["year"]),
+            float(snapshot["sales_total"] or 0),
+            float(snapshot["margin_total"] or 0),
+            float(snapshot["purchases_total"] or 0),
+            float(snapshot["expenses_total"] or 0),
+            float(snapshot["commissions_total"] or 0),
+            float(snapshot["operating_result_total"] or 0),
+            int(snapshot["invoice_count"] or 0),
+            int(snapshot["stock_units"] or 0),
+            float(snapshot["stock_value_cost"] or 0),
+            float(snapshot["stock_value_sale"] or 0),
+            float(snapshot["cc_balance_end"] or 0),
+            float(snapshot["cash_balance_end"] or 0),
+            float(snapshot["capital_total"] or 0),
+            str(snapshot.get("closure_mode") or "manual"),
+            snapshot.get("notes"),
+            created_at,
+            snapshot["updated_at"],
+        ),
+    )
+
+
 def _ensure_runtime_schema(force: bool = False) -> None:
     global _RUNTIME_SCHEMA_READY
     if _RUNTIME_SCHEMA_READY and not force:
@@ -2815,6 +3198,7 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _ensure_users_table(conn)
             _ensure_bootstrap_admin(conn)
             _ensure_syncable_tables(conn)
+            _ensure_annual_report_snapshots_table(conn)
             _ensure_reporting_indexes(conn)
             _ensure_product_images_table(conn)
             _ensure_products_barcode_column(conn)
@@ -2832,6 +3216,48 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _RUNTIME_SCHEMA_READY = True
         finally:
             conn.close()
+
+
+@app.post("/admin/reports/annual-close")
+def admin_reports_annual_close(
+    payload: dict = Body(default={}),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_full_admin(session_token)
+    requested_year = payload.get("year")
+    replace_existing = bool(payload.get("replace"))
+    now_dt = _argentina_now()
+    target_year = int(requested_year or (now_dt.year - 1))
+    if target_year >= now_dt.year:
+        raise HTTPException(status_code=400, detail="Solo se pueden cerrar años ya terminados")
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_annual_report_snapshots_table(conn)
+        _ensure_reporting_indexes(conn)
+        _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
+        _ensure_annual_report_snapshots_table(conn)
+        existing = conn.execute(
+            "SELECT year FROM annual_report_snapshots WHERE year = ?",
+            (target_year,),
+        ).fetchone()
+        if existing is not None and not replace_existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El cierre anual de {target_year} ya existe. Usa replace para recalcularlo.",
+            )
+        snapshot = _compute_annual_report_snapshot(conn, target_year, "manual")
+        _upsert_annual_report_snapshot(conn, snapshot)
+        conn.commit()
+        _clear_admin_overview_cache()
+        return {
+            "status": "ok",
+            "year": target_year,
+            "snapshot": _annual_report_snapshot_to_payload(snapshot),
+        }
+    finally:
+        conn.close()
 
 
 def _ensure_reporting_indexes(conn: DBConn) -> None:
@@ -8405,26 +8831,67 @@ def admin_reports_overview(
             running_cc_balance = round(running_cc_balance + signed, 2)
             year_end_cc_balance[created.year] = running_cc_balance
 
+        annual_snapshots = _load_annual_report_snapshots(conn)
+        source_annual_balances = _load_source_annual_balances()
+        if current_month == 1:
+            previous_year_snapshot = annual_snapshots.get(current_year - 1)
+            if previous_year_snapshot is None:
+                auto_snapshot = _compute_annual_report_snapshot(conn, current_year - 1, "auto-january")
+                _upsert_annual_report_snapshot(conn, auto_snapshot)
+                conn.commit()
+                annual_snapshots[current_year - 1] = _annual_report_snapshot_to_payload(auto_snapshot)
+        imported_source_snapshot = False
+        for source_year, source_payload in source_annual_balances.items():
+            if source_year >= current_year or source_year in annual_snapshots:
+                continue
+            imported_snapshot = _apply_source_annual_balance_override(
+                _compute_annual_report_snapshot(conn, source_year, "source-import"),
+                source_payload,
+            )
+            _upsert_annual_report_snapshot(conn, imported_snapshot)
+            annual_snapshots[source_year] = _annual_report_snapshot_to_payload(imported_snapshot)
+            imported_source_snapshot = True
+        if imported_source_snapshot:
+            conn.commit()
+
         annual_history: list[dict[str, Any]] = []
         previous_year_sales_value = 0.0
         previous_year_capital_value = 0.0
-        for year in sorted(yearly_map.keys()):
-            payload = yearly_map[year]
-            annual_profit_payload = annual_profit_map.get(year)
-            cc_balance_end = round(float(year_end_cc_balance.get(year, 0.0)), 2)
-            cash_balance_end = round(float(cash_balance_end_by_year.get(year, 0.0)), 2)
-            capital_total = round(stock_value_sale + cc_balance_end, 2)
-            sales_value = round(float(payload["sales"] or 0), 2)
-            expenses_value = round(float(payload["expenses"] or 0), 2)
-            purchases_value = round(float(payload["purchases"] or 0), 2)
-            commissions_value = round(float(payload["commissions"] or 0), 2)
-            margin_value = round(
-                float(annual_profit_payload["total_profit"])
-                if annual_profit_payload is not None
-                else float(payload["margin"] or 0),
-                2,
+        all_years = sorted(set(yearly_map.keys()) | set(annual_snapshots.keys()))
+        for year in all_years:
+            snapshot_payload = annual_snapshots.get(year) if year < current_year else None
+            payload = yearly_map.get(
+                year,
+                {"year": year, "sales": 0.0, "margin": 0.0, "count": 0, "purchases": 0.0, "expenses": 0.0, "commissions": 0.0},
             )
-            operating_result_value = round(margin_value - expenses_value - commissions_value, 2)
+            if snapshot_payload is not None:
+                sales_value = round(float(snapshot_payload["sales"] or 0), 2)
+                margin_value = round(float(snapshot_payload["margin"] or 0), 2)
+                purchases_value = round(float(snapshot_payload["purchases"] or 0), 2)
+                expenses_value = round(float(snapshot_payload["expenses"] or 0), 2)
+                commissions_value = round(float(snapshot_payload["commissions"] or 0), 2)
+                operating_result_value = round(float(snapshot_payload["operating_result"] or 0), 2)
+                cc_balance_end = round(float(snapshot_payload["cc_balance_end"] or 0), 2)
+                cash_balance_end = round(float(snapshot_payload["cash_balance_end"] or 0), 2)
+                capital_total = round(float(snapshot_payload["capital_total"] or 0), 2)
+                invoice_count = int(snapshot_payload["invoice_count"] or 0)
+            else:
+                annual_profit_payload = annual_profit_map.get(year)
+                cc_balance_end = round(float(year_end_cc_balance.get(year, 0.0)), 2)
+                cash_balance_end = round(float(cash_balance_end_by_year.get(year, 0.0)), 2)
+                capital_total = round(stock_value_sale + cc_balance_end, 2)
+                sales_value = round(float(payload["sales"] or 0), 2)
+                expenses_value = round(float(payload["expenses"] or 0), 2)
+                purchases_value = round(float(payload["purchases"] or 0), 2)
+                commissions_value = round(float(payload["commissions"] or 0), 2)
+                margin_value = round(
+                    float(annual_profit_payload["total_profit"])
+                    if annual_profit_payload is not None
+                    else float(payload["margin"] or 0),
+                    2,
+                )
+                operating_result_value = round(margin_value - expenses_value - commissions_value, 2)
+                invoice_count = int(payload["count"] or 0)
             sales_growth_pct = (
                 round(((sales_value - previous_year_sales_value) / previous_year_sales_value) * 100, 2)
                 if previous_year_sales_value > 0
@@ -8444,12 +8911,15 @@ def admin_reports_overview(
                     "expenses": expenses_value,
                     "commissions": commissions_value,
                     "operating_result": operating_result_value,
-                    "invoice_count": int(payload["count"] or 0),
+                    "invoice_count": invoice_count,
                     "cc_balance_end": cc_balance_end,
                     "cash_balance_end": cash_balance_end,
                     "capital_total": capital_total,
                     "sales_growth_pct": sales_growth_pct,
                     "capital_growth_pct": capital_growth_pct,
+                    "is_frozen": bool(snapshot_payload is not None),
+                    "closure_mode": snapshot_payload.get("closure_mode") if snapshot_payload is not None else None,
+                    "closed_at": snapshot_payload.get("closed_at") if snapshot_payload is not None else None,
                 }
             )
             previous_year_sales_value = sales_value
