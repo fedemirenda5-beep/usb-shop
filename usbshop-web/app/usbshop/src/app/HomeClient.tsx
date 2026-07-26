@@ -78,6 +78,8 @@ const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v10";
 const FEATURED_CACHE_KEY = "usbshop_featured_cache_v10";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const NEW_ARRIVAL_PIN_WINDOW_DAYS = 21;
+const NEW_ARRIVAL_PIN_WINDOW_MS = NEW_ARRIVAL_PIN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
 const normalizeLabel = (value: string | null | undefined) =>
@@ -96,13 +98,32 @@ const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
   }
   return next;
 };
+const parseTimestamp = (value?: string | null) => {
+  const parsed = value ? Date.parse(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
+const getProductActivityTimestamp = (product: Product) => {
+  const createdAt = parseTimestamp(product.created_at);
+  const updatedAt = parseTimestamp(product.updated_at);
+  if (Number.isFinite(createdAt) && Number.isFinite(updatedAt)) {
+    return Math.max(createdAt, updatedAt);
+  }
+  if (Number.isFinite(updatedAt)) {
+    return updatedAt;
+  }
+  if (Number.isFinite(createdAt)) {
+    return createdAt;
+  }
+  return product.id;
+};
 const toComparableTimestamp = (product: Product) => {
-  const raw = product.created_at || product.updated_at || "";
-  const parsed = raw ? Date.parse(raw) : NaN;
-  return Number.isFinite(parsed) ? parsed : product.id;
+  return getProductActivityTimestamp(product);
 };
 const compareByNewest = (a: Product, b: Product) =>
   toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
+const isPinnedNewArrival = (product: Product, now = Date.now()) =>
+  Boolean(product.highlightNewArrivals) &&
+  now - getProductActivityTimestamp(product) <= NEW_ARRIVAL_PIN_WINDOW_MS;
 const hasDiscountedPrice = (product: Product) =>
   Number(product.originalPrice || 0) > Number(product.price || 0);
 const getFlashOfferTimeLeftAt = (product: Product | null | undefined, now: number) => {
@@ -1088,11 +1109,12 @@ export default function HomeClient({
 
   const newArrivals = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
+    const now = Date.now();
     const available = [...source]
       .filter((product) => (product.stock ?? 0) > 0)
       .sort((a, b) => {
         const pinnedScore = (product: Product) =>
-          Number(Boolean(product.highlightNewArrivals)) * 2 + Number(Boolean(product.isFeatured));
+          Number(Boolean(product.isFeatured)) * 3 + Number(isPinnedNewArrival(product, now));
         const pinnedDelta = pinnedScore(b) - pinnedScore(a);
         if (pinnedDelta !== 0) {
           return pinnedDelta;
