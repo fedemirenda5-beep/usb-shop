@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { canViewProfitMetrics } from '../adminPermissions';
 import { ProductForm } from './components/ProductForm';
@@ -1490,16 +1490,24 @@ export default function ProductosPage() {
               canViewProfitMetrics={canViewProfit}
               onSubmit={async (data) => {
                 await loadRuntimeConfig();
-                const res = await fetch(`${getApiBaseUrl()}/admin/products/${editProduct.id}`, {
-                  method: 'PUT',
-                  credentials: 'include',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(data),
-                });
+                let res: Response;
+                try {
+                  res = await fetch(`${getApiBaseUrl()}/admin/products/${editProduct.id}`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                  });
+                } catch (error) {
+                  throw new Error(getFriendlyApiError(error, 'No se pudo conectar con la API para actualizar el producto'));
+                }
 
                 if (!res.ok) {
-                  const responseError = await res.json();
-                  throw new Error(responseError.detail || 'Error actualizando producto');
+                  const responseError = await res.json().catch(async () => {
+                    const detail = await res.text().catch(() => '');
+                    return { detail };
+                  });
+                  throw new Error(responseError.detail || `Error actualizando producto (${res.status})`);
                 }
 
                 router.push('/admin/productos');
