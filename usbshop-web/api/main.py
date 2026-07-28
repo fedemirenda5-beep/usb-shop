@@ -4012,9 +4012,10 @@ def create_order(payload: OrderPayload) -> dict:
                 raise HTTPException(status_code=404, detail=f"Producto {item.product_id} no encontrado")
             stock = row["stock"] or 0
             if int(stock) < int(item.quantity):
+                product_label = str(row["name"] or "").strip() or f"#{row['id']}"
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Sin stock suficiente para el producto {row['id']}",
+                    detail=f"Sin stock suficiente para {product_label}",
                 )
             submitted_price = float(item.unit_price or 0)
             unit_price = submitted_price if submitted_price > 0 else _storefront_price(row)
