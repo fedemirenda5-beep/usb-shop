@@ -1286,6 +1286,42 @@ def _ensure_invoice_items_cost_snapshot_column(conn: DBConn) -> None:
     _invalidate_table_cache("invoice_items")
 
 
+def _ensure_invoice_item_imeis_table(conn: DBConn) -> None:
+    if DB_IS_POSTGRES:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS invoice_item_imeis (
+                id SERIAL PRIMARY KEY,
+                invoice_item_id INTEGER NOT NULL,
+                invoice_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                imei TEXT NOT NULL,
+                UNIQUE(invoice_item_id, imei)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_invoice_item_id ON invoice_item_imeis(invoice_item_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_invoice_id ON invoice_item_imeis(invoice_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_product_id ON invoice_item_imeis(product_id)")
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS invoice_item_imeis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                invoice_item_id INTEGER NOT NULL,
+                invoice_id INTEGER NOT NULL,
+                product_id INTEGER NOT NULL,
+                imei TEXT NOT NULL,
+                UNIQUE(invoice_item_id, imei)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_invoice_item_id ON invoice_item_imeis(invoice_item_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_invoice_id ON invoice_item_imeis(invoice_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_product_id ON invoice_item_imeis(product_id)")
+    _invalidate_table_cache("invoice_item_imeis")
+
+
 def _normalize_category_label(value: str) -> str:
     return _normalize_search_text(value or "")
 
@@ -1297,6 +1333,24 @@ def _is_celulares_category_name(value: str) -> bool:
 def _is_nokia_106_exception_product_name(value: Any) -> bool:
     normalized = _normalize_search_text(value or "")
     return normalized == "nokia 106" or normalized.startswith("nokia 106 ")
+
+
+CELLPHONE_WARRANTY_NOTE = (
+    "Garantia de 30 dias solo por fallas de fabrica. No cubre equipos golpeados, "
+    "pantalla rota ni equipos abiertos. Pasados los 30 dias, la garantia debe "
+    "reclamarse con la marca y tiene una cobertura de 1 ano."
+)
+
+
+def _append_cellphone_warranty_note(notes: Optional[str], include_warranty_note: bool) -> Optional[str]:
+    base_notes = str(notes or "").strip()
+    if not include_warranty_note:
+        return base_notes or None
+    if _normalize_search_text(CELLPHONE_WARRANTY_NOTE) in _normalize_search_text(base_notes):
+        return base_notes or None
+    if not base_notes:
+        return CELLPHONE_WARRANTY_NOTE
+    return f"{base_notes}\n{CELLPHONE_WARRANTY_NOTE}"
 
 
 def _seller_commission_percent_for_item(
@@ -1500,6 +1554,48 @@ def _replace_product_imeis(conn: DBConn, product_id: int, imeis: list[str]) -> N
         if sold_invoice_id:
             continue
         conn.execute("DELETE FROM product_imeis WHERE id = ?", (imei_id,))
+
+
+def _store_invoice_item_imeis(
+    conn: DBConn,
+    invoice_item_id: int,
+    invoice_id: int,
+    product_id: int,
+    imeis: list[str],
+) -> None:
+    _ensure_invoice_item_imeis_table(conn)
+    normalized_imeis = _normalize_imei_list(imeis)
+    if invoice_item_id <= 0 or invoice_id <= 0 or product_id <= 0 or not normalized_imeis:
+        return
+    for imei in normalized_imeis:
+        conn.execute(
+            """
+            INSERT INTO invoice_item_imeis (invoice_item_id, invoice_id, product_id, imei)
+            VALUES (?, ?, ?, ?)
+            """,
+            (invoice_item_id, invoice_id, product_id, imei),
+        )
+
+
+def _fetch_invoice_item_imeis(conn: DBConn, invoice_id: int) -> dict[int, list[str]]:
+    _ensure_invoice_item_imeis_table(conn)
+    rows = conn.execute(
+        """
+        SELECT invoice_item_id, imei
+        FROM invoice_item_imeis
+        WHERE invoice_id = ?
+        ORDER BY invoice_item_id ASC, imei ASC
+        """,
+        (invoice_id,),
+    ).fetchall()
+    imeis_by_item: dict[int, list[str]] = {}
+    for row in rows:
+        item_id = int(row["invoice_item_id"] or 0)
+        imei = str(row["imei"] or "").strip()
+        if item_id <= 0 or not imei:
+            continue
+        imeis_by_item.setdefault(item_id, []).append(imei)
+    return imeis_by_item
 
 
 def _require_sync_token(request: Request) -> None:
@@ -2746,6 +2842,13 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("product_id", "INTEGER", "INTEGER"),
         ("quantity", "INTEGER", "INTEGER"),
         ("unit_price", "REAL", "NUMERIC(12, 2)"),
+    ],
+    "invoice_item_imeis": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("invoice_item_id", "INTEGER", "INTEGER"),
+        ("invoice_id", "INTEGER", "INTEGER"),
+        ("product_id", "INTEGER", "INTEGER"),
+        ("imei", "TEXT", "TEXT"),
     ],
     "account_movements": [
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
@@ -7143,6 +7246,7 @@ def admin_create_invoice(
         _ensure_invoice_special_discount_column(conn)
         _ensure_products_barcode_column(conn)
         _ensure_product_imeis_table(conn)
+        _ensure_invoice_item_imeis_table(conn)
         _ensure_sellers_table(conn)
         if customer_id <= 0 and order_id and document_type in {"FACTURA", "PRESUPUESTO"}:
             web_order = conn.execute(
@@ -7310,6 +7414,15 @@ def admin_create_invoice(
                 }
             )
 
+        includes_cellphones = any(
+            _category_requires_imei(conn, item.get("category_id"))
+            for item in normalized_items
+        )
+        notes = _append_cellphone_warranty_note(
+            notes,
+            include_warranty_note=document_type == "FACTURA" and includes_cellphones,
+        )
+
         if special_discount > round(subtotal_total, 2):
             raise HTTPException(status_code=400, detail="El descuento especial no puede superar el subtotal")
         total = round(subtotal_total - special_discount, 2)
@@ -7382,13 +7495,27 @@ def admin_create_invoice(
             invoice_id = int(invoice_row["id"] if isinstance(invoice_row, dict) else invoice_row[0])
 
         for item in normalized_items:
-            conn.execute(
-                """
-                INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"]),
-            )
+            if DB_IS_POSTGRES:
+                invoice_item_row = conn.execute(
+                    """
+                    INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot)
+                    VALUES (?, ?, ?, ?, ?)
+                    RETURNING id
+                    """,
+                    (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"]),
+                ).fetchone()
+                invoice_item_id = int(invoice_item_row["id"] if isinstance(invoice_item_row, dict) else invoice_item_row[0])
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"]),
+                )
+                invoice_item_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+                invoice_item_id = int(invoice_item_row["id"] if isinstance(invoice_item_row, dict) else invoice_item_row[0])
+            _store_invoice_item_imeis(conn, invoice_item_id, invoice_id, item["product_id"], item["imeis"])
             if affects_stock and stock_delta != 0:
                 conn.execute(
                     "UPDATE products SET stock = stock + ? WHERE id = ?",
@@ -7504,6 +7631,7 @@ def admin_invoice_detail(
         _ensure_invoice_payment_method_column(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_product_imeis_table(conn)
+        _ensure_invoice_item_imeis_table(conn)
         _ensure_sellers_table(conn)
         invoice = conn.execute(
             """
@@ -7531,6 +7659,7 @@ def admin_invoice_detail(
             """,
             (invoice_id,),
         ).fetchall()
+        invoice_item_imeis = _fetch_invoice_item_imeis(conn, invoice_id)
         sold_imei_rows = conn.execute(
             """
             SELECT product_id, imei
@@ -7575,7 +7704,8 @@ def admin_invoice_detail(
                     "line_total": line_total,
                     "cost_total": round(quantity * float(row["cost"] or 0), 2),
                     "image_path": row["image_path"],
-                    "imeis": sold_imeis_by_product.get(int(row["product_id"]) if row["product_id"] is not None else 0, []),
+                    "imeis": invoice_item_imeis.get(int(row["id"]), [])
+                    or sold_imeis_by_product.get(int(row["product_id"]) if row["product_id"] is not None else 0, []),
                 }
             )
         serialized_payments = []
@@ -7871,6 +8001,7 @@ def admin_delete_invoice(
         _ensure_accounting_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         _ensure_product_imeis_table(conn)
+        _ensure_invoice_item_imeis_table(conn)
         invoice = conn.execute(
             """
             SELECT id, customer_id, total, document_type, sale_mode
@@ -7994,6 +8125,7 @@ def admin_delete_invoice(
                         edited_by="ADMIN_DELETE_INVOICE",
                     )
         
+        conn.execute("DELETE FROM invoice_item_imeis WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))
 

@@ -86,6 +86,8 @@ type ImeiLookupResponse = {
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const CELULARES_COMMISSION_PERCENT = 5;
+const CELLPHONE_WARRANTY_NOTE =
+  'Garantia de 30 dias solo por fallas de fabrica. No cubre equipos golpeados, pantalla rota ni equipos abiertos. Pasados los 30 dias, la garantia debe reclamarse con la marca y tiene una cobertura de 1 ano.';
 const normalizeSearchValue = (value: string) =>
   value
     .normalize('NFD')
@@ -450,6 +452,15 @@ export default function GenerarComprobantePage() {
       .filter(Boolean) as Array<{ index: number; product: ProductOption; quantity: number; imeiCount: number; missingCount: number }>;
   }, [form.document_type, form.items, productMap, celularesCategoryIds]);
   const hasPendingOrderCellphoneImeis = pendingOrderCellphoneImeiItems.length > 0;
+  const hasCellphoneItems = useMemo(
+    () =>
+      form.items.some((item) => {
+        const product = productMap.get(Number(item.product_id));
+        return Boolean(product?.category_id && celularesCategoryIds.has(product.category_id));
+      }),
+    [celularesCategoryIds, form.items, productMap]
+  );
+  const shouldAppendWarrantyNote = form.document_type === 'FACTURA' && hasCellphoneItems;
 
   const canSubmitWithoutCustomer = Boolean(form.order_id) && form.document_type !== 'NOTA_CREDITO';
 
@@ -1085,6 +1096,7 @@ export default function GenerarComprobantePage() {
               <label className={styles.fullWidth}>
                 Notas
                 <textarea rows={2} value={form.notes} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} />
+                {shouldAppendWarrantyNote ? <small>Se agregara automaticamente: {CELLPHONE_WARRANTY_NOTE}</small> : null}
               </label>
             </div>
             <section className={styles.specialDiscountPanel}>
