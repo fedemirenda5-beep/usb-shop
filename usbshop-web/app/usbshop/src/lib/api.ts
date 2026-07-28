@@ -102,7 +102,11 @@ export async function loadRuntimeConfig(): Promise<string | null> {
       if (!response.ok) {
         return null;
       }
-      const data = (await response.json()) as { apiBaseUrl?: string; orderSecret?: string };
+      const data = (await response.json()) as {
+        apiBaseUrl?: string;
+        orderSecret?: string;
+        allowAbsoluteApiBaseUrlOnLocalhost?: boolean;
+      };
       if (!data || typeof data.apiBaseUrl !== "string") {
         return null;
       }
@@ -110,7 +114,11 @@ export async function loadRuntimeConfig(): Promise<string | null> {
       if (!apiBaseUrl) {
         return null;
       }
-      if (isLocalLikeHost(host) && /^https?:\/\//i.test(apiBaseUrl)) {
+      if (
+        isLocalLikeHost(host) &&
+        /^https?:\/\//i.test(apiBaseUrl) &&
+        !data.allowAbsoluteApiBaseUrlOnLocalhost
+      ) {
         return runtimeApiBaseUrl;
       }
       setRuntimeApiBaseUrl(apiBaseUrl);
