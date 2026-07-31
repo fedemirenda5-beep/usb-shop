@@ -62,6 +62,7 @@ type BudgetDraft = {
     product_id?: number | null;
     quantity: number;
     unit_price: number;
+    imeis?: string[];
   }>;
 };
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean; imeis: string[] };
@@ -354,7 +355,7 @@ export default function GenerarComprobantePage() {
             quantity: String(item.quantity),
             unit_price: String(item.unit_price),
             manual_price: true,
-            imeis: [],
+            imeis: Array.isArray(item.imeis) ? item.imeis.map((imei) => String(imei || '').trim()).filter(Boolean) : [],
           })),
         });
         setCustomerSearch(invoice.customer_name || '');
