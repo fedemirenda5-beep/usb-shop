@@ -7387,11 +7387,6 @@ def admin_create_invoice(
                 raise HTTPException(status_code=400, detail="Precio invalido")
             item_imeis = _normalize_imei_list((raw or {}).get("imeis") or [])
             requires_imei = _category_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7])
-            if document_type == "FACTURA" and requires_imei and len(item_imeis) < quantity:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Debes cargar {quantity} IMEI{'s' if quantity != 1 else ''} para {product['name']}",
-                )
             if len(item_imeis) > quantity:
                 raise HTTPException(
                     status_code=400,

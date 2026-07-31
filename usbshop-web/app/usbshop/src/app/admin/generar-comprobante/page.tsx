@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
@@ -585,30 +585,51 @@ export default function GenerarComprobantePage() {
   };
 
   const loadScannerProducts = async (rawValue: string) => {
-    await loadRuntimeConfig();
-    const params = new URLSearchParams({
-      q: rawValue.trim(),
-      limit: String(ADMIN_LIMITS.scannerLookup),
-    });
-    const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      throw new Error('No se pudieron cargar los productos para el lector');
+    try {
+      await loadRuntimeConfig();
+      const params = new URLSearchParams({
+        q: rawValue.trim(),
+        limit: String(ADMIN_LIMITS.scannerLookup),
+      });
+      const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('No se pudieron cargar los productos para el lector');
+      }
+      const data = await res.json();
+      return Array.isArray(data) ? (data as ProductOption[]) : [];
+    } catch (error) {
+      throw new Error(getFriendlyApiError(error, 'No se pudieron cargar los productos para el lector'));
     }
-    const data = await res.json();
-    return Array.isArray(data) ? (data as ProductOption[]) : [];
   };
 
   const lookupImeiValue = async (rawValue: string) => {
-    await loadRuntimeConfig();
-    const params = new URLSearchParams({ q: rawValue.trim() });
-    const res = await fetch(`${getApiBaseUrl()}/admin/imei-lookup?${params.toString()}`, { credentials: 'include' });
-    if (!res.ok) {
-      const payload = await res.json().catch(() => ({}));
-      throw new Error(payload.detail || 'No se pudo consultar el IMEI');
+    try {
+      await loadRuntimeConfig();
+      const params = new URLSearchParams({ q: rawValue.trim() });
+      const res = await fetch(`${getApiBaseUrl()}/admin/imei-lookup?${params.toString()}`, { credentials: 'include' });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.detail || 'No se pudo consultar el IMEI');
+      }
+      return (await res.json()) as ImeiLookupResponse;
+    } catch (error) {
+      throw new Error(getFriendlyApiError(error, 'No se pudo consultar el IMEI'));
     }
-    return (await res.json()) as ImeiLookupResponse;
+  };
+
+  const resolveScannerProduct = async (rawValue: string) => {
+    const matchedProduct = findProductByScannerValue(rawValue);
+    if (matchedProduct) return matchedProduct;
+    const remoteProducts = await loadScannerProducts(rawValue);
+    const normalizedValue = rawValue.trim().toLowerCase();
+    return (
+      remoteProducts.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      remoteProducts.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
+      remoteProducts.find((product) => String(product.id) === normalizedValue) ||
+      null
+    );
   };
 
   const processScannerValue = async (rawValue: string) => {
@@ -617,39 +638,53 @@ export default function GenerarComprobantePage() {
       if (!scannedValue) return;
       const probablyImei = /^\d{14,17}$/.test(scannedValue);
       if (probablyImei) {
-        const imeiLookup = await lookupImeiValue(scannedValue);
-        if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
-          setError(`El IMEI ${scannedValue} no esta registrado como propio`);
-          return;
-        }
-        if (imeiLookup.status === 'sold') {
-          const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
-          const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
-          setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
-          return;
-        }
-        const imeiProductId = Number(imeiLookup.product.id);
-        const imeiProduct =
-          products.find((product) => product.id === imeiProductId) ||
-          (await loadScannerProducts(String(imeiProductId))).find((product) => product.id === imeiProductId) ||
-          null;
-        if (!imeiProduct) {
-          setError(`El IMEI ${scannedValue} es propio, pero el producto no esta disponible en la lista actual`);
-          return;
-        }
-        if (form.order_id) {
-          const targetIndex = form.items.findIndex((item) => {
-            const currentProduct = productMap.get(Number(item.product_id));
-            return sameProductIdentity(
-              currentProduct
-                ? { id: currentProduct.id, name: currentProduct.name, sku: currentProduct.sku }
-                : { id: Number(item.product_id || 0), name: null, sku: null },
-              imeiLookup.product
-            );
-          });
-          if (targetIndex >= 0) {
+        try {
+          const imeiLookup = await lookupImeiValue(scannedValue);
+          if (imeiLookup.found && imeiLookup.is_own && imeiLookup.product?.id) {
+            if (imeiLookup.status === 'sold') {
+              const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
+              const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
+              setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
+              return;
+            }
+            const imeiProductId = Number(imeiLookup.product.id);
+            const imeiProduct =
+              products.find((product) => product.id === imeiProductId) ||
+              (await loadScannerProducts(String(imeiProductId))).find((product) => product.id === imeiProductId) ||
+              null;
+            if (!imeiProduct) {
+              setError(`El IMEI ${scannedValue} es propio, pero el producto no esta disponible en la lista actual`);
+              return;
+            }
+            if (form.order_id) {
+              const targetIndex = form.items.findIndex((item) => {
+                const currentProduct = productMap.get(Number(item.product_id));
+                return sameProductIdentity(
+                  currentProduct
+                    ? { id: currentProduct.id, name: currentProduct.name, sku: currentProduct.sku }
+                    : { id: Number(item.product_id || 0), name: null, sku: null },
+                  imeiLookup.product
+                );
+              });
+              if (targetIndex >= 0) {
+                setError('');
+                await appendImeiToItem(targetIndex, scannedValue, imeiLookup);
+                setScannedDraft((current) => {
+                  if (current?.product.id === imeiProduct.id) {
+                    return {
+                      product: imeiProduct,
+                      quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
+                    };
+                  }
+                  return { product: imeiProduct, quantity: '1' };
+                });
+                return;
+              }
+            }
             setError('');
-            await appendImeiToItem(targetIndex, scannedValue, imeiLookup);
+            if (!addProductToInvoice(imeiProduct, 1, scannedValue)) {
+              return;
+            }
             setScannedDraft((current) => {
               if (current?.product.id === imeiProduct.id) {
                 return {
@@ -661,37 +696,29 @@ export default function GenerarComprobantePage() {
             });
             return;
           }
-        }
-        setError('');
-        if (!addProductToInvoice(imeiProduct, 1, scannedValue)) {
+        } catch (error) {
+          setError(getFriendlyApiError(error, 'No se pudo consultar el IMEI'));
           return;
         }
+        const fallbackProduct = await resolveScannerProduct(scannedValue);
+        if (!fallbackProduct) {
+          setError(`El IMEI ${scannedValue} no esta registrado como propio`);
+          return;
+        }
+        setError('');
+        addProductToInvoice(fallbackProduct, 1);
         setScannedDraft((current) => {
-          if (current?.product.id === imeiProduct.id) {
+          if (current?.product.id === fallbackProduct.id) {
             return {
-              product: imeiProduct,
+              product: fallbackProduct,
               quantity: String(Math.max(1, Number(current.quantity || 1)) + 1),
             };
           }
-          return { product: imeiProduct, quantity: '1' };
+          return { product: fallbackProduct, quantity: '1' };
         });
         return;
       }
-      const matchedProduct = findProductByScannerValue(scannedValue);
-      const resolvedProduct = matchedProduct || findProductByScannerValue(
-        scannedValue,
-      ) || (
-        await (async () => {
-          const remoteProducts = await loadScannerProducts(scannedValue);
-          const normalizedValue = scannedValue.trim().toLowerCase();
-          return (
-            remoteProducts.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
-            remoteProducts.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
-            remoteProducts.find((product) => String(product.id) === normalizedValue) ||
-            null
-          );
-        })()
-      );
+      const resolvedProduct = await resolveScannerProduct(scannedValue);
       if (!resolvedProduct) {
         if (filteredProducts.length > 0) {
           setError('');
@@ -911,8 +938,13 @@ export default function GenerarComprobantePage() {
       const pendingLabels = pendingOrderCellphoneImeiItems
         .map((item) => `${item.product.name}: faltan ${item.missingCount} IMEI${item.missingCount === 1 ? '' : 's'}`)
         .join(' · ');
-      setError(`Antes de emitir la factura, carga los IMEIs pendientes. ${pendingLabels}`);
-      return;
+      const confirmedWithoutImeis = window.confirm(
+        `Hay celulares sin IMEI cargado. ${pendingLabels}. ¿Esta bien emitir el comprobante igual?`
+      );
+      if (!confirmedWithoutImeis) {
+        setError(`Antes de emitir la factura, carga los IMEIs pendientes. ${pendingLabels}`);
+        return;
+      }
     }
     try {
       setCreating(true);
@@ -1264,7 +1296,7 @@ export default function GenerarComprobantePage() {
               </div>
               {hasPendingOrderCellphoneImeis ? (
                 <div className={styles.orderDraftInfo}>
-                  Hay celulares pendientes de IMEI. Escanealos o elegilos desde la lista antes de emitir la factura.
+                  Hay celulares pendientes de IMEI. Podes escanearlos antes de emitir o confirmar manualmente la salida sin IMEI.
                 </div>
               ) : null}
               <div className={styles.tableWrap}>
@@ -1408,7 +1440,7 @@ export default function GenerarComprobantePage() {
               <button
                 type="submit"
                 className={styles.createButton}
-                disabled={creating || (!form.customer_id && !canSubmitWithoutCustomer) || form.items.length === 0 || hasPendingOrderCellphoneImeis}
+                disabled={creating || (!form.customer_id && !canSubmitWithoutCustomer) || form.items.length === 0}
               >
                 {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
               </button>
