@@ -1710,6 +1710,189 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
     _invalidate_table_cache("web_order_items")
 
 
+def _ensure_product_bundle_support(conn: DBConn) -> None:
+    if not _has_column(conn, "products", "is_bundle"):
+        conn.execute("ALTER TABLE products ADD COLUMN is_bundle INTEGER DEFAULT 0")
+        _invalidate_table_cache("products")
+    if not _has_table(conn, "product_bundle_items"):
+        definitions = ", ".join(
+            f"{name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+            for name, sqlite_type, pg_type in SYNC_TABLE_SCHEMAS["product_bundle_items"]
+        )
+        conn.execute(f"CREATE TABLE IF NOT EXISTS product_bundle_items ({definitions})")
+        _invalidate_table_cache("product_bundle_items")
+    conn.commit()
+
+
+def _normalize_bundle_items(raw_items: Any) -> list[dict[str, int]]:
+    if not isinstance(raw_items, list):
+        return []
+    normalized: list[dict[str, int]] = []
+    seen: set[int] = set()
+    for raw in raw_items:
+        product_id = int((raw or {}).get("product_id") or 0)
+        quantity = int((raw or {}).get("quantity") or 0)
+        if product_id <= 0 or quantity <= 0 or product_id in seen:
+            continue
+        normalized.append({"product_id": product_id, "quantity": quantity})
+        seen.add(product_id)
+    return normalized
+
+
+def _replace_product_bundle_items(conn: DBConn, bundle_product_id: int, items: list[dict[str, int]]) -> None:
+    _ensure_product_bundle_support(conn)
+    conn.execute("DELETE FROM product_bundle_items WHERE bundle_product_id = ?", (int(bundle_product_id),))
+    for item in items:
+        conn.execute(
+            """
+            INSERT INTO product_bundle_items (bundle_product_id, product_id, quantity)
+            VALUES (?, ?, ?)
+            """,
+            (int(bundle_product_id), int(item["product_id"]), int(item["quantity"])),
+        )
+
+
+def _fetch_bundle_items_map(conn: DBConn, bundle_product_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    if not bundle_product_ids:
+        return {}
+    _ensure_product_bundle_support(conn)
+    placeholders = ", ".join(["?"] * len(bundle_product_ids))
+    rows = conn.execute(
+        f"""
+        SELECT bi.bundle_product_id, bi.product_id, bi.quantity,
+               p.name AS product_name, p.sku, p.stock, p.price, p.price_list_1, p.price_list_2, p.cost, p.category_id,
+               c.name AS category_name, COALESCE(p.is_bundle, 0) AS child_is_bundle
+        FROM product_bundle_items bi
+        LEFT JOIN products p ON p.id = bi.product_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE bi.bundle_product_id IN ({placeholders})
+        ORDER BY bi.bundle_product_id ASC, bi.id ASC
+        """,
+        bundle_product_ids,
+    ).fetchall()
+    payload: dict[int, list[dict[str, Any]]] = {int(bundle_id): [] for bundle_id in bundle_product_ids}
+    for row in rows:
+        bundle_id = int(row["bundle_product_id"] if isinstance(row, dict) else row[0])
+        payload.setdefault(bundle_id, []).append(
+            {
+                "product_id": int(row["product_id"] if isinstance(row, dict) else row[1] or 0),
+                "quantity": int(row["quantity"] if isinstance(row, dict) else row[2] or 0),
+                "name": row["product_name"] if isinstance(row, dict) else row[3],
+                "sku": row["sku"] if isinstance(row, dict) else row[4],
+                "stock": int(row["stock"] if isinstance(row, dict) else row[5] or 0),
+                "price": float(row["price"] if isinstance(row, dict) else row[6] or 0),
+                "price_list_1": float(row["price_list_1"] if isinstance(row, dict) else row[7] or 0),
+                "price_list_2": float(row["price_list_2"] if isinstance(row, dict) else row[8] or 0),
+                "cost": float(row["cost"] if isinstance(row, dict) else row[9] or 0),
+                "category_id": int(row["category_id"] if isinstance(row, dict) else row[10] or 0) or None,
+                "category_name": row["category_name"] if isinstance(row, dict) else row[11],
+                "is_bundle": bool(row["child_is_bundle"] if isinstance(row, dict) else row[12]),
+            }
+        )
+    return payload
+
+
+def _bundle_available_stock(bundle_items: list[dict[str, Any]]) -> int:
+    if not bundle_items:
+        return 0
+    return min(
+        max(0, int(item.get("stock") or 0)) // max(1, int(item.get("quantity") or 0))
+        for item in bundle_items
+    )
+
+
+def _bundle_requires_imei(conn: DBConn, bundle_items: list[dict[str, Any]]) -> bool:
+    return any(_category_requires_imei(conn, item.get("category_id")) for item in bundle_items)
+
+
+def _assert_bundle_components_valid(
+    conn: DBConn,
+    bundle_product_id: int,
+    bundle_items: list[dict[str, int]],
+) -> None:
+    if not bundle_items:
+        raise HTTPException(status_code=400, detail="El combo debe tener al menos un producto")
+    if any(int(item["product_id"]) == int(bundle_product_id) for item in bundle_items):
+        raise HTTPException(status_code=400, detail="Un combo no puede incluirse a si mismo")
+    placeholders = ", ".join(["?"] * len(bundle_items))
+    product_ids = [int(item["product_id"]) for item in bundle_items]
+    rows = conn.execute(
+        f"""
+        SELECT id, name, COALESCE(is_bundle, 0) AS is_bundle
+        FROM products
+        WHERE id IN ({placeholders}) AND deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+        """,
+        product_ids,
+    ).fetchall()
+    found_ids = {int(row["id"] if isinstance(row, dict) else row[0]) for row in rows}
+    missing = next((product_id for product_id in product_ids if product_id not in found_ids), None)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Producto {missing} no encontrado para el combo")
+    nested = next(
+        (
+            row["name"] if isinstance(row, dict) else row[1]
+            for row in rows
+            if bool(row["is_bundle"] if isinstance(row, dict) else row[2])
+        ),
+        None,
+    )
+    if nested:
+        raise HTTPException(status_code=400, detail=f'No se puede usar el combo "{nested}" dentro de otro combo')
+
+
+def _allocate_bundle_components(
+    components: list[dict[str, Any]],
+    bundle_quantity: int,
+    bundle_unit_price: float,
+    price_list: int,
+) -> list[dict[str, Any]]:
+    prepared: list[dict[str, Any]] = []
+    total_reference = 0.0
+    for component in components:
+        quantity = int(component.get("quantity") or 0) * bundle_quantity
+        if quantity <= 0:
+            continue
+        reference_unit = round(float(_pick_price_by_list(component, price_list)), 2)
+        reference_total = round(reference_unit * quantity, 2)
+        total_reference += reference_total
+        prepared.append(
+            {
+                "product_id": int(component.get("product_id") or 0),
+                "category_id": component.get("category_id"),
+                "quantity": quantity,
+                "cost_snapshot": round(float(component.get("cost") or 0), 2),
+                "reference_total": reference_total,
+            }
+        )
+    total_bundle = round(bundle_unit_price * bundle_quantity, 2)
+    remaining = total_bundle
+    expanded: list[dict[str, Any]] = []
+    for index, item in enumerate(prepared):
+        if index == len(prepared) - 1:
+            line_total = round(remaining, 2)
+        elif total_reference > 0:
+            line_total = round(total_bundle * (float(item["reference_total"]) / total_reference), 2)
+            remaining = round(remaining - line_total, 2)
+        else:
+            slots_left = max(1, len(prepared) - index)
+            line_total = round(remaining / slots_left, 2)
+            remaining = round(remaining - line_total, 2)
+        quantity = int(item["quantity"])
+        unit_price = round(line_total / quantity, 2) if quantity > 0 else 0.0
+        expanded.append(
+            {
+                "product_id": int(item["product_id"]),
+                "category_id": item.get("category_id"),
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "cost_snapshot": item["cost_snapshot"],
+                "subtotal": round(quantity * unit_price, 2),
+                "imeis": [],
+            }
+        )
+    return expanded
+
+
 def _product_images_column(conn: DBConn) -> Optional[str]:
     if not _has_table(conn, "product_images"):
         return None
@@ -2850,6 +3033,12 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("product_id", "INTEGER", "INTEGER"),
         ("imei", "TEXT", "TEXT"),
     ],
+    "product_bundle_items": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("bundle_product_id", "INTEGER", "INTEGER"),
+        ("product_id", "INTEGER", "INTEGER"),
+        ("quantity", "INTEGER", "INTEGER"),
+    ],
     "account_movements": [
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
         ("customer_id", "INTEGER", "INTEGER"),
@@ -3810,6 +3999,7 @@ def list_products(
 ) -> list[dict]:
     conn = _connect()
     try:
+        _ensure_product_bundle_support(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -3826,6 +4016,7 @@ def list_products(
             "p.sku",
             "p.price",
             "p.stock",
+            "COALESCE(p.is_bundle, 0) AS is_bundle",
             "p.image_path",
             "c.name AS category",
         ]
@@ -3892,6 +4083,10 @@ def list_products(
         rows = conn.execute(query, params).fetchall()
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
+        bundle_items_map = _fetch_bundle_items_map(
+            conn,
+            [int(row["id"]) for row in rows if bool(row["is_bundle"])],
+        )
     finally:
         conn.close()
 
@@ -3904,7 +4099,9 @@ def list_products(
             "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
             "cost": float(row["cost"] or 0),
-            "stock": int(row["stock"] or 0),
+            "stock": _bundle_available_stock(bundle_items_map.get(int(row["id"]), []))
+            if bool(row["is_bundle"])
+            else int(row["stock"] or 0),
             "category": row["category"] or "General",
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -3920,6 +4117,7 @@ def list_products(
             "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
             if highlight_new_arrivals_enabled
             else False,
+            "is_bundle": bool(row["is_bundle"]),
         }
         for row in rows
     ]
@@ -3981,6 +4179,7 @@ def create_order(payload: OrderPayload) -> dict:
         conn = DBConn(raw, False)
     try:
         _ensure_web_order_tables(conn)
+        _ensure_product_bundle_support(conn)
         _ensure_products_flash_offer_columns(conn)
         has_description = _has_column(conn, "products", "description")
         has_image_path = _has_column(conn, "products", "image_path")
@@ -3995,6 +4194,7 @@ def create_order(payload: OrderPayload) -> dict:
                 "price_list_1",
                 "price_list_2",
                 "stock",
+                "COALESCE(is_bundle, 0) AS is_bundle",
                 "flash_offer_price",
                 "flash_offer_ends_at",
             ]
@@ -4010,13 +4210,15 @@ def create_order(payload: OrderPayload) -> dict:
             ).fetchone()
             if row is None:
                 raise HTTPException(status_code=404, detail=f"Producto {item.product_id} no encontrado")
-            stock = row["stock"] or 0
+            is_bundle = bool(row["is_bundle"])
+            if is_bundle:
+                bundle_items = _fetch_bundle_items_map(conn, [int(row["id"])]).get(int(row["id"]), [])
+                stock = _bundle_available_stock(bundle_items)
+            else:
+                stock = row["stock"] or 0
             if int(stock) < int(item.quantity):
                 product_label = str(row["name"] or "").strip() or f"#{row['id']}"
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Sin stock suficiente para {product_label}",
-                )
+                raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product_label}")
             submitted_price = float(item.unit_price or 0)
             unit_price = submitted_price if submitted_price > 0 else _storefront_price(row)
             total += unit_price * int(item.quantity)
@@ -4126,6 +4328,7 @@ def admin_list_orders(
     conn = _connect()
     try:
         _ensure_web_order_tables(conn)
+        _ensure_product_bundle_support(conn)
         where_clause = "" if status_value == "ALL" else "WHERE status = ?"
         params: list[Any] = [] if status_value == "ALL" else [status_value]
         rows = conn.execute(
@@ -4162,7 +4365,7 @@ def admin_list_orders(
             items = conn.execute(
                 f"""
                 SELECT i.order_id, i.product_id, i.quantity, i.unit_price,
-                       p.name AS product_name, p.sku AS sku, p.category_id,
+                       p.name AS product_name, p.sku AS sku, p.category_id, COALESCE(p.is_bundle, 0) AS is_bundle,
                        c.name AS category_name
                 FROM web_order_items i
                 LEFT JOIN products p ON p.id = i.product_id
@@ -4173,33 +4376,47 @@ def admin_list_orders(
                 order_ids,
             ).fetchall()
             items_by_order: dict[int, list[dict]] = {order_id: [] for order_id in order_ids}
+            bundle_items_map = _fetch_bundle_items_map(
+                conn,
+                [int(item["product_id"] if isinstance(item, dict) else item[1] or 0) for item in items if bool(item["is_bundle"] if isinstance(item, dict) else item[7])],
+            )
             for item in items:
                 if isinstance(item, dict):
                     order_id = int(item.get("order_id") or 0)
+                    product_id = int(item.get("product_id") or 0)
+                    bundle_items = bundle_items_map.get(product_id, [])
                     items_by_order.setdefault(order_id, []).append(
                         {
-                            "product_id": int(item.get("product_id") or 0),
+                            "product_id": product_id,
                             "sku": item.get("sku"),
                             "name": item.get("product_name"),
                             "category_id": int(item.get("category_id") or 0) or None,
                             "category_name": item.get("category_name"),
-                            "requires_imei": _is_celulares_category_name(str(item.get("category_name") or "")),
+                            "requires_imei": _bundle_requires_imei(conn, bundle_items)
+                            if bool(item.get("is_bundle"))
+                            else _is_celulares_category_name(str(item.get("category_name") or "")),
                             "quantity": int(item.get("quantity") or 0),
                             "unit_price": float(item.get("unit_price") or 0.0),
+                            "is_bundle": bool(item.get("is_bundle")),
                         }
                     )
                 else:
                     order_id = int(item[0])
+                    product_id = int(item[1])
+                    bundle_items = bundle_items_map.get(product_id, [])
                     items_by_order.setdefault(order_id, []).append(
                         {
-                            "product_id": int(item[1]),
+                            "product_id": product_id,
                             "sku": item[5],
                             "name": item[4],
                             "category_id": int(item[6] or 0) or None,
-                            "category_name": item[7],
-                            "requires_imei": _is_celulares_category_name(str(item[7] or "")),
+                            "category_name": item[8],
+                            "requires_imei": _bundle_requires_imei(conn, bundle_items)
+                            if bool(item[7])
+                            else _is_celulares_category_name(str(item[8] or "")),
                             "quantity": int(item[2] or 0),
                             "unit_price": float(item[3] or 0.0),
+                            "is_bundle": bool(item[7]),
                         }
                     )
             for order in orders:
@@ -4222,6 +4439,7 @@ def admin_order_detail(
     conn = _connect()
     try:
         _ensure_web_order_tables(conn)
+        _ensure_product_bundle_support(conn)
         row = conn.execute(
             """
             SELECT id, customer_name, customer_phone, customer_email, notes, total, status,
@@ -4236,7 +4454,7 @@ def admin_order_detail(
         items = conn.execute(
             """
             SELECT i.order_id, i.product_id, i.quantity, i.unit_price,
-                   p.name AS product_name, p.sku AS sku, p.category_id,
+                   p.name AS product_name, p.sku AS sku, p.category_id, COALESCE(p.is_bundle, 0) AS is_bundle,
                    c.name AS category_name
             FROM web_order_items i
             LEFT JOIN products p ON p.id = i.product_id
@@ -4246,6 +4464,10 @@ def admin_order_detail(
             """,
             (int(order_id),),
         ).fetchall()
+        bundle_items_map = _fetch_bundle_items_map(
+            conn,
+            [int(item["product_id"] or 0) for item in items if bool(item["is_bundle"])],
+        )
         return {
             "id": int(row["id"]),
             "customer_name": row["customer_name"],
@@ -4264,9 +4486,15 @@ def admin_order_detail(
                     "name": item["product_name"],
                     "category_id": int(item["category_id"] or 0) or None,
                     "category_name": item["category_name"],
-                    "requires_imei": _is_celulares_category_name(str(item["category_name"] or "")),
+                    "requires_imei": _bundle_requires_imei(
+                        conn,
+                        bundle_items_map.get(int(item["product_id"] or 0), []),
+                    )
+                    if bool(item["is_bundle"])
+                    else _is_celulares_category_name(str(item["category_name"] or "")),
                     "quantity": int(item["quantity"] or 0),
                     "unit_price": float(item["unit_price"] or 0),
+                    "is_bundle": bool(item["is_bundle"]),
                 }
                 for item in items
             ],
@@ -4830,6 +5058,7 @@ def admin_list_products(
     
     conn = _connect()
     try:
+        _ensure_product_bundle_support(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
@@ -4855,7 +5084,8 @@ def admin_list_products(
         
         rows = conn.execute(
             f"""
-            SELECT id, name, sku, barcode, price, price_list_1, price_list_2, cost, stock, 
+            SELECT id, name, sku, barcode, price, price_list_1, price_list_2, cost, stock,
+                   COALESCE(is_bundle, 0) AS is_bundle,
                    image_path, category_id, is_active, is_featured, is_offer,
                    flash_offer_price, flash_offer_ends_at,
                    {"highlight_new_arrivals" if has_highlight_new_arrivals else "NULL AS highlight_new_arrivals"}
@@ -4870,9 +5100,14 @@ def admin_list_products(
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
         imeis_map = _fetch_product_imeis(conn, product_ids, only_available=True)
+        bundle_items_map = _fetch_bundle_items_map(
+            conn,
+            [int(row["id"]) for row in rows if bool(row["is_bundle"])],
+        )
         payload: list[dict[str, Any]] = []
         for row in rows:
             product_id = int(row["id"])
+            bundle_items = bundle_items_map.get(product_id, [])
             image_fields = _build_product_image_fields(
                 row["image_path"],
                 images_map.get(product_id) or [],
@@ -4897,7 +5132,7 @@ def admin_list_products(
                         else "price"
                     ),
                     "cost": float(row["cost"] or 0),
-                    "stock": int(row["stock"] or 0),
+                    "stock": _bundle_available_stock(bundle_items) if bool(row["is_bundle"]) else int(row["stock"] or 0),
                     "category_id": int(row["category_id"]) if row["category_id"] else None,
                     "is_active": bool(row["is_active"]) if has_is_active else True,
                     "is_featured": bool(row["is_featured"]),
@@ -4910,6 +5145,8 @@ def admin_list_products(
                     else False,
                     "image_path": row["image_path"],
                     "imeis": imeis_map.get(product_id) or [],
+                    "is_bundle": bool(row["is_bundle"]),
+                    "bundle_items": bundle_items,
                     **image_fields,
                     "image_urls": image_fields["imageUrls"],
                 }
@@ -4947,12 +5184,19 @@ def admin_create_product(
     
     conn = _connect()
     try:
+        _ensure_product_bundle_support(conn)
         _ensure_products_barcode_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
         _ensure_product_imeis_table(conn)
         imeis = _normalize_imei_list(payload.get("imeis") or [])
+        bundle_items = _normalize_bundle_items(payload.get("bundle_items") or [])
+        is_bundle = bool(payload.get("is_bundle"))
+        if is_bundle:
+            _assert_bundle_components_valid(conn, 0, bundle_items)
+            stock = 0
+            imeis = []
         requires_imei = _category_requires_imei(conn, category_id)
         if requires_imei and stock > 0 and not imeis:
             raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
@@ -4993,6 +5237,9 @@ def admin_create_product(
         if _has_column(conn, "products", "is_offer"):
             columns.append("is_offer")
             values.append(is_offer)
+        if _has_column(conn, "products", "is_bundle"):
+            columns.append("is_bundle")
+            values.append(1 if is_bundle else 0)
         if _has_column(conn, "products", "highlight_new_arrivals"):
             columns.append("highlight_new_arrivals")
             values.append(1 if bool(payload.get("highlight_new_arrivals")) else 0)
@@ -5017,6 +5264,7 @@ def admin_create_product(
         conn.commit()
         _replace_product_images(conn, product_id, image_values)
         _replace_product_imeis(conn, product_id, imeis)
+        _replace_product_bundle_items(conn, product_id, bundle_items if is_bundle else [])
         conn.commit()
         
         return {
@@ -5033,6 +5281,8 @@ def admin_create_product(
             "image_path": primary_image,
             "is_featured": bool(is_featured),
             "is_offer": bool(is_offer),
+            "is_bundle": is_bundle,
+            "bundle_items": bundle_items if is_bundle else [],
             "highlight_new_arrivals": bool(payload.get("highlight_new_arrivals")),
             "flash_offer_price": float(payload.get("flash_offer_price") or 0),
             "flash_offer_ends_at": str(payload.get("flash_offer_ends_at") or "").strip() or None,
@@ -5293,13 +5543,14 @@ def admin_update_product(
     
     conn = _connect()
     try:
+        _ensure_product_bundle_support(conn)
         _ensure_products_barcode_column(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
         _ensure_product_imeis_table(conn)
         row = conn.execute(
-            "SELECT id, category_id FROM products WHERE id = ? AND deleted_at IS NULL",
+            "SELECT id, category_id, COALESCE(is_bundle, 0) AS is_bundle FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
         ).fetchone()
         
@@ -5341,6 +5592,10 @@ def admin_update_product(
         if "stock" in payload:
             updates.append("stock = ?")
             params.append(int(payload["stock"]))
+        next_is_bundle = bool(payload.get("is_bundle")) if "is_bundle" in payload else bool(row["is_bundle"])
+        if "is_bundle" in payload and _has_column(conn, "products", "is_bundle"):
+            updates.append("is_bundle = ?")
+            params.append(1 if next_is_bundle else 0)
         if "category_id" in payload and _has_column(conn, "products", "category_id"):
             raw_category_id = payload.get("category_id")
             parsed_category_id = int(raw_category_id or 0) if raw_category_id not in (None, "", 0, "0") else None
@@ -5377,11 +5632,21 @@ def admin_update_product(
         if "stock" not in payload:
             stock_row = conn.execute("SELECT stock FROM products WHERE id = ?", (product_id,)).fetchone()
             next_stock = int(stock_row["stock"] if isinstance(stock_row, dict) else stock_row[0] or 0) if stock_row else 0
+        if next_is_bundle:
+            next_stock = 0
         next_imeis = (
             _normalize_imei_list(payload.get("imeis") or [])
             if "imeis" in payload
             else _fetch_product_imeis(conn, [product_id], only_available=False).get(product_id, [])
         )
+        bundle_items = (
+            _normalize_bundle_items(payload.get("bundle_items") or [])
+            if "bundle_items" in payload
+            else _fetch_bundle_items_map(conn, [product_id]).get(product_id, [])
+        )
+        if next_is_bundle:
+            _assert_bundle_components_valid(conn, product_id, bundle_items)
+            next_imeis = []
         if _category_requires_imei(conn, next_category_id):
             if next_stock > 0 and not next_imeis:
                 raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
@@ -5395,6 +5660,8 @@ def admin_update_product(
             conn.execute(query, params)
         if "imeis" in payload:
             _replace_product_imeis(conn, product_id, next_imeis)
+        if "bundle_items" in payload or "is_bundle" in payload:
+            _replace_product_bundle_items(conn, product_id, bundle_items if next_is_bundle else [])
         conn.commit()
         
         return {"id": product_id, "message": "Producto actualizado"}
@@ -7164,6 +7431,7 @@ def admin_list_invoices(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_product_bundle_support(conn)
         _ensure_invoice_payment_method_column(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_invoice_items_cost_snapshot_column(conn)
@@ -7361,7 +7629,7 @@ def admin_create_invoice(
                 raise HTTPException(status_code=400, detail="Items invalidos")
             product = conn.execute(
                 """
-                SELECT id, name, price, price_list_1, price_list_2, stock, cost, category_id
+                SELECT id, name, price, price_list_1, price_list_2, stock, cost, category_id, COALESCE(is_bundle, 0) AS is_bundle
                 FROM products
                 WHERE id = ? AND deleted_at IS NULL AND COALESCE(is_active, 1) = 1
                 """,
@@ -7369,12 +7637,6 @@ def admin_create_invoice(
             ).fetchone()
             if product is None:
                 raise HTTPException(status_code=404, detail=f"Producto {product_id} no encontrado")
-            current_stock = int(product["stock"] or 0)
-            if document_type == "FACTURA" and current_stock < quantity:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Sin stock suficiente para {product['name']}",
-                )
             unit_price = round(
                 float(
                     unit_price_payload
@@ -7386,29 +7648,42 @@ def admin_create_invoice(
             if unit_price < 0:
                 raise HTTPException(status_code=400, detail="Precio invalido")
             item_imeis = _normalize_imei_list((raw or {}).get("imeis") or [])
-            requires_imei = _category_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7])
-            if len(item_imeis) > quantity:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"El producto {product['name']} tiene mas IMEIs cargados que unidades",
+            if bool(product["is_bundle"]):
+                bundle_items = _fetch_bundle_items_map(conn, [product_id]).get(product_id, [])
+                bundle_stock = _bundle_available_stock(bundle_items)
+                if document_type == "FACTURA" and bundle_stock < quantity:
+                    raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
+                expanded_items = _allocate_bundle_components(bundle_items, quantity, unit_price, price_list)
+                for expanded in expanded_items:
+                    subtotal_total += float(expanded["subtotal"])
+                    normalized_items.append(expanded)
+            else:
+                current_stock = int(product["stock"] or 0)
+                if document_type == "FACTURA" and current_stock < quantity:
+                    raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
+                requires_imei = _category_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7])
+                if len(item_imeis) > quantity:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El producto {product['name']} tiene mas IMEIs cargados que unidades",
+                    )
+                duplicated_imei = next((imei for imei in item_imeis if imei in seen_imeis), None)
+                if duplicated_imei:
+                    raise HTTPException(status_code=400, detail=f"El IMEI {duplicated_imei} esta repetido en el comprobante")
+                seen_imeis.update(item_imeis)
+                subtotal = round(quantity * unit_price, 2)
+                subtotal_total += subtotal
+                normalized_items.append(
+                    {
+                        "product_id": product_id,
+                        "category_id": product["category_id"] if isinstance(product, dict) else product[7],
+                        "quantity": quantity,
+                        "unit_price": unit_price,
+                        "cost_snapshot": round(float(product["cost"] or 0), 2),
+                        "subtotal": subtotal,
+                        "imeis": item_imeis,
+                    }
                 )
-            duplicated_imei = next((imei for imei in item_imeis if imei in seen_imeis), None)
-            if duplicated_imei:
-                raise HTTPException(status_code=400, detail=f"El IMEI {duplicated_imei} esta repetido en el comprobante")
-            seen_imeis.update(item_imeis)
-            subtotal = round(quantity * unit_price, 2)
-            subtotal_total += subtotal
-            normalized_items.append(
-                {
-                    "product_id": product_id,
-                    "category_id": product["category_id"] if isinstance(product, dict) else product[7],
-                    "quantity": quantity,
-                    "unit_price": unit_price,
-                    "cost_snapshot": round(float(product["cost"] or 0), 2),
-                    "subtotal": subtotal,
-                    "imeis": item_imeis,
-                }
-            )
 
         includes_cellphones = any(
             _category_requires_imei(conn, item.get("category_id"))

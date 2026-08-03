@@ -31,6 +31,8 @@ interface Product {
   is_active: boolean;
   is_featured: boolean;
   is_offer: boolean;
+  is_bundle?: boolean;
+  bundle_items?: Array<{ product_id: number; quantity: number; name?: string | null; sku?: string | null }>;
   highlight_new_arrivals: boolean;
   flash_offer_price?: number | null;
   flash_offer_ends_at?: string | null;
@@ -1487,6 +1489,7 @@ export default function ProductosPage() {
               }}
               title="Editar producto"
               categories={categories}
+              selectableProducts={products}
               canViewProfitMetrics={canViewProfit}
               onSubmit={async (data) => {
                 await loadRuntimeConfig();

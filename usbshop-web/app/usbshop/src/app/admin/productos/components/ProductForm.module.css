@@ -170,6 +170,56 @@
   background: linear-gradient(180deg, rgba(255, 247, 237, 0.95), rgba(255, 255, 255, 1));
 }
 
+.bundleBox {
+  display: grid;
+  gap: var(--spacing-medium);
+  padding: var(--spacing-medium);
+  border: 1px solid rgba(14, 116, 144, 0.2);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(236, 254, 255, 0.95), rgba(255, 255, 255, 1));
+}
+
+.bundleSearchResults,
+.bundleItems {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.bundleAddButton,
+.bundleItemRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: white;
+}
+
+.bundleAddButton {
+  cursor: pointer;
+  text-align: left;
+  grid-template-columns: 1fr auto;
+}
+
+.bundleAddButton span,
+.bundleItemRow strong {
+  color: var(--ink);
+}
+
+.bundleAddButton small {
+  color: #64748b;
+}
+
+.bundleQtyInput {
+  width: 5rem;
+  padding: 0.7rem 0.8rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  text-align: center;
+}
+
 .flashOfferBox strong {
   color: #991b1b;
 }

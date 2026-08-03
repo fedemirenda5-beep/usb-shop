@@ -20,6 +20,8 @@ interface ProductFormData {
   category_id?: number | null;
   is_featured: boolean;
   is_offer: boolean;
+  is_bundle?: boolean;
+  bundle_items?: Array<{ product_id: number; quantity: number; name?: string | null; sku?: string | null }>;
   highlight_new_arrivals: boolean;
   flash_offer_price?: number | null;
   flash_offer_ends_at?: string | null;
@@ -41,6 +43,7 @@ interface ProductFormState {
   margin: string;
   is_featured: boolean;
   is_offer: boolean;
+  is_bundle: boolean;
   highlight_new_arrivals: boolean;
   flash_offer_price: string;
   flash_offer_ends_at: string;
@@ -51,11 +54,19 @@ interface CategoryOption {
   name: string;
 }
 
+interface SelectableProductOption {
+  id: number;
+  name: string;
+  sku: string;
+  is_bundle?: boolean;
+}
+
 interface ProductFormProps {
   initialData?: ProductFormData & { id?: number };
   title: string;
   onSubmit: (data: ProductFormData & { image_urls: string[] }) => Promise<void>;
   categories?: CategoryOption[];
+  selectableProducts?: SelectableProductOption[];
   canViewProfitMetrics?: boolean;
 }
 
@@ -195,6 +206,7 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
     margin: formatMargin(calculateMargin(source.cost, source.price)),
     is_featured: source.is_featured,
     is_offer: source.is_offer,
+    is_bundle: Boolean(source.is_bundle),
     highlight_new_arrivals: source.highlight_new_arrivals,
     flash_offer_price: source.flash_offer_price ? toDecimalString(source.flash_offer_price) : '',
     flash_offer_ends_at: toDateTimeLocalInput(source.flash_offer_ends_at),
@@ -206,6 +218,7 @@ export function ProductForm({
   title,
   onSubmit,
   categories = [],
+  selectableProducts = [],
   canViewProfitMetrics = true,
 }: ProductFormProps) {
   const router = useRouter();
@@ -222,6 +235,18 @@ export function ProductForm({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [bundleSearch, setBundleSearch] = useState('');
+  const [bundleItems, setBundleItems] = useState<Array<{ product_id: number; quantity: string; name: string; sku: string }>>(
+    () =>
+      Array.isArray(initialData?.bundle_items)
+        ? initialData.bundle_items.map((item) => ({
+            product_id: Number(item.product_id),
+            quantity: toIntegerString(Number(item.quantity || 1)),
+            name: String(item.name || `Producto ${item.product_id}`),
+            sku: String(item.sku || ''),
+          }))
+        : []
+  );
   const previewUrlsRef = useRef<Array<string | null>>([]);
   const lastBasePriceRef = useRef(formData.price);
 
@@ -241,8 +266,16 @@ export function ProductForm({
 
   const isUploadingAnyImage = uploadingSlots.some(Boolean);
   const selectedCategory = categories.find((category) => String(category.id) === formData.category_id);
-  const isCellphonesCategory = normalizeCategoryName(selectedCategory?.name || '') === 'celulares';
+  const isCellphonesCategory = !formData.is_bundle && normalizeCategoryName(selectedCategory?.name || '') === 'celulares';
   const parsedStock = parseInteger(formData.stock);
+  const selectableBundleProducts = selectableProducts.filter((product) => {
+    if (product.id === initialData?.id) return false;
+    if (product.is_bundle) return false;
+    if (bundleItems.some((item) => item.product_id === product.id)) return false;
+    const query = normalizeCategoryName(bundleSearch);
+    if (!query) return true;
+    return normalizeCategoryName(`${product.name} ${product.sku}`).includes(query);
+  });
 
   const handleBarcodeKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') {
@@ -451,6 +484,9 @@ export function ProductForm({
       if (!Number.isFinite(stock) || stock < 0) {
         throw new Error('Stock no puede ser negativo');
       }
+      if (formData.is_bundle && bundleItems.length === 0) {
+        throw new Error('Agrega al menos un producto al combo');
+      }
       const imeis = parseImeiValues(formData.imeis);
       if (isCellphonesCategory && stock > 0 && imeis.length === 0) {
         throw new Error('Para guardar un celular tenes que cargar al menos un IMEI');
@@ -487,10 +523,17 @@ export function ProductForm({
         price_list_1: formData.price_list_1.trim() ? priceList1 : 0,
         price_list_2: formData.price_list_2.trim() ? priceList2 : 0,
         cost,
-        stock,
+        stock: formData.is_bundle ? 0 : stock,
         category_id: formData.category_id ? Number(formData.category_id) : null,
         is_featured: formData.is_featured,
         is_offer: formData.is_offer,
+        is_bundle: formData.is_bundle,
+        bundle_items: formData.is_bundle
+          ? bundleItems.map((item) => ({
+              product_id: item.product_id,
+              quantity: Math.max(1, parseInteger(item.quantity) || 1),
+            }))
+          : [],
         highlight_new_arrivals: formData.highlight_new_arrivals,
         flash_offer_price: formData.flash_offer_price.trim() ? flashOfferPrice : 0,
         flash_offer_ends_at: formData.flash_offer_ends_at.trim() || null,
@@ -666,9 +709,9 @@ export function ProductForm({
               type="text"
               inputMode="numeric"
               name="stock"
-              value={formData.stock}
+              value={formData.is_bundle ? '0' : formData.stock}
               onChange={handleChange}
-              disabled={loading}
+              disabled={loading || formData.is_bundle}
               className={styles.input}
             />
           </div>
@@ -782,6 +825,17 @@ export function ProductForm({
           <label className={styles.checkbox}>
             <input
               type="checkbox"
+              name="is_bundle"
+              checked={formData.is_bundle}
+              onChange={handleChange}
+              disabled={loading}
+            />
+            <span>Vender como combo</span>
+          </label>
+
+          <label className={styles.checkbox}>
+            <input
+              type="checkbox"
               name="is_featured"
               checked={formData.is_featured}
               onChange={handleChange}
@@ -812,6 +866,88 @@ export function ProductForm({
             <span>Mostrar primero en Ultimos ingresos</span>
           </label>
         </div>
+
+        {formData.is_bundle ? (
+          <div className={styles.bundleBox}>
+            <div>
+              <strong>Componentes del combo</strong>
+              <p className={styles.help}>La web lo muestra como un solo producto y el comprobante sale con este detalle.</p>
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="bundle_search">Buscar producto</label>
+              <input
+                id="bundle_search"
+                type="text"
+                value={bundleSearch}
+                onChange={(event) => setBundleSearch(event.target.value)}
+                disabled={loading}
+                className={styles.input}
+                placeholder="Buscar por nombre o SKU"
+              />
+            </div>
+            {selectableBundleProducts.length > 0 ? (
+              <div className={styles.bundleSearchResults}>
+                {selectableBundleProducts.slice(0, 12).map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    className={styles.bundleAddButton}
+                    onClick={() => {
+                      setBundleItems((prev) => [
+                        ...prev,
+                        { product_id: product.id, quantity: '1', name: product.name, sku: product.sku },
+                      ]);
+                      setBundleSearch('');
+                    }}
+                    disabled={loading}
+                  >
+                    <span>{product.name}</span>
+                    <small>{product.sku || `#${product.id}`}</small>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {bundleItems.length > 0 ? (
+              <div className={styles.bundleItems}>
+                {bundleItems.map((item, index) => (
+                  <div key={`${item.product_id}-${index}`} className={styles.bundleItemRow}>
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p className={styles.help}>{item.sku || `#${item.product_id}`}</p>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={item.quantity}
+                      onChange={(event) =>
+                        setBundleItems((prev) =>
+                          prev.map((current, currentIndex) =>
+                            currentIndex === index
+                              ? { ...current, quantity: sanitizeIntegerInput(event.target.value) }
+                              : current
+                          )
+                        )
+                      }
+                      disabled={loading}
+                      className={styles.bundleQtyInput}
+                    />
+                    <button
+                      type="button"
+                      className={styles.btnClearImage}
+                      onClick={() => setBundleItems((prev) => prev.filter((_, currentIndex) => currentIndex !== index))}
+                      disabled={loading}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.help}>Todavia no agregaste productos al combo.</p>
+            )}
+            <p className={styles.help}>El stock del combo se calcula automaticamente segun sus componentes.</p>
+          </div>
+        ) : null}
 
         <div className={styles.flashOfferBox}>
           <div>

@@ -20,6 +20,8 @@ type ProductPayload = {
   category_id?: number | null;
   is_featured: boolean;
   is_offer: boolean;
+  is_bundle?: boolean;
+  bundle_items?: Array<{ product_id: number; quantity: number }>;
   highlight_new_arrivals: boolean;
   flash_offer_price?: number | null;
   flash_offer_ends_at?: string | null;
@@ -31,18 +33,25 @@ export default function NuevaProductoPage() {
   const router = useRouter();
   const { user } = useAdminSession();
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
+  const [products, setProducts] = useState<Array<{ id: number; name: string; sku: string; is_bundle?: boolean }>>([]);
 
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadReferences = async () => {
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/categories`, {
-        credentials: 'include',
-      });
-      if (!res.ok) return;
-      const data = await res.json().catch(() => []);
-      setCategories(Array.isArray(data) ? data : []);
+      const [categoriesRes, productsRes] = await Promise.all([
+        fetch(`${getApiBaseUrl()}/admin/categories`, { credentials: 'include' }),
+        fetch(`${getApiBaseUrl()}/admin/products?limit=2000`, { credentials: 'include' }),
+      ]);
+      if (categoriesRes.ok) {
+        const categoriesData = await categoriesRes.json().catch(() => []);
+        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      }
+      if (productsRes.ok) {
+        const productsData = await productsRes.json().catch(() => []);
+        setProducts(Array.isArray(productsData) ? productsData : []);
+      }
     };
-    void loadCategories();
+    void loadReferences();
   }, []);
 
   const handleSubmit = async (data: ProductPayload) => {
@@ -76,6 +85,7 @@ export default function NuevaProductoPage() {
       title="Crear Nuevo Producto"
       onSubmit={handleSubmit}
       categories={categories}
+      selectableProducts={products}
       canViewProfitMetrics={canViewProfitMetrics(user?.role)}
     />
   );
