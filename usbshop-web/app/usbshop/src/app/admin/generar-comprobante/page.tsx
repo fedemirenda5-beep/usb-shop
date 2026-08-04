@@ -24,6 +24,7 @@ type ProductOption = {
   category_id?: number | null;
   imeis?: string[];
   price: number;
+  cost?: number | null;
   price_list_1?: number | null;
   price_list_2?: number | null;
   stock: number;
@@ -146,6 +147,8 @@ const calculateCommissionPreview = ({
       return {
         category_id: product?.category_id ?? null,
         product_name: product?.name ?? '',
+        cost: Math.max(0, Number(product?.cost || 0)),
+        quantity,
         line_total: lineTotal,
       };
     })
@@ -156,11 +159,15 @@ const calculateCommissionPreview = ({
     normalizedItems.reduce((acc, item) => {
       const discountShare = specialDiscount > 0 ? round((specialDiscount * item.line_total) / subtotal, 2) : 0;
       const commissionable = Math.max(0, round(item.line_total - discountShare, 2));
-      const percent =
-        !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id)
-          ? CELULARES_COMMISSION_PERCENT
-          : Number(sellerPercent || 0);
-      return acc + (commissionable * percent) / 100;
+      const isCellphone =
+        !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id);
+      const percent = isCellphone ? CELULARES_COMMISSION_PERCENT : Number(sellerPercent || 0);
+      let lineCommission = (commissionable * percent) / 100;
+      if (!isCellphone) {
+        const maxCommission = Math.max(0, round(commissionable - item.quantity * item.cost, 2));
+        lineCommission = Math.min(lineCommission, maxCommission);
+      }
+      return acc + lineCommission;
     }, 0),
     2
   );

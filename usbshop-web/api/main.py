@@ -1392,7 +1392,13 @@ def _calculate_invoice_seller_commission(
             item.get("product_name"),
             seller_commission_percent,
         )
-        total_commission += (commissionable_total * effective_percent) / 100
+        line_commission = (commissionable_total * effective_percent) / 100
+        if not _category_requires_imei(conn, item.get("category_id")):
+            unit_cost = max(0.0, float(item.get("cost_snapshot") or item.get("cost") or 0))
+            cost_total = round(quantity * unit_cost, 2)
+            max_commission = max(0.0, round(commissionable_total - cost_total, 2))
+            line_commission = min(line_commission, max_commission)
+        total_commission += line_commission
     return round(total_commission, 2)
 
 
