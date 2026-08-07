@@ -1,4 +1,4 @@
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 
 type InvoicePrintDetail = {
@@ -308,9 +308,7 @@ export async function openAdminInvoicePrint(invoiceId: number): Promise<void> {
   popup.document.close();
 
   try {
-    await loadRuntimeConfig();
-    const apiBaseUrl = getApiBaseUrl();
-    const res = await fetch(`${apiBaseUrl}/admin/invoices/${invoiceId}`, { credentials: 'include' });
+    const res = await fetchApiResponse(`/admin/invoices/${invoiceId}`);
     if (!res.ok) throw new Error('No se pudo cargar el comprobante');
     const detail = (await res.json()) as InvoicePrintDetail;
     const logoUrl = new URL('/logo-small.jpeg', window.location.origin).toString();
@@ -319,7 +317,7 @@ export async function openAdminInvoicePrint(invoiceId: number): Promise<void> {
     popup.document.close();
     popup.focus();
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'No se pudo preparar la impresion';
+    const message = getFriendlyApiError(error, 'No se pudo preparar la impresion');
     popup.document.open();
     popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Error</title></head><body style="font-family:Arial,sans-serif;padding:24px;color:#b91c1c">${escapeHtml(message)}</body></html>`);
     popup.document.close();

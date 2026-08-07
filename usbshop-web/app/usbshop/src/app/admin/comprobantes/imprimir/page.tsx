@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import styles from './imprimir.module.css';
 
@@ -69,7 +69,7 @@ const escapeHtml = (value: unknown) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const buildPrintableHtml = (detail: InvoiceDetail, apiBaseUrl: string) => {
+const buildPrintableHtml = (detail: InvoiceDetail) => {
   const itemRows = detail.items
     .map((item) => {
       const imeisHtml =
@@ -305,14 +305,12 @@ export default function ImprimirComprobantePage() {
         setLoading(true);
         setError('');
         setHtml('');
-        await loadRuntimeConfig();
-        const apiBaseUrl = getApiBaseUrl();
-        const res = await fetch(`${apiBaseUrl}/admin/invoices/${invoiceId}`, { credentials: 'include' });
+        const res = await fetchApiResponse(`/admin/invoices/${invoiceId}`);
         if (!res.ok) throw new Error('No se pudo cargar el comprobante');
         const detail = (await res.json()) as InvoiceDetail;
-        setHtml(buildPrintableHtml(detail, apiBaseUrl));
+        setHtml(buildPrintableHtml(detail));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'No se pudo cargar el comprobante');
+        setError(getFriendlyApiError(err, 'No se pudo cargar el comprobante'));
       } finally {
         setLoading(false);
       }
