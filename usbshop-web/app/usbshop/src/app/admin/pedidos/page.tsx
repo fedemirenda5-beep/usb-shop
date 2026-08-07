@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { ensureApiBaseUrl, getApiBaseUrl, getFriendlyApiError } from '@/lib/api';
 import { ARGENTINA_TZ } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -43,22 +43,6 @@ const statusColors: Record<string, { bg: string; text: string; label: string }> 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
-const getErrorMessage = (error: unknown, fallback: string) => {
-  if (error instanceof Error) {
-    const normalized = error.message.trim().toLowerCase();
-    if (
-      normalized === 'failed to fetch' ||
-      normalized === 'fetch failed' ||
-      normalized.includes('networkerror') ||
-      normalized.includes('load failed')
-    ) {
-      return 'No se pudo conectar con el servidor. Revisa la API y volve a intentar.';
-    }
-    return error.message;
-  }
-  return fallback;
-};
-
 export default function PedidosPage() {
   useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -72,7 +56,7 @@ export default function PedidosPage() {
     try {
       setLoading(true);
       setError('');
-      await loadRuntimeConfig();
+      await ensureApiBaseUrl();
       const res = await fetch(
         `${getApiBaseUrl()}/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=true`,
         { credentials: 'include', signal }
@@ -83,7 +67,7 @@ export default function PedidosPage() {
       setOrders(data);
     } catch (err) {
       if (signal?.aborted) return;
-      setError(getErrorMessage(err, 'Error cargando ordenes de compra'));
+      setError(getFriendlyApiError(err, 'Error cargando ordenes de compra'));
     } finally {
       if (!signal?.aborted) {
         setLoading(false);
@@ -127,7 +111,7 @@ export default function PedidosPage() {
     try {
       setDeletingOrderId(order.id);
       setError('');
-      await loadRuntimeConfig();
+      await ensureApiBaseUrl();
       const res = await fetch(`${getApiBaseUrl()}/admin/orders/${order.id}/status`, {
         method: 'POST',
         credentials: 'include',
@@ -140,7 +124,7 @@ export default function PedidosPage() {
       setDetailOrderId((current) => (current === order.id ? null : current));
       await loadOrders();
     } catch (err) {
-      setError(getErrorMessage(err, 'Error eliminando orden de compra'));
+      setError(getFriendlyApiError(err, 'Error eliminando orden de compra'));
     } finally {
       setDeletingOrderId(null);
     }
