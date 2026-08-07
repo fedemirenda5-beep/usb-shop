@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { ensureApiBaseUrl, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
@@ -956,7 +956,7 @@ export default function GenerarComprobantePage() {
     try {
       setCreating(true);
       setError('');
-      await loadRuntimeConfig();
+      await ensureApiBaseUrl();
       const payload = {
         order_id: form.order_id ? Number(form.order_id) : null,
         customer_id: Number(form.customer_id),
@@ -986,7 +986,7 @@ export default function GenerarComprobantePage() {
       if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
       router.push(`/admin/comprobantes?created=${data.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error creando comprobante');
+      setError(getFriendlyApiError(err, 'Error creando comprobante'));
     } finally {
       setCreating(false);
     }
