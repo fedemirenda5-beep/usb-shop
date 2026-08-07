@@ -288,6 +288,7 @@ export default function GenerarComprobantePage() {
         setProducts(await productsRes.json());
         setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
         setCategories(await categoriesRes.json());
+        setError('');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando formulario');
       } finally {
@@ -323,6 +324,7 @@ export default function GenerarComprobantePage() {
             : [],
         });
         setCustomerSearch(matchedCustomer?.name || draft.customer_name || '');
+        setError('');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el pedido');
       }
@@ -366,6 +368,7 @@ export default function GenerarComprobantePage() {
           })),
         });
         setCustomerSearch(invoice.customer_name || '');
+        setError('');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error cargando el presupuesto');
       }
@@ -621,6 +624,7 @@ export default function GenerarComprobantePage() {
       setError(`El IMEI ${scannedImei} ya esta cargado en este comprobante`);
       return wasAdded;
     }
+    setError('');
     if (requiresImei && !scannedImei && form.document_type === 'FACTURA') {
       setError(`Agrega ${normalizedQuantity} IMEI${normalizedQuantity === 1 ? '' : 's'} para ${product.name} antes de emitir la factura`);
     }
