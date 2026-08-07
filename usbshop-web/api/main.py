@@ -1319,6 +1319,17 @@ def _ensure_invoice_item_imeis_table(conn: DBConn) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_invoice_item_id ON invoice_item_imeis(invoice_item_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_invoice_id ON invoice_item_imeis(invoice_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_product_id ON invoice_item_imeis(product_id)")
+    for column_name, sqlite_type, pg_type in (
+        ("invoice_item_id", "INTEGER", "INTEGER"),
+        ("invoice_id", "INTEGER", "INTEGER"),
+        ("product_id", "INTEGER", "INTEGER"),
+        ("imei", "TEXT", "TEXT"),
+    ):
+        if _has_column(conn, "invoice_item_imeis", column_name):
+            continue
+        conn.execute(
+            f"ALTER TABLE invoice_item_imeis ADD COLUMN {column_name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+        )
     _invalidate_table_cache("invoice_item_imeis")
 
 
@@ -1451,7 +1462,6 @@ def _ensure_product_imeis_table(conn: DBConn) -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_product_imeis_product_id ON product_imeis(product_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_product_imeis_sold_invoice_id ON product_imeis(sold_invoice_id)")
     else:
         conn.execute(
             """
@@ -1467,7 +1477,19 @@ def _ensure_product_imeis_table(conn: DBConn) -> None:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_product_imeis_product_id ON product_imeis(product_id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_product_imeis_sold_invoice_id ON product_imeis(sold_invoice_id)")
+    for column_name, sqlite_type, pg_type in (
+        ("product_id", "INTEGER", "INTEGER"),
+        ("imei", "TEXT", "TEXT"),
+        ("sold_invoice_id", "INTEGER", "INTEGER"),
+        ("sold_at", "DATETIME", "TIMESTAMP"),
+        ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+    ):
+        if _has_column(conn, "product_imeis", column_name):
+            continue
+        conn.execute(
+            f"ALTER TABLE product_imeis ADD COLUMN {column_name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
+        )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_product_imeis_sold_invoice_id ON product_imeis(sold_invoice_id)")
     conn.commit()
     _invalidate_table_cache("product_imeis")
 
