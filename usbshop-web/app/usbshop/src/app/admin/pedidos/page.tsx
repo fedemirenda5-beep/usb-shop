@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ensureApiBaseUrl, getApiBaseUrl, getFriendlyApiError } from '@/lib/api';
+import { ensureApiBaseUrl, fetchApiResponse, getApiBaseUrl, getFriendlyApiError } from '@/lib/api';
 import { ARGENTINA_TZ } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -56,10 +56,9 @@ export default function PedidosPage() {
     try {
       setLoading(true);
       setError('');
-      await ensureApiBaseUrl();
-      const res = await fetch(
-        `${getApiBaseUrl()}/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=true`,
-        { credentials: 'include', signal }
+      const res = await fetchApiResponse(
+        `/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=true`,
+        { signal }
       );
       if (!res.ok) throw new Error('No se pudieron cargar las ordenes de compra');
       const data = await res.json();
