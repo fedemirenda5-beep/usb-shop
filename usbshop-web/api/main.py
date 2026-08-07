@@ -7764,6 +7764,15 @@ def admin_create_invoice(
                 if document_type == "FACTURA" and current_stock < quantity:
                     raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
                 requires_imei = _category_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7])
+                if document_type == "FACTURA" and requires_imei and len(item_imeis) < quantity:
+                    missing_imeis = quantity - len(item_imeis)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Faltan {missing_imeis} IMEI{'s' if missing_imeis != 1 else ''} para "
+                            f"{product['name']}"
+                        ),
+                    )
                 if len(item_imeis) > quantity:
                     raise HTTPException(
                         status_code=400,

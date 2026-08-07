@@ -980,13 +980,8 @@ export default function GenerarComprobantePage() {
       const pendingLabels = pendingOrderCellphoneImeiItems
         .map((item) => `${item.product.name}: faltan ${item.missingCount} IMEI${item.missingCount === 1 ? '' : 's'}`)
         .join(' · ');
-      const confirmedWithoutImeis = window.confirm(
-        `Hay celulares sin IMEI cargado. ${pendingLabels}. ¿Esta bien emitir el comprobante igual?`
-      );
-      if (!confirmedWithoutImeis) {
-        setError(`Antes de emitir la factura, carga los IMEIs pendientes. ${pendingLabels}`);
-        return;
-      }
+      setError(`Antes de emitir la factura, carga los IMEIs pendientes. ${pendingLabels}`);
+      return;
     }
     try {
       setCreating(true);
@@ -1338,7 +1333,7 @@ export default function GenerarComprobantePage() {
               </div>
               {hasPendingOrderCellphoneImeis ? (
                 <div className={styles.orderDraftInfo}>
-                  Hay celulares pendientes de IMEI. Podes escanearlos antes de emitir o confirmar manualmente la salida sin IMEI.
+                  Hay celulares pendientes de IMEI. Cargalos antes de emitir para que salgan en el comprobante.
                 </div>
               ) : null}
               <div className={styles.tableWrap}>
