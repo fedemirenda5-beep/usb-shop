@@ -1015,11 +1015,7 @@ export default function GenerarComprobantePage() {
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
     if (hasPendingOrderCellphoneImeis) {
-      const pendingLabels = pendingOrderCellphoneImeiItems
-        .map((item) => `${item.product.name}: faltan ${item.missingCount} IMEI${item.missingCount === 1 ? '' : 's'}`)
-        .join(' · ');
-      setError(`Antes de emitir la factura, carga los IMEIs pendientes. ${pendingLabels}`);
-      return;
+      setError('');
     }
     try {
       setCreating(true);
@@ -1371,7 +1367,7 @@ export default function GenerarComprobantePage() {
               </div>
               {hasPendingOrderCellphoneImeis ? (
                 <div className={styles.orderDraftInfo}>
-                  Hay celulares pendientes de IMEI. Cargalos antes de emitir para que salgan en el comprobante.
+                  Hay celulares pendientes de IMEI. Si los cargas ahora, tambien van a salir en el comprobante.
                 </div>
               ) : null}
               <div className={styles.tableWrap}>
