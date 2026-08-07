@@ -58,6 +58,11 @@ export const getApiBaseUrl = () => runtimeApiBaseUrl;
 export const getOrderSecret = () => runtimeOrderSecret;
 export const API_BASE_URL = DEFAULT_API_BASE_URL;
 
+const hasUsableApiBaseUrl = () => {
+  const baseUrl = (runtimeApiBaseUrl || "").trim();
+  return Boolean(baseUrl && baseUrl !== "/api");
+};
+
 export const setRuntimeApiBaseUrl = (nextBaseUrl: string) => {
   const trimmed = (nextBaseUrl || "").trim();
   if (!trimmed) {
@@ -328,8 +333,16 @@ export const getFriendlyApiError = (error: unknown, fallback: string): string =>
   return message;
 };
 
+export async function ensureApiBaseUrl(timeoutMs = 5000): Promise<void> {
+  if (hasUsableApiBaseUrl()) {
+    void loadRuntimeConfig();
+    return;
+  }
+  await withTimeout(loadRuntimeConfig(), timeoutMs, "No se pudo cargar la configuracion");
+}
+
 export async function fetchApiResponse(path: string, init?: RequestInit, timeoutMs = DEFAULT_API_TIMEOUT_MS): Promise<Response> {
-  await withTimeout(loadRuntimeConfig(), 5000, "No se pudo cargar la configuracion");
+  await ensureApiBaseUrl();
   const url = `${getApiBaseUrl()}${path}`;
   return fetchWithRetry(
     url,
@@ -342,7 +355,7 @@ export async function fetchApiResponse(path: string, init?: RequestInit, timeout
 }
 
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  await withTimeout(loadRuntimeConfig(), 5000, "No se pudo cargar la configuracion");
+  await ensureApiBaseUrl();
   const headers = new Headers(init?.headers || {});
   const hasBody = init?.body !== undefined && init.body !== null;
   const isFormData =

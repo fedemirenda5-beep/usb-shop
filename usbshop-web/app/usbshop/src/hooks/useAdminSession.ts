@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { ensureApiBaseUrl, getApiBaseUrl } from '@/lib/api';
 
 interface AdminUser {
   id?: number | null;
@@ -18,7 +18,6 @@ type SessionSnapshot = {
 };
 
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
-const CONFIG_TIMEOUT_MS = 5000;
 const SESSION_REQUEST_TIMEOUT_MS = 15000;
 const LOGIN_REQUEST_TIMEOUT_MS = 20000;
 const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
@@ -199,7 +198,7 @@ const subscribe = (listener: (snapshot: SessionSnapshot) => void) => {
 };
 
 const fetchSession = async (): Promise<AdminUser | null> => {
-  await withTimeout(loadRuntimeConfig(), CONFIG_TIMEOUT_MS, 'No se pudo cargar la configuracion');
+  await ensureApiBaseUrl();
   const res = await fetchWithRetry(`${getApiBaseUrl()}/auth/me`, {
     credentials: 'include',
   }, SESSION_REQUEST_TIMEOUT_MS);
@@ -302,7 +301,7 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
   const login = useCallback(async (username: string, password: string) => {
     updateSnapshot({ isLoading: true, error: null });
     try {
-      await withTimeout(loadRuntimeConfig(), CONFIG_TIMEOUT_MS, 'No se pudo cargar la configuracion');
+      await ensureApiBaseUrl();
       const res = await fetchWithRetry(
         `${getApiBaseUrl()}/auth/login`,
         {
@@ -331,7 +330,7 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
 
   const logout = useCallback(async () => {
     try {
-      await loadRuntimeConfig();
+      await ensureApiBaseUrl();
       await fetch(`${getApiBaseUrl()}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
