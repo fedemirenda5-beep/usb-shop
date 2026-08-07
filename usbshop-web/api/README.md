@@ -38,14 +38,14 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## Sincronizar cuentas corrientes y comprobantes a la API publicada
+## Sincronizar catalogo, stock, cuentas corrientes y comprobantes a la API publicada
 ```powershell
 set USBSHOP_SYNC_API_BASE_URL=https://api.usbshop.com.ar
 set USB_SYNC_TOKEN=tu-token
 python usbshop-web\api\scripts\sync_backoffice_to_api.py
 ```
 
-Esto empuja `customers`, `invoices`, `invoice_items` y `account_movements` desde la base local actual hacia la API remota para que el panel admin muestre cuentas corrientes con datos al dia.
+Esto empuja `categories`, `products`, `product_images`, `product_bundle_items`, `customers`, `invoices`, `invoice_items` y `account_movements` desde la base local actual hacia la API remota para que el panel admin use el mismo catalogo y stock real que ControlStock.
 
 ## Endpoints
 - `GET /health`

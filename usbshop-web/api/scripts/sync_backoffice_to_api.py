@@ -17,9 +17,81 @@ SOURCE_DB_CANDIDATES = [
 DEFAULT_CHUNK_SIZE = int((os.getenv("USBSHOP_SYNC_CHUNK_SIZE") or "250").strip() or "250")
 RETRY_ATTEMPTS = int((os.getenv("USBSHOP_SYNC_RETRIES") or "4").strip() or "4")
 RETRYABLE_STATUS_CODES = {502, 503, 504}
-DELETE_ORDER = ["invoice_items", "account_movements", "invoices", "customers", "annual_balances"]
-IMPORT_ORDER = ["customers", "invoices", "invoice_items", "account_movements", "annual_balances"]
+DELETE_ORDER = [
+    "invoice_item_imeis",
+    "invoice_items",
+    "product_imeis",
+    "product_bundle_items",
+    "product_images",
+    "account_movements",
+    "invoices",
+    "products",
+    "customers",
+    "categories",
+    "annual_balances",
+]
+IMPORT_ORDER = [
+    "categories",
+    "products",
+    "product_images",
+    "product_bundle_items",
+    "customers",
+    "invoices",
+    "invoice_items",
+    "invoice_item_imeis",
+    "product_imeis",
+    "account_movements",
+    "annual_balances",
+]
 TABLE_COLUMNS: dict[str, list[str]] = {
+    "categories": [
+        "id",
+        "name",
+        "created_at",
+    ],
+    "products": [
+        "id",
+        "name",
+        "sku",
+        "barcode",
+        "price",
+        "stock",
+        "created_at",
+        "updated_at",
+        "cost",
+        "margin",
+        "image_path",
+        "category_id",
+        "price_list_1",
+        "price_list_2",
+        "external_ref",
+        "is_active",
+        "deleted_at",
+        "reorder_point",
+        "reorder_qty",
+        "is_featured",
+        "is_offer",
+        "is_recommended",
+        "image_paths",
+        "description",
+        "highlight_new_arrivals",
+        "is_bundle",
+        "flash_offer_price",
+        "flash_offer_ends_at",
+    ],
+    "product_images": [
+        "id",
+        "product_id",
+        "image_url",
+        "sort_order",
+        "created_at",
+    ],
+    "product_bundle_items": [
+        "id",
+        "bundle_product_id",
+        "product_id",
+        "quantity",
+    ],
     "customers": [
         "id",
         "name",
@@ -56,12 +128,28 @@ TABLE_COLUMNS: dict[str, list[str]] = {
         "quantity",
         "unit_price",
     ],
+    "invoice_item_imeis": [
+        "id",
+        "invoice_item_id",
+        "invoice_id",
+        "product_id",
+        "imei",
+    ],
+    "product_imeis": [
+        "id",
+        "product_id",
+        "imei",
+        "sold_invoice_id",
+        "sold_at",
+        "created_at",
+    ],
     "account_movements": [
         "id",
         "customer_id",
         "invoice_id",
         "amount",
         "movement_type",
+        "entry_kind",
         "reference",
         "created_at",
         "payment_method",
@@ -92,9 +180,15 @@ TABLE_COLUMNS: dict[str, list[str]] = {
     ],
 }
 TABLE_CHUNK_SIZES: dict[str, int] = {
+    "categories": min(DEFAULT_CHUNK_SIZE, 250),
+    "products": min(DEFAULT_CHUNK_SIZE, 150),
+    "product_images": min(DEFAULT_CHUNK_SIZE, 250),
+    "product_bundle_items": min(DEFAULT_CHUNK_SIZE, 250),
     "customers": min(DEFAULT_CHUNK_SIZE, 250),
     "invoices": min(DEFAULT_CHUNK_SIZE, 250),
     "invoice_items": min(DEFAULT_CHUNK_SIZE, 150),
+    "invoice_item_imeis": min(DEFAULT_CHUNK_SIZE, 250),
+    "product_imeis": min(DEFAULT_CHUNK_SIZE, 250),
     "account_movements": min(DEFAULT_CHUNK_SIZE, 250),
     "annual_balances": min(DEFAULT_CHUNK_SIZE, 100),
 }
@@ -138,10 +232,35 @@ def _request_json(path: str, payload: dict) -> dict:
     raise RuntimeError("No se pudo completar la solicitud")
 
 
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? LIMIT 1",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
 def _fetch_rows(conn: sqlite3.Connection, table_name: str, columns: list[str]) -> list[dict]:
     conn.row_factory = sqlite3.Row
-    rows = conn.execute(f"SELECT {', '.join(columns)} FROM {table_name} ORDER BY id ASC").fetchall()
-    return [{column: row[column] for column in columns} for row in rows]
+    if not _table_exists(conn, table_name):
+        return []
+    available_columns = {
+        str(row[1])
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if not available_columns:
+        return []
+    selected_columns = [column for column in columns if column in available_columns]
+    if not selected_columns:
+        return []
+    order_by = "id ASC" if "id" in available_columns else "rowid ASC"
+    rows = conn.execute(
+        f"SELECT {', '.join(selected_columns)} FROM {table_name} ORDER BY {order_by}"
+    ).fetchall()
+    payload: list[dict] = []
+    for row in rows:
+        payload.append({column: row[column] if column in selected_columns else None for column in columns})
+    return payload
 
 
 def main() -> None:

@@ -2992,6 +2992,56 @@ def _sync_from_source() -> dict:
 
 
 SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
+    "categories": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("name", "TEXT", "TEXT"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+    ],
+    "products": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("name", "TEXT", "TEXT"),
+        ("sku", "TEXT", "TEXT"),
+        ("barcode", "TEXT", "TEXT"),
+        ("price", "REAL", "NUMERIC(12, 2)"),
+        ("stock", "INTEGER", "INTEGER"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+        ("updated_at", "TEXT", "TIMESTAMP"),
+        ("cost", "REAL", "NUMERIC(12, 2)"),
+        ("margin", "REAL", "NUMERIC(12, 2)"),
+        ("image_path", "TEXT", "TEXT"),
+        ("category_id", "INTEGER", "INTEGER"),
+        ("price_list_1", "REAL", "NUMERIC(12, 2)"),
+        ("price_list_2", "REAL", "NUMERIC(12, 2)"),
+        ("external_ref", "TEXT", "TEXT"),
+        ("is_active", "INTEGER", "INTEGER"),
+        ("deleted_at", "TEXT", "TIMESTAMP"),
+        ("reorder_point", "INTEGER", "INTEGER"),
+        ("reorder_qty", "INTEGER", "INTEGER"),
+        ("is_featured", "INTEGER", "INTEGER"),
+        ("is_offer", "INTEGER", "INTEGER"),
+        ("is_recommended", "INTEGER", "INTEGER"),
+        ("image_paths", "TEXT", "TEXT"),
+        ("description", "TEXT", "TEXT"),
+        ("highlight_new_arrivals", "INTEGER", "INTEGER"),
+        ("is_bundle", "INTEGER", "INTEGER"),
+        ("flash_offer_price", "REAL", "NUMERIC(12, 2)"),
+        ("flash_offer_ends_at", "TEXT", "TIMESTAMP"),
+    ],
+    "product_images": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("product_id", "INTEGER", "INTEGER"),
+        ("image_url", "TEXT", "TEXT"),
+        ("sort_order", "INTEGER", "INTEGER"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+    ],
+    "product_imeis": [
+        ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
+        ("product_id", "INTEGER", "INTEGER"),
+        ("imei", "TEXT", "TEXT"),
+        ("sold_invoice_id", "INTEGER", "INTEGER"),
+        ("sold_at", "TEXT", "TIMESTAMP"),
+        ("created_at", "TEXT", "TIMESTAMP"),
+    ],
     "customers": [
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
         ("name", "TEXT", "TEXT"),
@@ -3984,6 +4034,30 @@ def sync_backoffice_table(
         processed = _upsert_sync_rows(conn, table_name, rows)
         if finalize:
             _reset_sync_sequence(conn, table_name)
+        if table_name in {
+            "categories",
+            "products",
+            "product_images",
+            "product_bundle_items",
+            "product_imeis",
+            "invoice_items",
+            "invoice_item_imeis",
+            "invoices",
+        }:
+            _invalidate_table_cache(table_name)
+        if table_name in {
+            "categories",
+            "products",
+            "product_images",
+            "product_bundle_items",
+            "product_imeis",
+            "invoice_items",
+            "invoice_item_imeis",
+            "invoices",
+            "account_movements",
+            "annual_balances",
+        }:
+            _clear_admin_overview_cache()
         conn.commit()
         return {
             "status": "ok",
