@@ -172,6 +172,7 @@ function ProductCard({
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
+  const [isCarouselPaused, setIsCarouselPaused] = React.useState(false);
   const displaySrc = React.useMemo(() => {
     if (!shouldLoadImage || (!imgSrc && !proxySrc)) {
       return null;
@@ -227,6 +228,16 @@ function ProductCard({
     setUseRawImage(!preferProxyImage);
     setProxySrc(preferProxyImage && product.id ? buildProxyImageSrc(product.id, imageIndex) : null);
   }, [imageIndex, images, imageRefreshKey, preferProxyImage, product.id]);
+
+  React.useEffect(() => {
+    if (!hasMultipleImages || !shouldLoadImage || isCarouselPaused) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setImageIndex((prev) => (prev + 1) % images.length);
+    }, 4200);
+    return () => window.clearInterval(timer);
+  }, [hasMultipleImages, images.length, isCarouselPaused, shouldLoadImage]);
 
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
@@ -288,6 +299,10 @@ function ProductCard({
         ref={mediaRef}
         className={`product-media ${images.length > 0 ? "has-image" : ""}${canView ? " can-view" : ""}`}
         onClick={handleView}
+        onMouseEnter={() => setIsCarouselPaused(true)}
+        onMouseLeave={() => setIsCarouselPaused(false)}
+        onTouchStart={() => setIsCarouselPaused(true)}
+        onTouchEnd={() => setIsCarouselPaused(false)}
         onKeyDown={(event) => {
           if (!canView) {
             return;
