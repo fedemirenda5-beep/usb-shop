@@ -21,6 +21,9 @@ type CampaignBanner = {
   eyebrow: string;
   title?: string;
   message: string;
+  meta: string;
+  ctaLabel: string;
+  href: string;
 };
 
 const getNthWeekdayOfMonth = (year: number, monthIndex: number, weekday: number, occurrence: number) => {
@@ -50,6 +53,9 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       eyebrow: "Modo Mundial",
       title: "Vamos Argentina",
       message: "Tecnologia, regalos y oportunidades para vivir cada partido con toda la energia argentina.",
+      meta: "Seleccion tematica y oportunidades por tiempo limitado",
+      ctaLabel: "Ver destacados",
+      href: "#catalogo",
     };
   }
 
@@ -59,7 +65,10 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       variant: "standard",
       eyebrow: "Dia del Padre",
       title: "Regalos para papa",
-      message: "Regalos utiles y tecnologia para sorprender a papa en su semana especial.",
+      message: "Una seleccion practica y bien presentada para regalar sin perder tiempo.",
+      meta: "Curado para catalogo",
+      ctaLabel: "Explorar regalos",
+      href: "#catalogo",
     };
   }
 
@@ -68,8 +77,11 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
     return {
       variant: "standard",
       eyebrow: "Dia del Nino",
-      title: "Semana para jugar y regalar",
-      message: "Ideas para regalar, jugar y compartir con los mas chicos.",
+      title: "Regalos con diseño, juego y tecnologia",
+      message: "Una seleccion pensada para catalogo, con opciones atractivas para sorprender en el Dia del Nino.",
+      meta: "Ideas para regalar · seleccion especial",
+      ctaLabel: "Ver seleccion",
+      href: "#catalogo",
     };
   }
 
@@ -79,7 +91,10 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       variant: "standard",
       eyebrow: "Dia de la Madre",
       title: "Un regalo bien pensado",
-      message: "Seleccion especial para regalar algo lindo, practico y bien pensado.",
+      message: "Seleccion especial para regalar algo lindo, practico y con buena presentacion.",
+      meta: "Curado para regalar",
+      ctaLabel: "Ver seleccion",
+      href: "#catalogo",
     };
   }
 
@@ -90,7 +105,10 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       variant: "standard",
       eyebrow: "Navidad USB Shop",
       title: "Regalos para el arbol",
-      message: "Regalos listos para poner abajo del arbol y resolver tus compras de fin de ano.",
+      message: "Regalos listos para resolver compras de fin de ano con una presentacion mas cuidada.",
+      meta: "Especial de temporada",
+      ctaLabel: "Ver catalogo",
+      href: "#catalogo",
     };
   }
 
@@ -166,7 +184,11 @@ export default function Navbar({
           </Link>
         </div>
         {showTrust && campaignBanner ? (
-          <div className={`navbar-note navbar-note--${campaignBanner.variant}`}>
+          <Link
+            href={campaignBanner.href}
+            className={`navbar-note navbar-note--${campaignBanner.variant}`}
+            aria-label={`${campaignBanner.eyebrow}: ${campaignBanner.title || campaignBanner.message}`}
+          >
             {campaignBanner.variant === "worldcup" ? (
               <div className="navbar-note-visual" aria-hidden="true">
                 <div className="navbar-note-confetti">
@@ -180,15 +202,29 @@ export default function Navbar({
                   <span className="navbar-note-flag-sun" />
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="navbar-note-visual navbar-note-visual--catalog" aria-hidden="true">
+                <span className="navbar-note-gift" />
+                <span className="navbar-note-spark navbar-note-spark--1" />
+                <span className="navbar-note-spark navbar-note-spark--2" />
+                <span className="navbar-note-spark navbar-note-spark--3" />
+              </div>
+            )}
             <div className="navbar-note-copy">
               <span className="navbar-note-kicker">{campaignBanner.eyebrow}</span>
               {campaignBanner.title ? (
                 <strong className="navbar-note-title">{campaignBanner.title}</strong>
               ) : null}
               <span className="navbar-note-text">{campaignBanner.message}</span>
+              <div className="navbar-note-footer">
+                <span className="navbar-note-meta">{campaignBanner.meta}</span>
+                <span className="navbar-note-cta">
+                  {campaignBanner.ctaLabel}
+                  <span aria-hidden="true">→</span>
+                </span>
+              </div>
             </div>
-          </div>
+          </Link>
         ) : null}
         {onCartClick ? (
           <button type="button" className="cart-pill" onClick={onCartClick}>
