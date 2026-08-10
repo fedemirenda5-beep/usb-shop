@@ -496,11 +496,12 @@ a:focus-visible {
 .navbar-note-scene-train,
 .navbar-note-scene-car {
   filter: drop-shadow(0 10px 16px rgba(15, 23, 42, 0.12));
+  opacity: 0;
 }
 
 .navbar-note-scene-plane {
   transform-origin: 34px 16px;
-  animation: navbarScenePlaneSvg 5.2s ease-in-out infinite;
+  animation: navbarScenePlaneSvg 6.6s ease-in-out infinite;
 }
 
 .navbar-note-scene-plane-line {
@@ -512,12 +513,12 @@ a:focus-visible {
 
 .navbar-note-scene-train {
   transform-origin: 36px 40px;
-  animation: navbarSceneTrainSvg 5.2s ease-in-out infinite;
+  animation: navbarSceneTrainSvg 6.6s ease-in-out infinite;
 }
 
 .navbar-note-scene-car {
   transform-origin: 106px 68px;
-  animation: navbarSceneCarSvg 5.2s ease-in-out infinite;
+  animation: navbarSceneCarSvg 6.6s ease-in-out infinite;
 }
 
 .navbar-note-scene-wheel {
@@ -526,24 +527,6 @@ a:focus-visible {
 
 .navbar-note-scene-wheel-core {
   fill: #cbd5e1;
-}
-
-.navbar-note-scene-spark {
-  fill: rgba(244, 114, 182, 0.82);
-}
-
-.navbar-note-scene-spark--1 {
-  animation: navbarSceneSpark 2s ease-in-out infinite;
-}
-
-.navbar-note-scene-spark--2 {
-  animation: navbarSceneSpark 2s ease-in-out infinite;
-  animation-delay: -0.65s;
-}
-
-.navbar-note-scene-spark--3 {
-  animation: navbarSceneSpark 2s ease-in-out infinite;
-  animation-delay: -1.1s;
 }
 
 .navbar-note-confetti {
@@ -657,40 +640,47 @@ a:focus-visible {
 }
 
 @keyframes navbarScenePlaneSvg {
-  0%, 100% {
-    transform: translate(0px, 0px) rotate(-8deg);
+  0%, 8%, 100% {
+    opacity: 0;
+    transform: translate(-10px, 2px) rotate(-10deg) scale(0.96);
   }
-  50% {
-    transform: translate(10px, -6px) rotate(-3deg);
+  12%, 24% {
+    opacity: 1;
+    transform: translate(10px, -6px) rotate(-3deg) scale(1);
+  }
+  30% {
+    opacity: 0;
+    transform: translate(20px, -9px) rotate(-2deg) scale(1.02);
   }
 }
 
 @keyframes navbarSceneTrainSvg {
-  0%, 100% {
-    transform: translateX(-4px);
+  0%, 32%, 100% {
+    opacity: 0;
+    transform: translateX(-18px);
   }
-  50% {
+  38%, 56% {
+    opacity: 1;
     transform: translateX(10px);
+  }
+  62% {
+    opacity: 0;
+    transform: translateX(26px);
   }
 }
 
 @keyframes navbarSceneCarSvg {
-  0%, 100% {
-    transform: translateX(0px);
+  0%, 64%, 100% {
+    opacity: 0;
+    transform: translateX(-16px) scale(0.98);
   }
-  50% {
-    transform: translateX(-8px);
-  }
-}
-
-@keyframes navbarSceneSpark {
-  0%, 100% {
-    opacity: 0.45;
-    transform: scale(0.8);
-  }
-  50% {
+  70%, 88% {
     opacity: 1;
-    transform: scale(1.25);
+    transform: translateX(0px) scale(1);
+  }
+  94% {
+    opacity: 0;
+    transform: translateX(14px) scale(1.02);
   }
 }
 

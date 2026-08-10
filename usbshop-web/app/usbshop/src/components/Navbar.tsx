@@ -240,9 +240,6 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
         </g>
 
         <path d="M20 30C28 20 38 16 51 18" className="navbar-note-scene-trail" />
-        <circle cx="108" cy="18" r="3" className="navbar-note-scene-spark navbar-note-scene-spark--1" />
-        <circle cx="95" cy="24" r="2.2" className="navbar-note-scene-spark navbar-note-scene-spark--2" />
-        <circle cx="120" cy="30" r="1.8" className="navbar-note-scene-spark navbar-note-scene-spark--3" />
       </svg>
     </div>
   );
