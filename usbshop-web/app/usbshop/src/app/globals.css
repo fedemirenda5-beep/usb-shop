@@ -462,105 +462,87 @@ a:focus-visible {
 }
 
 .navbar-note-visual--childrensday {
-  width: min(100%, 280px);
-  aspect-ratio: 196 / 112;
-  height: auto;
+  width: min(100%, 320px);
+  height: 92px;
   overflow: hidden;
-  background: none;
-  border: none;
-  box-shadow: none;
-  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(254, 249, 195, 0.26) 55%, rgba(191, 219, 254, 0.42));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 16px 28px rgba(59, 130, 246, 0.12);
 }
 
-.navbar-note-scene {
-  width: 100%;
-  height: 100%;
-  display: block;
-  overflow: hidden;
+.navbar-note-kids-track {
+  position: absolute;
+  pointer-events: none;
 }
 
-.navbar-note-scene-ground {
-  fill: none;
-  stroke: rgba(37, 99, 235, 0.26);
-  stroke-width: 2;
-  stroke-linecap: round;
+.navbar-note-kids-track--sky {
+  inset: 18px 46px auto 84px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
 }
 
-.navbar-note-scene-ground-soft {
-  fill: none;
-  stroke: rgba(148, 163, 184, 0.22);
-  stroke-width: 1.4;
-  stroke-linecap: round;
+.navbar-note-kids-track--rail {
+  left: 74px;
+  right: 26px;
+  bottom: 22px;
+  height: 10px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(100, 116, 139, 0.42), rgba(71, 85, 105, 0.2)),
+    repeating-linear-gradient(90deg, rgba(71, 85, 105, 0.2) 0 14px, rgba(255, 255, 255, 0) 14px 28px);
 }
 
-.navbar-note-scene-rail {
-  fill: none;
-  stroke: rgba(71, 85, 105, 0.28);
-  stroke-width: 1.5;
-  stroke-linecap: round;
+.navbar-note-kids-track--road {
+  left: 182px;
+  right: 20px;
+  bottom: 13px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(147, 197, 253, 0.12), rgba(255, 255, 255, 0.9), rgba(147, 197, 253, 0.12));
 }
 
-.navbar-note-scene-rail-sleeper {
-  fill: none;
-  stroke: rgba(71, 85, 105, 0.24);
-  stroke-width: 1.2;
-  stroke-linecap: round;
-}
-
-.navbar-note-scene-trail {
-  fill: none;
-  stroke: rgba(37, 99, 235, 0.28);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-dasharray: 2.5 4.5;
-}
-
-.navbar-note-scene-shadow-soft {
-  fill: rgba(15, 23, 42, 0.08);
-}
-
-.navbar-note-scene-highlight-line {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.32);
-  stroke-width: 1.2;
-  stroke-linecap: round;
-}
-
-.navbar-note-scene-plane,
-.navbar-note-scene-train,
-.navbar-note-scene-car {
-  filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.14));
+.navbar-note-kids-vehicle {
+  position: absolute;
   opacity: 0;
+  filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.16));
+  animation-duration: 10.8s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
 }
 
-.navbar-note-scene-plane {
-  transform-origin: 34px 16px;
-  animation: navbarScenePlaneSvg 9.4s ease-in-out infinite;
+.navbar-note-kids-vehicle img {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
 }
 
-.navbar-note-scene-plane-line {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.82);
-  stroke-width: 2.2;
-  stroke-linecap: round;
+.navbar-note-kids-vehicle--plane {
+  top: 6px;
+  left: -12px;
+  width: 148px;
+  animation-name: navbarKidsPlane;
 }
 
-.navbar-note-scene-train {
-  transform-origin: 36px 40px;
-  animation: navbarSceneTrainSvg 9.4s ease-in-out infinite;
+.navbar-note-kids-vehicle--train {
+  left: 44px;
+  bottom: 10px;
+  width: 176px;
+  animation-name: navbarKidsTrain;
 }
 
-.navbar-note-scene-car {
-  transform-origin: 106px 68px;
-  animation: navbarSceneCarSvg 9.4s ease-in-out infinite;
-}
-
-.navbar-note-scene-wheel {
-  fill: #1e293b;
-}
-
-.navbar-note-scene-wheel-core {
-  fill: #cbd5e1;
+.navbar-note-kids-vehicle--car {
+  right: 10px;
+  bottom: 4px;
+  width: 108px;
+  animation-name: navbarKidsCar;
 }
 
 .navbar-note-confetti {
@@ -673,48 +655,44 @@ a:focus-visible {
   }
 }
 
-@keyframes navbarScenePlaneSvg {
-  0%, 6%, 100% {
+@keyframes navbarKidsPlane {
+  0%, 8%, 100% {
     opacity: 0;
-    transform: translate(-10px, 2px) rotate(-10deg) scale(0.96);
+    transform: translate3d(-34px, 8px, 0) scale(0.82) rotate(-7deg);
   }
-  10%, 24% {
+  12%, 28% {
     opacity: 1;
-    transform: translate(14px, -8px) rotate(-3deg) scale(1);
+    transform: translate3d(0, 0, 0) scale(1) rotate(-2deg);
   }
-  30% {
+  34% {
     opacity: 0;
-    transform: translate(28px, -12px) rotate(-2deg) scale(1.03);
+    transform: translate3d(28px, -8px, 0) scale(1.03) rotate(2deg);
   }
 }
 
-@keyframes navbarSceneTrainSvg {
+@keyframes navbarKidsTrain {
   0%, 34%, 100% {
     opacity: 0;
-    transform: translateX(-22px);
+    transform: translate3d(-28px, 6px, 0) scale(0.84);
   }
-  40%, 58% {
+  40%, 60% {
     opacity: 1;
-    transform: translateX(12px);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   66% {
     opacity: 0;
-    transform: translateX(34px);
+    transform: translate3d(28px, 0, 0) scale(1.02);
   }
 }
 
-@keyframes navbarSceneCarSvg {
+@keyframes navbarKidsCar {
   0%, 68%, 100% {
     opacity: 0;
-    transform: translateX(-20px) scale(0.98);
+    transform: translate3d(26px, 8px, 0) scale(0.84);
   }
   74%, 92% {
     opacity: 1;
-    transform: translateX(2px) scale(1);
-  }
-  98% {
-    opacity: 0;
-    transform: translateX(18px) scale(1.02);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
@@ -794,9 +772,9 @@ a:focus-visible {
   box-shadow:
     0 16px 34px rgba(244, 114, 182, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 18px;
+  align-items: center;
 }
 
 .navbar-note--childrensday .navbar-note-kicker {
@@ -814,11 +792,11 @@ a:focus-visible {
 }
 
 .navbar-note--childrensday .navbar-note-copy {
-  order: 1;
+  order: initial;
 }
 
 .navbar-note--childrensday .navbar-note-visual--childrensday {
-  order: 2;
+  order: initial;
   justify-self: end;
 }
 
@@ -3147,8 +3125,18 @@ input.button {
   }
 
   .navbar-note-visual--childrensday {
-    width: 120px;
-    height: 74px;
+    width: min(100%, 220px);
+    height: 72px;
+  }
+
+  .navbar-note--childrensday {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+
+  .navbar-note--childrensday .navbar-note-visual--childrensday {
+    justify-self: end;
   }
 
   .navbar-note-confetti {

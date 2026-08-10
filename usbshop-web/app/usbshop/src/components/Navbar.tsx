@@ -189,110 +189,18 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
 
   return (
     <div className="navbar-note-visual navbar-note-visual--childrensday" aria-hidden="true">
-      <svg className="navbar-note-scene" viewBox="0 0 196 112" role="presentation" focusable="false">
-        <defs>
-          <linearGradient id="kidsCardGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.98" />
-            <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.12" />
-          </linearGradient>
-          <linearGradient id="kidsPlaneBody" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#93c5fd" />
-            <stop offset="100%" stopColor="#2563eb" />
-          </linearGradient>
-          <linearGradient id="kidsPlaneAccent" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#fef3c7" />
-            <stop offset="100%" stopColor="#fb7185" />
-          </linearGradient>
-          <linearGradient id="kidsTrainBody" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#f472b6" />
-            <stop offset="100%" stopColor="#be185d" />
-          </linearGradient>
-          <linearGradient id="kidsTrainAccent" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#fde68a" />
-            <stop offset="100%" stopColor="#f59e0b" />
-          </linearGradient>
-          <linearGradient id="kidsCarBody" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#4ade80" />
-            <stop offset="100%" stopColor="#15803d" />
-          </linearGradient>
-          <linearGradient id="kidsGlass" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#f8fafc" />
-            <stop offset="100%" stopColor="#bfdbfe" />
-          </linearGradient>
-          <radialGradient id="kidsHalo" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.78" />
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-
-        <rect x="8" y="8" width="180" height="96" rx="34" fill="url(#kidsCardGlow)" />
-        <ellipse cx="134" cy="26" rx="28" ry="10" fill="rgba(255,255,255,.62)" />
-        <ellipse cx="154" cy="23" rx="16" ry="7" fill="rgba(255,255,255,.78)" />
-        <ellipse cx="52" cy="18" rx="18" ry="7" fill="rgba(255,255,255,.54)" />
-        <circle cx="156" cy="28" r="24" fill="url(#kidsHalo)" />
-
-        <g className="navbar-note-scene-plane">
-          <ellipse cx="36" cy="28" rx="24" ry="7" className="navbar-note-scene-shadow-soft" />
-          <path
-            d="M6 23L35 16L55 2L63 6L49 19L81 22L88 28L50 31L38 47L29 44L31 31L6 34L6 23Z"
-            fill="url(#kidsPlaneBody)"
-          />
-          <path d="M37 17L48 9L54 10L47 18Z" fill="url(#kidsPlaneAccent)" />
-          <path d="M36 23H53" className="navbar-note-scene-plane-line" />
-          <circle cx="31" cy="24" r="2.2" fill="rgba(255,255,255,.92)" />
-          <path d="M14 27C23 19 31 16 39 14" className="navbar-note-scene-trail" />
-        </g>
-
-        <path d="M20 77C58 72 110 72 178 78" className="navbar-note-scene-ground" />
-        <path d="M18 82H172" className="navbar-note-scene-rail" />
-        <path d="M18 87H172" className="navbar-note-scene-rail" />
-        <g opacity=".42">
-          <path d="M28 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M46 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M64 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M82 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M100 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M118 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M136 82V87" className="navbar-note-scene-rail-sleeper" />
-          <path d="M154 82V87" className="navbar-note-scene-rail-sleeper" />
-        </g>
-
-        <g className="navbar-note-scene-train">
-          <ellipse cx="47" cy="50" rx="40" ry="8" className="navbar-note-scene-shadow-soft" />
-          <rect x="14" y="33" width="34" height="21" rx="8" fill="url(#kidsTrainBody)" />
-          <rect x="48" y="36" width="26" height="18" rx="6" fill="#ec4899" />
-          <path d="M20 33L28 24H39V33" fill="url(#kidsTrainAccent)" />
-          <rect x="22" y="39" width="9" height="7" rx="2.4" fill="url(#kidsGlass)" />
-          <rect x="34" y="39" width="8" height="7" rx="2.4" fill="url(#kidsGlass)" />
-          <rect x="54" y="40" width="7" height="6" rx="2.1" fill="url(#kidsGlass)" />
-          <rect x="63" y="40" width="7" height="6" rx="2.1" fill="url(#kidsGlass)" />
-          <path d="M18 49H70" className="navbar-note-scene-highlight-line" />
-          <circle cx="25" cy="57" r="5.2" className="navbar-note-scene-wheel" />
-          <circle cx="48" cy="57" r="5.2" className="navbar-note-scene-wheel" />
-          <circle cx="66" cy="57" r="5.2" className="navbar-note-scene-wheel" />
-          <circle cx="25" cy="57" r="2.1" className="navbar-note-scene-wheel-core" />
-          <circle cx="48" cy="57" r="2.1" className="navbar-note-scene-wheel-core" />
-          <circle cx="66" cy="57" r="2.1" className="navbar-note-scene-wheel-core" />
-          <path d="M17 52H72" stroke="rgba(15,23,42,.16)" strokeWidth="1.5" strokeLinecap="round" />
-        </g>
-
-        <g className="navbar-note-scene-car">
-          <ellipse cx="33" cy="35" rx="26" ry="8" className="navbar-note-scene-shadow-soft" />
-          <path
-            d="M10 41C10 33 16 28 25 28H37L46 18H58C66 18 72 23 74 30L77 40C77 45 72 49 66 49H24C16 49 10 46 10 41Z"
-            fill="url(#kidsCarBody)"
-          />
-          <path d="M29 28L38 22H58C63 22 67 24 69 28" fill="#bbf7d0" />
-          <rect x="34" y="24" width="11" height="8" rx="2.4" fill="url(#kidsGlass)" />
-          <rect x="48" y="24" width="15" height="8" rx="2.4" fill="url(#kidsGlass)" />
-          <path d="M17 41H69" className="navbar-note-scene-highlight-line" />
-          <circle cx="28" cy="50" r="5.6" className="navbar-note-scene-wheel" />
-          <circle cx="59" cy="50" r="5.6" className="navbar-note-scene-wheel" />
-          <circle cx="28" cy="50" r="2.2" className="navbar-note-scene-wheel-core" />
-          <circle cx="59" cy="50" r="2.2" className="navbar-note-scene-wheel-core" />
-          <circle cx="69" cy="37" r="1.6" fill="rgba(255,255,255,.9)" />
-        </g>
-      </svg>
+      <span className="navbar-note-kids-track navbar-note-kids-track--sky" />
+      <span className="navbar-note-kids-track navbar-note-kids-track--rail" />
+      <span className="navbar-note-kids-track navbar-note-kids-track--road" />
+      <span className="navbar-note-kids-vehicle navbar-note-kids-vehicle--plane">
+        <img src="/seasonal/childrensday-plane.png" alt="" />
+      </span>
+      <span className="navbar-note-kids-vehicle navbar-note-kids-vehicle--train">
+        <img src="/seasonal/childrensday-train.png" alt="" />
+      </span>
+      <span className="navbar-note-kids-vehicle navbar-note-kids-vehicle--car">
+        <img src="/seasonal/childrensday-car.png" alt="" />
+      </span>
     </div>
   );
 };
