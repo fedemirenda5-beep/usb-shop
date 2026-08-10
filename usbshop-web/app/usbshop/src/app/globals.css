@@ -355,8 +355,8 @@ a:focus-visible {
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+  align-items: start;
+  gap: 16px;
   overflow: hidden;
   position: relative;
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
@@ -462,19 +462,20 @@ a:focus-visible {
 }
 
 .navbar-note-visual--childrensday {
-  width: 150px;
-  height: 86px;
-  overflow: visible;
+  width: 180px;
+  height: 96px;
+  overflow: hidden;
   background: none;
   border: none;
   box-shadow: none;
+  border-radius: 20px;
 }
 
 .navbar-note-scene {
   width: 100%;
   height: 100%;
   display: block;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .navbar-note-scene-ground {
@@ -533,7 +534,7 @@ a:focus-visible {
 
 .navbar-note-scene-plane {
   transform-origin: 34px 16px;
-  animation: navbarScenePlaneSvg 6.6s ease-in-out infinite;
+  animation: navbarScenePlaneSvg 9.4s ease-in-out infinite;
 }
 
 .navbar-note-scene-plane-line {
@@ -545,12 +546,12 @@ a:focus-visible {
 
 .navbar-note-scene-train {
   transform-origin: 36px 40px;
-  animation: navbarSceneTrainSvg 6.6s ease-in-out infinite;
+  animation: navbarSceneTrainSvg 9.4s ease-in-out infinite;
 }
 
 .navbar-note-scene-car {
   transform-origin: 106px 68px;
-  animation: navbarSceneCarSvg 6.6s ease-in-out infinite;
+  animation: navbarSceneCarSvg 9.4s ease-in-out infinite;
 }
 
 .navbar-note-scene-wheel {
@@ -676,43 +677,43 @@ a:focus-visible {
     opacity: 0;
     transform: translate(-10px, 2px) rotate(-10deg) scale(0.96);
   }
-  12%, 24% {
+  12%, 26% {
     opacity: 1;
-    transform: translate(10px, -6px) rotate(-3deg) scale(1);
+    transform: translate(14px, -8px) rotate(-3deg) scale(1);
   }
-  30% {
+  34% {
     opacity: 0;
-    transform: translate(20px, -9px) rotate(-2deg) scale(1.02);
+    transform: translate(28px, -12px) rotate(-2deg) scale(1.03);
   }
 }
 
 @keyframes navbarSceneTrainSvg {
-  0%, 32%, 100% {
+  0%, 36%, 100% {
     opacity: 0;
-    transform: translateX(-18px);
+    transform: translateX(-22px);
   }
-  38%, 56% {
+  42%, 62% {
     opacity: 1;
-    transform: translateX(10px);
+    transform: translateX(12px);
   }
-  62% {
+  70% {
     opacity: 0;
-    transform: translateX(26px);
+    transform: translateX(34px);
   }
 }
 
 @keyframes navbarSceneCarSvg {
-  0%, 64%, 100% {
+  0%, 70%, 100% {
     opacity: 0;
-    transform: translateX(-16px) scale(0.98);
+    transform: translateX(-20px) scale(0.98);
   }
-  70%, 88% {
+  76%, 92% {
     opacity: 1;
-    transform: translateX(0px) scale(1);
+    transform: translateX(2px) scale(1);
   }
-  94% {
+  98% {
     opacity: 0;
-    transform: translateX(14px) scale(1.02);
+    transform: translateX(18px) scale(1.02);
   }
 }
 
