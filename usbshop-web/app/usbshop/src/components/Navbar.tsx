@@ -94,10 +94,9 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
     return {
       variant: "standard",
       theme: "childrensday",
-      eyebrow: "Dia del Nino",
+      eyebrow: "Feliz dia del niño!",
       title: "Regalos con juego y tecnologia",
-      message:
-        "Una seleccion alegre, colorida y con mejor presentacion para destacar juguetes y regalos.",
+      message: "",
       meta: "Jugar · regalar · sorprender",
       ctaLabel: "Ver seleccion",
       href: "/?categoria=Juguetes#selected-category-results",
