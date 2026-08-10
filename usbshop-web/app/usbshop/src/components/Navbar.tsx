@@ -97,10 +97,10 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       eyebrow: "Dia del Nino",
       title: "Regalos con juego y tecnologia",
       message:
-        "Una seleccion alegre, colorida y llena de movimiento para sorprender en el Dia del Nino.",
+        "Una seleccion alegre, colorida y con mejor presentacion para destacar juguetes y regalos.",
       meta: "Jugar · regalar · sorprender",
       ctaLabel: "Ver seleccion",
-      href: "#catalogo",
+      href: "/?categoria=Juguetes#selected-category-results",
     };
   }
 
@@ -189,18 +189,60 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
   }
 
   return (
-    <div className="navbar-note-visual navbar-note-visual--catalog" aria-hidden="true">
-      <span className="navbar-note-scene-line" />
-      <span className="navbar-note-plane">
-        <span className="navbar-note-plane-trail" />
-      </span>
-      <span className="navbar-note-car">
-        <span className="navbar-note-car-wheel navbar-note-car-wheel--left" />
-        <span className="navbar-note-car-wheel navbar-note-car-wheel--right" />
-      </span>
-      <span className="navbar-note-ball">
-        <span className="navbar-note-ball-shadow" />
-      </span>
+    <div className="navbar-note-visual navbar-note-visual--childrensday" aria-hidden="true">
+      <svg className="navbar-note-scene" viewBox="0 0 96 96" role="presentation" focusable="false">
+        <defs>
+          <linearGradient id="toySky" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.68" />
+          </linearGradient>
+          <linearGradient id="toyPlane" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#60a5fa" />
+            <stop offset="100%" stopColor="#2563eb" />
+          </linearGradient>
+          <linearGradient id="toyCar" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#34d399" />
+            <stop offset="100%" stopColor="#16a34a" />
+          </linearGradient>
+          <radialGradient id="toyBall" cx="35%" cy="35%" r="70%">
+            <stop offset="0%" stopColor="#fde68a" />
+            <stop offset="55%" stopColor="#fb7185" />
+            <stop offset="100%" stopColor="#ea580c" />
+          </radialGradient>
+        </defs>
+
+        <rect x="7" y="7" width="82" height="82" rx="24" fill="url(#toySky)" />
+        <path d="M14 73C28 68 42 68 54 72C64 75 75 75 82 72" className="navbar-note-scene-ground" />
+        <path d="M18 27C26 18 35 15 45 16" className="navbar-note-scene-trail" />
+
+        <g className="navbar-note-scene-plane">
+          <path
+            d="M0 10L18 6L28 0L30 3L23 9L36 10L39 13L22 15L16 22L12 21L14 15L0 17L0 10Z"
+            fill="url(#toyPlane)"
+          />
+          <path d="M13 11H24" className="navbar-note-scene-plane-line" />
+        </g>
+
+        <g className="navbar-note-scene-car">
+          <rect x="0" y="10" width="28" height="10" rx="5" fill="url(#toyCar)" />
+          <path d="M8 10L13 4H21L24 10" fill="#a7f3d0" />
+          <circle cx="7" cy="22" r="4" className="navbar-note-scene-wheel" />
+          <circle cx="22" cy="22" r="4" className="navbar-note-scene-wheel" />
+          <circle cx="7" cy="22" r="1.7" className="navbar-note-scene-wheel-core" />
+          <circle cx="22" cy="22" r="1.7" className="navbar-note-scene-wheel-core" />
+        </g>
+
+        <ellipse cx="74" cy="71" rx="8" ry="2.7" className="navbar-note-scene-ball-shadow" />
+        <g className="navbar-note-scene-ball">
+          <circle cx="74" cy="61" r="7" fill="url(#toyBall)" />
+          <path d="M69 58C71 60 77 63 79 66" className="navbar-note-scene-ball-line" />
+          <path d="M73 54C75 58 75 64 73 68" className="navbar-note-scene-ball-line" />
+        </g>
+
+        <circle cx="73" cy="23" r="3" className="navbar-note-scene-spark navbar-note-scene-spark--1" />
+        <circle cx="23" cy="63" r="2.5" className="navbar-note-scene-spark navbar-note-scene-spark--2" />
+        <circle cx="63" cy="18" r="2" className="navbar-note-scene-spark navbar-note-scene-spark--3" />
+      </svg>
     </div>
   );
 };
@@ -230,30 +272,9 @@ export default function Navbar({
         >
           {cartIsFull ? (
             <>
-              <rect
-                className="cart-box-shape cart-box-shape--back"
-                x="9"
-                y="6"
-                width="6"
-                height="5"
-                rx="1"
-              />
-              <rect
-                className="cart-box-shape cart-box-shape--mid"
-                x="13"
-                y="5"
-                width="6"
-                height="6"
-                rx="1"
-              />
-              <rect
-                className="cart-box-shape cart-box-shape--front"
-                x="17"
-                y="6"
-                width="6"
-                height="5"
-                rx="1"
-              />
+              <rect className="cart-box-shape cart-box-shape--back" x="9" y="6" width="6" height="5" rx="1" />
+              <rect className="cart-box-shape cart-box-shape--mid" x="13" y="5" width="6" height="6" rx="1" />
+              <rect className="cart-box-shape cart-box-shape--front" x="17" y="6" width="6" height="5" rx="1" />
             </>
           ) : null}
           <path

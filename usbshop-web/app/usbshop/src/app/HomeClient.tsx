@@ -396,6 +396,25 @@ export default function HomeClient({
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const requestedCategory = params.get("categoria");
+    if (!requestedCategory) {
+      return;
+    }
+    const normalizedRequestedCategory = normalizeLabel(requestedCategory);
+    const matchedCategory =
+      categories.find((category) => normalizeLabel(category.name) === normalizedRequestedCategory)?.name ||
+      products.find((product) => normalizeLabel(product.category) === normalizedRequestedCategory)?.category ||
+      requestedCategory;
+    setSelectedCategory(matchedCategory);
+    setSearchQuery("");
+    setCatalogLimit(Number.MAX_SAFE_INTEGER);
+  }, [categories, products]);
+
   const wait = (ms: number) =>
     new Promise((resolve) => {
       window.setTimeout(resolve, ms);
