@@ -539,9 +539,9 @@ a:focus-visible {
 }
 
 .navbar-note-kids-vehicle--car {
-  right: 4px;
+  right: 2px;
   bottom: 2px;
-  width: 28px;
+  width: 32px;
   animation-name: navbarKidsCar;
 }
 
@@ -3161,9 +3161,9 @@ input.button {
   }
 
   .navbar-note-kids-vehicle--car {
-    right: 3px;
+    right: 2px;
     bottom: 2px;
-    width: 21px;
+    width: 24px;
   }
 
   .navbar-note--childrensday {
