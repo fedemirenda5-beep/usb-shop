@@ -532,16 +532,16 @@ a:focus-visible {
 }
 
 .navbar-note-kids-vehicle--train {
-  left: 6px;
-  bottom: 6px;
-  width: 52px;
+  left: 4px;
+  bottom: 4px;
+  width: 66px;
   animation-name: navbarKidsTrain;
 }
 
 .navbar-note-kids-vehicle--car {
-  right: 2px;
-  bottom: 2px;
-  width: 32px;
+  right: -1px;
+  bottom: 0;
+  width: 42px;
   animation-name: navbarKidsCar;
 }
 
@@ -3155,15 +3155,15 @@ input.button {
   }
 
   .navbar-note-kids-vehicle--train {
-    left: 4px;
-    bottom: 5px;
-    width: 39px;
+    left: 2px;
+    bottom: 3px;
+    width: 50px;
   }
 
   .navbar-note-kids-vehicle--car {
-    right: 2px;
-    bottom: 2px;
-    width: 24px;
+    right: -1px;
+    bottom: 0;
+    width: 32px;
   }
 
   .navbar-note--childrensday {
