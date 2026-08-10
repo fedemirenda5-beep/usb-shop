@@ -462,8 +462,9 @@ a:focus-visible {
 }
 
 .navbar-note-visual--childrensday {
-  width: 180px;
-  height: 96px;
+  width: min(100%, 280px);
+  aspect-ratio: 196 / 112;
+  height: auto;
   overflow: hidden;
   background: none;
   border: none;
@@ -673,41 +674,41 @@ a:focus-visible {
 }
 
 @keyframes navbarScenePlaneSvg {
-  0%, 8%, 100% {
+  0%, 6%, 100% {
     opacity: 0;
     transform: translate(-10px, 2px) rotate(-10deg) scale(0.96);
   }
-  12%, 26% {
+  10%, 24% {
     opacity: 1;
     transform: translate(14px, -8px) rotate(-3deg) scale(1);
   }
-  34% {
+  30% {
     opacity: 0;
     transform: translate(28px, -12px) rotate(-2deg) scale(1.03);
   }
 }
 
 @keyframes navbarSceneTrainSvg {
-  0%, 36%, 100% {
+  0%, 34%, 100% {
     opacity: 0;
     transform: translateX(-22px);
   }
-  42%, 62% {
+  40%, 58% {
     opacity: 1;
     transform: translateX(12px);
   }
-  70% {
+  66% {
     opacity: 0;
     transform: translateX(34px);
   }
 }
 
 @keyframes navbarSceneCarSvg {
-  0%, 70%, 100% {
+  0%, 68%, 100% {
     opacity: 0;
     transform: translateX(-20px) scale(0.98);
   }
-  76%, 92% {
+  74%, 92% {
     opacity: 1;
     transform: translateX(2px) scale(1);
   }
@@ -793,6 +794,9 @@ a:focus-visible {
   box-shadow:
     0 16px 34px rgba(244, 114, 182, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
 }
 
 .navbar-note--childrensday .navbar-note-kicker {
@@ -807,6 +811,15 @@ a:focus-visible {
   background: rgba(255, 255, 255, 0.86);
   border-color: rgba(244, 114, 182, 0.22);
   color: #c2410c;
+}
+
+.navbar-note--childrensday .navbar-note-copy {
+  order: 1;
+}
+
+.navbar-note--childrensday .navbar-note-visual--childrensday {
+  order: 2;
+  justify-self: end;
 }
 
 .navbar-note--fathersday {
