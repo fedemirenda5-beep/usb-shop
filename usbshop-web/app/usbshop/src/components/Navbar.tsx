@@ -191,6 +191,10 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
     <div className="navbar-note-visual navbar-note-visual--childrensday" aria-hidden="true">
       <svg className="navbar-note-scene" viewBox="0 0 140 86" role="presentation" focusable="false">
         <defs>
+          <linearGradient id="toySkyFade" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.96" />
+            <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.2" />
+          </linearGradient>
           <linearGradient id="toyPlane" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#7dd3fc" />
             <stop offset="100%" stopColor="#2563eb" />
@@ -203,42 +207,86 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
             <stop offset="0%" stopColor="#4ade80" />
             <stop offset="100%" stopColor="#16a34a" />
           </linearGradient>
+          <linearGradient id="toyWindow" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f8fafc" />
+            <stop offset="100%" stopColor="#cbd5e1" />
+          </linearGradient>
+          <radialGradient id="toyGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.65" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </radialGradient>
         </defs>
 
+        <rect x="6" y="5" width="128" height="74" rx="28" fill="url(#toySkyFade)" />
+        <ellipse cx="96" cy="18" rx="16" ry="6" fill="rgba(255,255,255,.55)" />
+        <ellipse cx="111" cy="16" rx="9" ry="4" fill="rgba(255,255,255,.7)" />
+        <ellipse cx="34" cy="11" rx="11" ry="4" fill="rgba(255,255,255,.52)" />
+        <circle cx="112" cy="20" r="18" fill="url(#toyGlow)" />
+
         <g className="navbar-note-scene-plane">
+          <ellipse cx="23" cy="18" rx="18" ry="5" className="navbar-note-scene-shadow-soft" />
           <path
-            d="M0 11L18 7L30 0L34 3L25 10L43 11L47 15L24 17L17 26L12 24L14 17L0 19L0 11Z"
+            d="M0 13L18 9L31 0L36 4L26 11L46 13L50 17L27 19L19 29L13 27L15 19L0 21L0 13Z"
             fill="url(#toyPlane)"
           />
-          <path d="M16 12H29" className="navbar-note-scene-plane-line" />
+          <path
+            d="M19 13H31"
+            className="navbar-note-scene-plane-line"
+          />
+          <circle cx="17" cy="14" r="1.8" fill="rgba(255,255,255,.85)" />
         </g>
 
-        <path d="M18 59C48 57 81 57 121 60" className="navbar-note-scene-ground" />
+        <path d="M10 60C36 56 78 56 131 61" className="navbar-note-scene-ground" />
+        <path d="M10 61C44 65 86 65 131 61" className="navbar-note-scene-ground-soft" />
+        <path d="M18 63H122" className="navbar-note-scene-rail" />
+        <path d="M18 67H122" className="navbar-note-scene-rail" />
+        <g opacity=".45">
+          <path d="M25 63V67" className="navbar-note-scene-rail-sleeper" />
+          <path d="M39 63V67" className="navbar-note-scene-rail-sleeper" />
+          <path d="M53 63V67" className="navbar-note-scene-rail-sleeper" />
+          <path d="M67 63V67" className="navbar-note-scene-rail-sleeper" />
+          <path d="M81 63V67" className="navbar-note-scene-rail-sleeper" />
+          <path d="M95 63V67" className="navbar-note-scene-rail-sleeper" />
+          <path d="M109 63V67" className="navbar-note-scene-rail-sleeper" />
+        </g>
 
         <g className="navbar-note-scene-train">
-          <rect x="0" y="12" width="26" height="12" rx="5" fill="url(#toyTrain)" />
-          <rect x="24" y="14" width="20" height="10" rx="4" fill="#ec4899" />
-          <rect x="7" y="15" width="8" height="5" rx="2" fill="#fce7f3" />
-          <rect x="18" y="15" width="5" height="5" rx="2" fill="#fce7f3" />
-          <rect x="28" y="16" width="6" height="4" rx="2" fill="#fce7f3" />
-          <circle cx="9" cy="27" r="4" className="navbar-note-scene-wheel" />
-          <circle cx="24" cy="27" r="4" className="navbar-note-scene-wheel" />
-          <circle cx="37" cy="27" r="4" className="navbar-note-scene-wheel" />
-          <circle cx="9" cy="27" r="1.7" className="navbar-note-scene-wheel-core" />
-          <circle cx="24" cy="27" r="1.7" className="navbar-note-scene-wheel-core" />
-          <circle cx="37" cy="27" r="1.7" className="navbar-note-scene-wheel-core" />
+          <ellipse cx="22" cy="34" rx="26" ry="6" className="navbar-note-scene-shadow-soft" />
+          <rect x="0" y="14" width="24" height="14" rx="5" fill="url(#toyTrain)" />
+          <rect x="22" y="16" width="18" height="12" rx="4" fill="#ec4899" />
+          <rect x="6" y="17" width="7" height="5" rx="1.8" fill="url(#toyWindow)" />
+          <rect x="15" y="17" width="5" height="5" rx="1.8" fill="url(#toyWindow)" />
+          <rect x="26" y="18" width="5" height="4.5" rx="1.6" fill="url(#toyWindow)" />
+          <rect x="33" y="18" width="4" height="4.5" rx="1.6" fill="url(#toyWindow)" />
+          <path d="M4 14L9 9H17V14" fill="#fbcfe8" />
+          <path d="M2 24H38" className="navbar-note-scene-highlight-line" />
+          <circle cx="8" cy="31" r="4" className="navbar-note-scene-wheel" />
+          <circle cx="23" cy="31" r="4" className="navbar-note-scene-wheel" />
+          <circle cx="35" cy="31" r="4" className="navbar-note-scene-wheel" />
+          <circle cx="8" cy="31" r="1.7" className="navbar-note-scene-wheel-core" />
+          <circle cx="23" cy="31" r="1.7" className="navbar-note-scene-wheel-core" />
+          <circle cx="35" cy="31" r="1.7" className="navbar-note-scene-wheel-core" />
+          <path d="M2 28H40" stroke="rgba(15,23,42,.18)" strokeWidth="1.4" strokeLinecap="round" />
         </g>
 
         <g className="navbar-note-scene-car">
-          <rect x="0" y="10" width="30" height="11" rx="6" fill="url(#toyCar)" />
-          <path d="M9 10L15 4H23L27 10" fill="#bbf7d0" />
-          <circle cx="8" cy="24" r="4" className="navbar-note-scene-wheel" />
-          <circle cx="23" cy="24" r="4" className="navbar-note-scene-wheel" />
-          <circle cx="8" cy="24" r="1.7" className="navbar-note-scene-wheel-core" />
-          <circle cx="23" cy="24" r="1.7" className="navbar-note-scene-wheel-core" />
+          <ellipse cx="23" cy="26" rx="21" ry="6" className="navbar-note-scene-shadow-soft" />
+          <path
+            d="M0 18C0 13 4 10 9 10H19L25 5H33C37 5 40 8 41 12L43 18C43 21 40 23 37 23H8C3 23 0 21 0 18Z"
+            fill="url(#toyCar)"
+          />
+          <path d="M11 10L17 7H31C33 7 35 8 36 10" fill="#bbf7d0" />
+          <rect x="14" y="8" width="7" height="5" rx="1.6" fill="url(#toyWindow)" />
+          <rect x="23" y="8" width="9" height="5" rx="1.6" fill="url(#toyWindow)" />
+          <path d="M4 18H38" className="navbar-note-scene-highlight-line" />
+          <circle cx="10" cy="24" r="4.2" className="navbar-note-scene-wheel" />
+          <circle cx="32" cy="24" r="4.2" className="navbar-note-scene-wheel" />
+          <circle cx="10" cy="24" r="1.8" className="navbar-note-scene-wheel-core" />
+          <circle cx="32" cy="24" r="1.8" className="navbar-note-scene-wheel-core" />
+          <circle cx="39" cy="16" r="1.2" fill="rgba(255,255,255,.9)" />
         </g>
 
-        <path d="M20 30C28 20 38 16 51 18" className="navbar-note-scene-trail" />
+        <path d="M19 31C28 21 39 16 53 18" className="navbar-note-scene-trail" />
       </svg>
     </div>
   );
