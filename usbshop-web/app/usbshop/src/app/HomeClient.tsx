@@ -1220,20 +1220,66 @@ export default function HomeClient({
     });
   }, [discountedProducts, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
 
+  const showStockNoticeMessage = (message: string) => {
+    setStockNotice(message);
+    if (stockNoticeTimer.current) {
+      window.clearTimeout(stockNoticeTimer.current);
+    }
+    stockNoticeTimer.current = window.setTimeout(() => {
+      setStockNotice(null);
+    }, 2500);
+  };
+
+  useEffect(() => {
+    if (!cartHydrated.current || products.length === 0) {
+      return;
+    }
+    const liveProducts = new Map(products.map((product) => [product.id, product] as const));
+    setCart((prev) => {
+      const entries = Object.entries(prev);
+      if (entries.length === 0) {
+        return prev;
+      }
+      let changed = false;
+      const next: Record<number, CartItem> = {};
+      entries.forEach(([idRaw, entry]) => {
+        const id = Number(idRaw);
+        const live = liveProducts.get(id);
+        if (!live) {
+          next[id] = entry;
+          return;
+        }
+        const stock = Number.isFinite(live.stock) ? Number(live.stock) : 0;
+        if (stock <= 0) {
+          changed = true;
+          return;
+        }
+        const qty = Math.min(entry.qty, stock);
+        if (qty <= 0) {
+          changed = true;
+          return;
+        }
+        if (entry.product !== live || entry.qty !== qty) {
+          changed = true;
+        }
+        next[id] = { product: live, qty };
+      });
+      return changed ? next : prev;
+    });
+  }, [products]);
+
   const addItem = (product: Product) => {
     setCart((prev) => {
       const current = prev[product.id];
       const stock = Number.isFinite(product.stock) ? Number(product.stock) : 0;
+      if (stock <= 0) {
+        showStockNoticeMessage(`${product.name} no tiene stock disponible.`);
+        return prev;
+      }
       const nextQty = current ? current.qty + 1 : 1;
       const qty = Math.min(nextQty, stock);
       if (current && current.qty >= stock) {
-        setStockNotice(`Maximo disponible para ${product.name}: ${stock}.`);
-        if (stockNoticeTimer.current) {
-          window.clearTimeout(stockNoticeTimer.current);
-        }
-        stockNoticeTimer.current = window.setTimeout(() => {
-          setStockNotice(null);
-        }, 2500);
+        showStockNoticeMessage(`Maximo disponible para ${product.name}: ${stock}.`);
         return prev;
       }
       if (qty <= 0) {
@@ -1259,15 +1305,15 @@ export default function HomeClient({
       const stock = Number.isFinite(current.product.stock)
         ? Number(current.product.stock)
         : 0;
+      if (delta > 0 && stock <= 0) {
+        showStockNoticeMessage(`${current.product.name} no tiene stock disponible.`);
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
       const nextQty = Math.min(current.qty + delta, stock);
       if (delta > 0 && current.qty >= stock) {
-        setStockNotice(`Maximo disponible para ${current.product.name}: ${stock}.`);
-        if (stockNoticeTimer.current) {
-          window.clearTimeout(stockNoticeTimer.current);
-        }
-        stockNoticeTimer.current = window.setTimeout(() => {
-          setStockNotice(null);
-        }, 2500);
+        showStockNoticeMessage(`Maximo disponible para ${current.product.name}: ${stock}.`);
       }
       if (nextQty <= 0) {
         const next = { ...prev };
