@@ -16,8 +16,16 @@ type NavbarProps = {
   showTrust?: boolean;
 };
 
+type CampaignTheme =
+  | "worldcup"
+  | "fathersday"
+  | "childrensday"
+  | "mothersday"
+  | "christmas";
+
 type CampaignBanner = {
   variant: "standard" | "worldcup";
+  theme: CampaignTheme;
   eyebrow: string;
   title?: string;
   message: string;
@@ -26,7 +34,12 @@ type CampaignBanner = {
   href: string;
 };
 
-const getNthWeekdayOfMonth = (year: number, monthIndex: number, weekday: number, occurrence: number) => {
+const getNthWeekdayOfMonth = (
+  year: number,
+  monthIndex: number,
+  weekday: number,
+  occurrence: number
+) => {
   const firstDay = new Date(year, monthIndex, 1);
   const offset = (weekday - firstDay.getDay() + 7) % 7;
   return new Date(year, monthIndex, 1 + offset + (occurrence - 1) * 7);
@@ -50,9 +63,11 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
   ) {
     return {
       variant: "worldcup",
+      theme: "worldcup",
       eyebrow: "Modo Mundial",
       title: "Vamos Argentina",
-      message: "Tecnologia, regalos y oportunidades para vivir cada partido con toda la energia argentina.",
+      message:
+        "Tecnologia, regalos y oportunidades para vivir cada partido con toda la energia argentina.",
       meta: "Seleccion tematica y oportunidades por tiempo limitado",
       ctaLabel: "Ver destacados",
       href: "#catalogo",
@@ -63,10 +78,12 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
   if (withinWindow(fathersDay, campaignLeadDays, 2)) {
     return {
       variant: "standard",
+      theme: "fathersday",
       eyebrow: "Dia del Padre",
       title: "Regalos para papa",
-      message: "Una seleccion practica y bien presentada para regalar sin perder tiempo.",
-      meta: "Curado para catalogo",
+      message:
+        "Ideas utiles, cancheras y listas para elegir rapido un regalo con personalidad.",
+      meta: "Especial para papa",
       ctaLabel: "Explorar regalos",
       href: "#catalogo",
     };
@@ -76,10 +93,12 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
   if (withinWindow(childrensDay, campaignLeadDays, 2)) {
     return {
       variant: "standard",
+      theme: "childrensday",
       eyebrow: "Dia del Nino",
-      title: "Regalos con diseño, juego y tecnologia",
-      message: "Una seleccion pensada para catalogo, con opciones atractivas para sorprender en el Dia del Nino.",
-      meta: "Ideas para regalar · seleccion especial",
+      title: "Regalos con juego y tecnologia",
+      message:
+        "Una seleccion alegre, colorida y llena de movimiento para sorprender en el Dia del Nino.",
+      meta: "Jugar · regalar · sorprender",
       ctaLabel: "Ver seleccion",
       href: "#catalogo",
     };
@@ -89,30 +108,101 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
   if (withinWindow(mothersDay, campaignLeadDays, 2)) {
     return {
       variant: "standard",
+      theme: "mothersday",
       eyebrow: "Dia de la Madre",
       title: "Un regalo bien pensado",
-      message: "Seleccion especial para regalar algo lindo, practico y con buena presentacion.",
-      meta: "Curado para regalar",
+      message:
+        "Una seleccion delicada, linda y practica para encontrar un regalo con mucho mimo.",
+      meta: "Especial para mama",
       ctaLabel: "Ver seleccion",
       href: "#catalogo",
     };
   }
 
   const christmasStart = new Date(year, 11, 25);
-  const christmasEnd = new Date(year, 11, 26);
   if (withinWindow(christmasStart, campaignLeadDays, 1)) {
     return {
       variant: "standard",
+      theme: "christmas",
       eyebrow: "Navidad USB Shop",
       title: "Regalos para el arbol",
-      message: "Regalos listos para resolver compras de fin de ano con una presentacion mas cuidada.",
-      meta: "Especial de temporada",
+      message:
+        "Regalos con clima festivo, colores de temporada y opciones listas para celebrar.",
+      meta: "Magia de fin de ano",
       ctaLabel: "Ver catalogo",
       href: "#catalogo",
     };
   }
 
   return null;
+};
+
+const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
+  if (theme === "worldcup") {
+    return (
+      <div className="navbar-note-visual" aria-hidden="true">
+        <div className="navbar-note-confetti">
+          <span className="navbar-note-confetti-piece navbar-note-confetti-piece--1" />
+          <span className="navbar-note-confetti-piece navbar-note-confetti-piece--2" />
+          <span className="navbar-note-confetti-piece navbar-note-confetti-piece--3" />
+          <span className="navbar-note-confetti-piece navbar-note-confetti-piece--4" />
+          <span className="navbar-note-confetti-piece navbar-note-confetti-piece--5" />
+        </div>
+        <div className="navbar-note-flag">
+          <span className="navbar-note-flag-sun" />
+        </div>
+      </div>
+    );
+  }
+
+  if (theme === "fathersday") {
+    return (
+      <div className="navbar-note-visual navbar-note-visual--fathersday" aria-hidden="true">
+        <span className="navbar-note-fathers-star navbar-note-fathers-star--1" />
+        <span className="navbar-note-fathers-star navbar-note-fathers-star--2" />
+        <span className="navbar-note-fathers-mustache" />
+        <span className="navbar-note-fathers-tie" />
+      </div>
+    );
+  }
+
+  if (theme === "mothersday") {
+    return (
+      <div className="navbar-note-visual navbar-note-visual--mothersday" aria-hidden="true">
+        <span className="navbar-note-heart navbar-note-heart--main" />
+        <span className="navbar-note-heart navbar-note-heart--small" />
+        <span className="navbar-note-flower navbar-note-flower--left" />
+        <span className="navbar-note-flower navbar-note-flower--right" />
+      </div>
+    );
+  }
+
+  if (theme === "christmas") {
+    return (
+      <div className="navbar-note-visual navbar-note-visual--christmas" aria-hidden="true">
+        <span className="navbar-note-snow navbar-note-snow--1" />
+        <span className="navbar-note-snow navbar-note-snow--2" />
+        <span className="navbar-note-tree" />
+        <span className="navbar-note-giftbox" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="navbar-note-visual navbar-note-visual--catalog" aria-hidden="true">
+      <span className="navbar-note-scene-line" />
+      <span className="navbar-note-plane">
+        <span className="navbar-note-plane-trail" />
+      </span>
+      <span className="navbar-note-car">
+        <span className="navbar-note-car-wheel navbar-note-car-wheel--left" />
+        <span className="navbar-note-car-wheel navbar-note-car-wheel--right" />
+      </span>
+      <span className="navbar-note-ball">
+        <span className="navbar-note-ball-shadow" />
+      </span>
+    </div>
+  );
 };
 
 export default function Navbar({
@@ -133,14 +223,37 @@ export default function Navbar({
       <span className="cart-visual" aria-hidden="true">
         <svg
           viewBox="0 0 32 24"
-          className={`cart-visual-svg ${cartIsFull ? "cart-visual-svg--full" : "cart-visual-svg--empty"}`}
+          className={`cart-visual-svg ${
+            cartIsFull ? "cart-visual-svg--full" : "cart-visual-svg--empty"
+          }`}
           role="presentation"
         >
           {cartIsFull ? (
             <>
-              <rect className="cart-box-shape cart-box-shape--back" x="9" y="6" width="6" height="5" rx="1" />
-              <rect className="cart-box-shape cart-box-shape--mid" x="13" y="5" width="6" height="6" rx="1" />
-              <rect className="cart-box-shape cart-box-shape--front" x="17" y="6" width="6" height="5" rx="1" />
+              <rect
+                className="cart-box-shape cart-box-shape--back"
+                x="9"
+                y="6"
+                width="6"
+                height="5"
+                rx="1"
+              />
+              <rect
+                className="cart-box-shape cart-box-shape--mid"
+                x="13"
+                y="5"
+                width="6"
+                height="6"
+                rx="1"
+              />
+              <rect
+                className="cart-box-shape cart-box-shape--front"
+                x="17"
+                y="6"
+                width="6"
+                height="5"
+                rx="1"
+              />
             </>
           ) : null}
           <path
@@ -186,30 +299,10 @@ export default function Navbar({
         {showTrust && campaignBanner ? (
           <Link
             href={campaignBanner.href}
-            className={`navbar-note navbar-note--${campaignBanner.variant}`}
+            className={`navbar-note navbar-note--${campaignBanner.variant} navbar-note--${campaignBanner.theme}`}
             aria-label={`${campaignBanner.eyebrow}: ${campaignBanner.title || campaignBanner.message}`}
           >
-            {campaignBanner.variant === "worldcup" ? (
-              <div className="navbar-note-visual" aria-hidden="true">
-                <div className="navbar-note-confetti">
-                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--1" />
-                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--2" />
-                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--3" />
-                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--4" />
-                  <span className="navbar-note-confetti-piece navbar-note-confetti-piece--5" />
-                </div>
-                <div className="navbar-note-flag">
-                  <span className="navbar-note-flag-sun" />
-                </div>
-              </div>
-            ) : (
-              <div className="navbar-note-visual navbar-note-visual--catalog" aria-hidden="true">
-                <span className="navbar-note-gift" />
-                <span className="navbar-note-spark navbar-note-spark--1" />
-                <span className="navbar-note-spark navbar-note-spark--2" />
-                <span className="navbar-note-spark navbar-note-spark--3" />
-              </div>
-            )}
+            <CampaignVisual theme={campaignBanner.theme} />
             <div className="navbar-note-copy">
               <span className="navbar-note-kicker">{campaignBanner.eyebrow}</span>
               {campaignBanner.title ? (
