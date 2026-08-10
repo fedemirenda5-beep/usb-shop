@@ -481,16 +481,16 @@ a:focus-visible {
 }
 
 .navbar-note-kids-track--sky {
-  inset: 9px 12px auto 24px;
+  inset: 8px 10px auto 20px;
   height: 3px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
 }
 
 .navbar-note-kids-track--rail {
-  left: 14px;
-  right: 8px;
-  bottom: 10px;
+  left: 12px;
+  right: 6px;
+  bottom: 9px;
   height: 5px;
   border-radius: 999px;
   background:
@@ -499,8 +499,8 @@ a:focus-visible {
 }
 
 .navbar-note-kids-track--road {
-  left: 46px;
-  right: 6px;
+  left: 42px;
+  right: 4px;
   bottom: 4px;
   height: 7px;
   border-radius: 999px;
@@ -525,23 +525,23 @@ a:focus-visible {
 }
 
 .navbar-note-kids-vehicle--plane {
-  top: 3px;
-  left: -1px;
-  width: 40px;
+  top: 2px;
+  left: -2px;
+  width: 46px;
   animation-name: navbarKidsPlane;
 }
 
 .navbar-note-kids-vehicle--train {
-  left: 10px;
-  bottom: 7px;
-  width: 44px;
+  left: 8px;
+  bottom: 6px;
+  width: 52px;
   animation-name: navbarKidsTrain;
 }
 
 .navbar-note-kids-vehicle--car {
-  right: 6px;
-  bottom: 3px;
-  width: 24px;
+  right: 4px;
+  bottom: 2px;
+  width: 28px;
   animation-name: navbarKidsCar;
 }
 
@@ -3130,40 +3130,40 @@ input.button {
   }
 
   .navbar-note-kids-track--sky {
-    inset: 8px 10px auto 18px;
+    inset: 7px 8px auto 15px;
     height: 2px;
   }
 
   .navbar-note-kids-track--rail {
-    left: 10px;
-    right: 6px;
-    bottom: 8px;
+    left: 8px;
+    right: 5px;
+    bottom: 7px;
     height: 4px;
   }
 
   .navbar-note-kids-track--road {
-    left: 34px;
-    right: 5px;
+    left: 31px;
+    right: 4px;
     bottom: 3px;
     height: 6px;
   }
 
   .navbar-note-kids-vehicle--plane {
-    top: 3px;
-    left: 0;
-    width: 31px;
+    top: 2px;
+    left: -1px;
+    width: 35px;
   }
 
   .navbar-note-kids-vehicle--train {
-    left: 8px;
-    bottom: 6px;
-    width: 34px;
+    left: 6px;
+    bottom: 5px;
+    width: 39px;
   }
 
   .navbar-note-kids-vehicle--car {
-    right: 5px;
+    right: 3px;
     bottom: 2px;
-    width: 18px;
+    width: 21px;
   }
 
   .navbar-note--childrensday {
