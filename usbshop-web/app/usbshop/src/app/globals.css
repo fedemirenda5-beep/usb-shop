@@ -1838,17 +1838,18 @@ a:focus-visible {
 .flash-offer {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px;
+  gap: 18px;
   align-items: stretch;
-  padding: 14px;
-  border-radius: 24px;
+  padding: 18px;
+  border-radius: 32px;
   background:
-    radial-gradient(circle at 10% 22%, rgba(165, 243, 65, 0.28), transparent 24%),
-    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, 0.14), transparent 20%),
-    linear-gradient(135deg, rgba(24, 9, 61, 0.98), rgba(74, 25, 157, 0.94) 48%, rgba(37, 99, 78, 0.95));
-  border: 1px solid rgba(196, 255, 122, 0.36);
+    radial-gradient(circle at 12% 16%, rgba(125, 211, 252, 0.18), transparent 24%),
+    radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.12), transparent 18%),
+    radial-gradient(circle at 78% 84%, rgba(163, 230, 53, 0.14), transparent 22%),
+    linear-gradient(142deg, #07111f 0%, #10213d 38%, #1a2c53 68%, #111827 100%);
+  border: 1px solid rgba(191, 219, 254, 0.18);
   box-shadow:
-    0 22px 54px rgba(29, 9, 72, 0.34),
+    0 26px 70px rgba(2, 6, 23, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
   overflow: hidden;
   position: relative;
@@ -1859,11 +1860,11 @@ a:focus-visible {
   position: absolute;
   inset: -30%;
   background:
-    linear-gradient(112deg, transparent 20%, rgba(255, 255, 255, 0.16) 31%, transparent 42%),
-    conic-gradient(from 145deg, rgba(165, 243, 65, 0.12), rgba(124, 58, 237, 0.2), rgba(255, 255, 255, 0.1), rgba(165, 243, 65, 0.12));
+    linear-gradient(112deg, transparent 20%, rgba(255, 255, 255, 0.12) 31%, transparent 42%),
+    conic-gradient(from 145deg, rgba(14, 165, 233, 0.12), rgba(59, 130, 246, 0.18), rgba(255, 255, 255, 0.08), rgba(132, 204, 22, 0.1));
   mix-blend-mode: screen;
-  opacity: 0.74;
-  transform: rotate(4deg);
+  opacity: 0.82;
+  transform: rotate(2deg);
   pointer-events: none;
 }
 
@@ -1884,57 +1885,96 @@ a:focus-visible {
 .flash-offer__content {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 14px;
   align-items: start;
-  color: #fff7ed;
+  color: #eff6ff;
 }
 
 .flash-offer__copy {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
 .flash-offer__header {
   display: grid;
-  gap: 14px;
+  gap: 18px;
+  padding: 18px;
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03)),
+    linear-gradient(120deg, rgba(15, 23, 42, 0.24), rgba(15, 23, 42, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 18px 38px rgba(2, 6, 23, 0.16);
 }
 
 .flash-offer__campaign {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   flex-wrap: wrap;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.flash-offer__campaign-copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .flash-offer__campaign-tag {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 32px;
+  padding: 0 14px;
   border-radius: 999px;
-  background: rgba(8, 15, 30, 0.22);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 247, 237, 0.9);
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(191, 219, 254, 0.16);
+  color: rgba(226, 232, 240, 0.94);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
+.flash-offer__signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.flash-offer__signal strong {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.flash-offer__signal-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #84cc16;
+  box-shadow: 0 0 0 6px rgba(132, 204, 22, 0.14);
+}
+
 .flash-offer__editorial {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .flash-offer__overline {
-  color: rgba(217, 255, 157, 0.9);
+  color: rgba(125, 211, 252, 0.92);
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
@@ -1942,11 +1982,11 @@ a:focus-visible {
   margin: 0;
   color: white;
   font-family: var(--font-head);
-  font-size: clamp(24px, 2.5vw, 36px);
-  line-height: 0.96;
-  letter-spacing: -0.04em;
+  font-size: clamp(28px, 2.9vw, 42px);
+  line-height: 0.92;
+  letter-spacing: -0.05em;
   text-wrap: balance;
-  text-shadow: 0 10px 24px rgba(15, 23, 42, 0.34);
+  text-shadow: 0 12px 28px rgba(2, 6, 23, 0.4);
 }
 
 .flash-offer p {
@@ -1956,10 +1996,10 @@ a:focus-visible {
 }
 
 .flash-offer__subtitle {
-  max-width: 44ch;
-  color: rgba(255, 247, 237, 0.76);
+  max-width: 56ch;
+  color: rgba(226, 232, 240, 0.76);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.65;
 }
 
 .flash-offer .section-kicker,
@@ -1970,9 +2010,9 @@ a:focus-visible {
   width: fit-content;
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid rgba(217, 255, 157, 0.22);
-  background: linear-gradient(180deg, rgba(217, 255, 157, 0.22), rgba(132, 204, 22, 0.08));
-  color: #efffd2;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.16), rgba(15, 23, 42, 0.08));
+  color: #dbeafe;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -1981,20 +2021,51 @@ a:focus-visible {
     0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
+.flash-offer__metaRail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.flash-offer__metaPill {
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(7, 14, 28, 0.32);
+  border: 1px solid rgba(191, 219, 254, 0.12);
+  display: grid;
+  gap: 4px;
+}
+
+.flash-offer__metaPill span {
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.flash-offer__metaPill strong {
+  color: #f8fafc;
+  font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .flash-offer__price,
 .flash-offer__timer {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   justify-items: start;
   align-content: center;
-  min-height: 84px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(11, 18, 32, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  min-height: 98px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(7, 14, 28, 0.52), rgba(7, 14, 28, 0.22));
+  border: 1px solid rgba(191, 219, 254, 0.14);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 14px 30px rgba(7, 12, 24, 0.16);
+    0 16px 32px rgba(2, 6, 23, 0.18);
 }
 
 .flash-offer__price span {
@@ -2005,11 +2076,11 @@ a:focus-visible {
 }
 
 .flash-offer__price strong {
-  color: #d9ff9d;
+  color: #f8fafc;
   font-family: var(--font-head);
-  font-size: 24px;
+  font-size: 30px;
   letter-spacing: -0.04em;
-  text-shadow: 0 8px 18px rgba(132, 204, 22, 0.2);
+  text-shadow: 0 10px 20px rgba(2, 6, 23, 0.24);
 }
 
 .flash-offer__timer span {
@@ -2021,7 +2092,7 @@ a:focus-visible {
 }
 
 .flash-offer__timer strong {
-  color: white;
+  color: #e0f2fe;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2042,16 +2113,16 @@ a:focus-visible {
 }
 
 .flash-offer__button {
-  min-height: 46px;
+  min-height: 54px;
   padding-inline: 20px;
   width: 100%;
   justify-content: center;
   font-family: var(--font-head);
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-size: 14px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   box-shadow:
-    0 16px 28px rgba(132, 204, 22, 0.28),
+    0 18px 34px rgba(132, 204, 22, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
@@ -2901,8 +2972,8 @@ input.button {
 
   .flash-offer {
     grid-template-columns: 1fr;
-    gap: 16px;
-    padding: 18px;
+    gap: 18px;
+    padding: 22px;
     align-items: stretch;
   }
 
@@ -2912,7 +2983,7 @@ input.button {
       "copy copy"
       "price timer"
       "cta cta";
-    gap: 12px;
+    gap: 14px;
     align-items: stretch;
   }
 
@@ -2924,6 +2995,10 @@ input.button {
 
   .flash-offer__campaign {
     align-items: flex-start;
+  }
+
+  .flash-offer__campaign-copy {
+    max-width: calc(100% - 120px);
   }
 
   .flash-offer__price {
@@ -2945,8 +3020,8 @@ input.button {
   }
 
   .flash-offer h2 {
-    font-size: clamp(22px, 1.8vw, 30px);
-    line-height: 0.98;
+    font-size: clamp(30px, 2vw, 38px);
+    line-height: 0.94;
   }
 
   .flash-offer__subtitle {
@@ -2954,7 +3029,7 @@ input.button {
   }
 
   .flash-offer__price strong {
-    font-size: 24px;
+    font-size: 28px;
   }
 
   .flash-offer__timer strong {
@@ -3129,13 +3204,30 @@ input.button {
     align-items: start;
   }
 
+  .flash-offer__header {
+    padding: 16px;
+    gap: 14px;
+  }
+
   .flash-offer__campaign {
     padding-bottom: 10px;
+  }
+
+  .flash-offer__campaign-copy {
+    width: 100%;
   }
 
   .flash-offer__campaign-tag {
     width: 100%;
     justify-content: center;
+  }
+
+  .flash-offer__signal {
+    width: 100%;
+  }
+
+  .flash-offer__metaRail {
+    grid-template-columns: 1fr;
   }
 
   .flash-offer__price,

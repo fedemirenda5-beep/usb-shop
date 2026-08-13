@@ -127,6 +127,14 @@ const getFlashOfferCampaignLabel = (product: Product) => {
   }
   return badge;
 };
+const getFlashOfferDiscountPercent = (product: Product) => {
+  const original = Number(product.originalPrice || 0);
+  const current = Number(product.price || 0);
+  if (original <= current || original <= 0) {
+    return 0;
+  }
+  return Math.round(((original - current) / original) * 100);
+};
 const toComparableTimestamp = (product: Product) => {
   return getProductActivityTimestamp(product);
 };
@@ -1535,21 +1543,42 @@ export default function HomeClient({
         <section className="flash-offers">
           {flashOfferProducts.map((product, index) => {
             const campaignLabel = getFlashOfferCampaignLabel(product);
+            const discountPercent = getFlashOfferDiscountPercent(product);
             return (
               <article key={`flash-offer-${product.id}`} className="flash-offer">
                 <div className="flash-offer__content">
                   <div className="flash-offer__copy">
                     <div className="flash-offer__header">
                       <div className="flash-offer__campaign">
-                        <p className="section-kicker flash-offer__kicker">{campaignLabel}</p>
-                        <span className="flash-offer__campaign-tag">Seleccion destacada</span>
+                        <div className="flash-offer__campaign-copy">
+                          <p className="section-kicker flash-offer__kicker">{campaignLabel}</p>
+                          <span className="flash-offer__campaign-tag">Drop curado</span>
+                        </div>
+                        <div className="flash-offer__signal">
+                          <span className="flash-offer__signal-dot" />
+                          <strong>Edicion online</strong>
+                        </div>
                       </div>
                       <div className="flash-offer__editorial">
-                        <span className="flash-offer__overline">Coleccion especial</span>
+                        <span className="flash-offer__overline">Lanzamiento destacado</span>
                         <h2>{product.name}</h2>
                         <p className="flash-offer__subtitle">
-                          Precio preferencial por evento, con stock limitado y cierre automatico al finalizar la campana.
+                          Curaduria premium para la campaña actual, con precio de evento, disponibilidad limitada y salida automatica al cierre de la accion.
                         </p>
+                      </div>
+                      <div className="flash-offer__metaRail" aria-label="Resumen de campaña">
+                        <div className="flash-offer__metaPill">
+                          <span>Categoria</span>
+                          <strong>{product.category}</strong>
+                        </div>
+                        <div className="flash-offer__metaPill">
+                          <span>Ahorro</span>
+                          <strong>{discountPercent > 0 ? `${discountPercent}%` : "Exclusivo"}</strong>
+                        </div>
+                        <div className="flash-offer__metaPill">
+                          <span>Stock</span>
+                          <strong>{product.stock && product.stock > 0 ? `${product.stock} unidades` : "Disponible"}</strong>
+                        </div>
                       </div>
                     </div>
                   </div>
