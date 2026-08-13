@@ -995,7 +995,12 @@ export default function ClientesPage() {
             <div className={styles.summaryPanel}>
               <div>
                 <strong>{selectedCustomer.name}</strong>
-                <span>{selectedCustomer.locality || selectedCustomer.address || 'Sin localidad cargada'}</span>
+                <span className={styles.summaryPrimaryMeta}>
+                  {selectedCustomer.locality || selectedCustomer.address || 'Sin localidad cargada'}
+                </span>
+                <small className={styles.summarySecondaryMeta}>
+                  CUIT: {selectedCustomer.cuit || 'Sin CUIT cargado'}
+                </small>
               </div>
               <div>
                 <strong>Estado</strong>
