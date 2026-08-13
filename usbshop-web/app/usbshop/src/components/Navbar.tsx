@@ -95,9 +95,9 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       variant: "standard",
       theme: "childrensday",
       eyebrow: "Feliz dia del niño!",
-      title: "Regalos con juego y tecnologia",
-      message: "",
-      meta: "Jugar · regalar · sorprender",
+      title: "Regala tecnologia, regala diversion",
+      message: "Joystick, consola y auto RC en una seleccion pensada para regalar bien.",
+      meta: "Tech kids selection",
       ctaLabel: "Ver seleccion",
       href: "/?categoria=Juguetes#selected-category-results",
     };
@@ -189,20 +189,11 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
 
   return (
     <div className="navbar-note-visual navbar-note-visual--childrensday" aria-hidden="true">
-      <span className="navbar-note-kids-orbit navbar-note-kids-orbit--one" />
-      <span className="navbar-note-kids-orbit navbar-note-kids-orbit--two" />
-      <span className="navbar-note-kids-device navbar-note-kids-device--tablet">
-        <span className="navbar-note-kids-screen navbar-note-kids-screen--tablet" />
-      </span>
-      <span className="navbar-note-kids-device navbar-note-kids-device--console">
-        <span className="navbar-note-kids-screen navbar-note-kids-screen--console" />
-        <span className="navbar-note-kids-console-dot navbar-note-kids-console-dot--left" />
-        <span className="navbar-note-kids-console-dot navbar-note-kids-console-dot--right" />
-      </span>
-      <span className="navbar-note-kids-device navbar-note-kids-device--earbuds">
-        <span className="navbar-note-kids-earbud navbar-note-kids-earbud--left" />
-        <span className="navbar-note-kids-earbud navbar-note-kids-earbud--right" />
-      </span>
+      <img
+        className="navbar-note-kids-showcase"
+        src="/seasonal/childrensday-tech-showcase-v1.png"
+        alt=""
+      />
     </div>
   );
 };
