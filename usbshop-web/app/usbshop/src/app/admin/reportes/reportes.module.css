@@ -32,12 +32,12 @@
 .refreshButton:hover { background: linear-gradient(180deg, #f8fafc, #eef2ff); }
 .subheading { font-weight: 700; color: var(--ink); }
 .chartCard { display: grid; gap: 16px; }
-.lineChartWrap { padding: 16px; border-radius: 16px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(241,245,249,.65)); border: 1px solid var(--bg-soft); overflow: hidden; }
-.lineChart { width: 100%; height: auto; display: none; }
+.lineChartWrap { padding: 16px 12px 0; border-radius: 16px; background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(241,245,249,.65)); border: 1px solid var(--bg-soft); overflow: hidden; }
+.lineChart { width: 100%; height: auto; display: block; }
 .chartBaseline { stroke: rgba(148, 163, 184, 0.35); stroke-width: 1.5; }
 .linePrimary { fill: none; stroke: #65a30d; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 .lineSecondary { fill: none; stroke: #7c3aed; stroke-width: 2.5; stroke-dasharray: 8 7; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
-.chartLegend { display: none; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.chartLegend { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
 .chartLegend span { display: inline-flex; align-items: center; gap: 8px; }
 .legendSales, .legendCount { width: 14px; height: 14px; border-radius: 999px; display: inline-block; }
 .legendSales { background: #65a30d; }

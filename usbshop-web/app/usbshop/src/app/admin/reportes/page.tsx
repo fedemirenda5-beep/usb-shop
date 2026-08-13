@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { getArgentinaNowDateInput } from '@/lib/datetime';
-import InteractiveDualLineChart from '@/components/charts/InteractiveDualLineChart';
 import styles from './reportes.module.css';
 
 const buildLinePath = (points: number[], width: number, height: number) => {
@@ -440,21 +439,6 @@ export default function ReportesPage() {
           </div>
           <div className={styles.chartCard}>
             <div className={styles.lineChartWrap}>
-              <InteractiveDualLineChart
-                data={monthly.map((point) => ({
-                  id: point.month,
-                  label: point.month,
-                  meta: `Mes ${point.month}`,
-                  primary: point.sales,
-                  secondary: point.count,
-                }))}
-                primaryLabel="Facturacion"
-                secondaryLabel="Comprobantes"
-                formatPrimary={money}
-                formatSecondary={(value) => integer(Math.round(value))}
-                primaryColor="#84cc16"
-                secondaryColor="#0f172a"
-              />
               <svg viewBox="0 0 560 220" className={styles.lineChart} aria-hidden="true">
                 <defs>
                   <linearGradient id="salesArea" x1="0" y1="0" x2="0" y2="1">

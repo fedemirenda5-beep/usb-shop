@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { formatArgentinaDate, formatArgentinaMonth, formatArgentinaShortMonthYear } from '@/lib/datetime';
-import InteractiveDualLineChart from '@/components/charts/InteractiveDualLineChart';
 import styles from './balances.module.css';
 
 type Summary = {
@@ -214,6 +213,33 @@ export default function BalancesPage() {
     [chartData]
   );
 
+  const chartTicks = useMemo(() => {
+    if (chartData.length === 0) return [];
+    return Array.from({ length: 4 }, (_, index) => {
+      const value = (chartMaxSales / 3) * (3 - index);
+      const y = 18 + ((290 - 18 - 52) / 3) * index;
+      return {
+        value,
+        y,
+      };
+    });
+  }, [chartData, chartMaxSales]);
+
+  const chartLinePath = useMemo(() => {
+    if (chartData.length === 0) return '';
+    return chartData
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+      .join(' ');
+  }, [chartData]);
+
+  const chartAreaPath = useMemo(() => {
+    if (chartData.length === 0) return '';
+    const first = chartData[0];
+    const last = chartData[chartData.length - 1];
+    const baseline = 290 - 52;
+    return `${chartLinePath} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`;
+  }, [chartData, chartLinePath]);
+
   const historyYears = useMemo(
     () =>
       Array.from(
@@ -373,21 +399,44 @@ export default function BalancesPage() {
                     </div>
 
                     <div className={styles.chartWrap}>
-                      <InteractiveDualLineChart
-                        data={chartData.map((point) => ({
-                          id: point.month,
-                          label: point.shortLabel,
-                          meta: point.fullLabel,
-                          primary: point.sales,
-                          secondary: point.count,
-                        }))}
-                        primaryLabel="Ventas"
-                        secondaryLabel="Comprobantes"
-                        formatPrimary={compactMoney}
-                        formatSecondary={(value) => String(Math.round(value))}
-                        primaryColor="#06b6d4"
-                        secondaryColor="#8b5cf6"
-                      />
+                      <svg viewBox="0 0 760 290" className={styles.chart} role="img" aria-label="Grafico de ventas de los ultimos 12 meses">
+                        <defs>
+                          <linearGradient id="salesAreaGradient" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.32" />
+                            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.04" />
+                          </linearGradient>
+                        </defs>
+
+                        {chartTicks.map((tick) => (
+                          <g key={tick.y}>
+                            <line
+                              x1="74"
+                              x2="740"
+                              y1={tick.y}
+                              y2={tick.y}
+                              className={styles.chartGrid}
+                            />
+                            <text x="64" y={tick.y + 4} textAnchor="end" className={styles.chartAxisLabel}>
+                              {compactMoney(tick.value)}
+                            </text>
+                          </g>
+                        ))}
+
+                        <path d={chartAreaPath} className={styles.chartArea} />
+                        <path d={chartLinePath} className={styles.chartLine} />
+
+                        {chartData.map((point) => (
+                          <g key={point.month}>
+                            <circle cx={point.x} cy={point.y} r="5.5" className={styles.chartPoint} />
+                            <text x={point.x} y={point.y - 12} textAnchor="middle" className={styles.chartValueLabel}>
+                              {compactMoney(point.sales)}
+                            </text>
+                            <text x={point.x} y="256" textAnchor="middle" className={styles.chartMonthLabel}>
+                              {point.fullLabel}
+                            </text>
+                          </g>
+                        ))}
+                      </svg>
                     </div>
                   </div>
                 ) : null}
