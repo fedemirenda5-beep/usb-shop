@@ -96,8 +96,8 @@ const getAnnualCampaignBanner = (now: Date): CampaignBanner | null => {
       theme: "childrensday",
       eyebrow: "Feliz dia del niño!",
       title: "Regala tecnologia, regala diversion",
-      message: "Joystick, consola y auto RC en una seleccion pensada para regalar bien.",
-      meta: "Tech kids selection",
+      message: "",
+      meta: "",
       ctaLabel: "Ver seleccion",
       href: "/?categoria=Juguetes#selected-category-results",
     };
@@ -285,9 +285,17 @@ export default function Navbar({
               {campaignBanner.title ? (
                 <strong className="navbar-note-title">{campaignBanner.title}</strong>
               ) : null}
-              <span className="navbar-note-text">{campaignBanner.message}</span>
-              <div className="navbar-note-footer">
-                <span className="navbar-note-meta">{campaignBanner.meta}</span>
+              {campaignBanner.message ? (
+                <span className="navbar-note-text">{campaignBanner.message}</span>
+              ) : null}
+              <div
+                className={`navbar-note-footer ${
+                  campaignBanner.meta ? "" : "navbar-note-footer--cta-only"
+                }`}
+              >
+                {campaignBanner.meta ? (
+                  <span className="navbar-note-meta">{campaignBanner.meta}</span>
+                ) : null}
                 <span className="navbar-note-cta">
                   {campaignBanner.ctaLabel}
                   <span aria-hidden="true">-&gt;</span>

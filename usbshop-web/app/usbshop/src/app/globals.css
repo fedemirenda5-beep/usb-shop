@@ -467,6 +467,10 @@ a:focus-visible {
   min-width: 0;
 }
 
+.navbar-note-footer--cta-only {
+  justify-content: flex-end;
+}
+
 .navbar-note-meta {
   display: inline-flex;
   align-items: center;
@@ -508,13 +512,13 @@ a:focus-visible {
 
 .navbar-note-visual {
   position: relative;
-  width: 128px;
+  width: 160px;
   height: 92px;
   flex: 0 0 auto;
 }
 
 .navbar-note-visual--childrensday {
-  width: 128px;
+  width: 160px;
   height: 92px;
   overflow: hidden;
   isolation: isolate;
@@ -556,9 +560,9 @@ a:focus-visible {
 
 .navbar-note-kids-showcase {
   position: absolute;
-  inset: 8px;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
+  inset: 5px;
+  width: calc(100% - 10px);
+  height: calc(100% - 10px);
   border-radius: 18px;
   object-fit: cover;
   object-position: center;
@@ -990,8 +994,8 @@ a:focus-visible {
   box-shadow:
     0 16px 34px rgba(244, 114, 182, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  grid-template-columns: 90px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
 }
 
@@ -1016,7 +1020,7 @@ a:focus-visible {
 
 .navbar-note--childrensday .navbar-note-copy {
   order: 2;
-  gap: 4px;
+  gap: 3px;
 }
 
 .navbar-note--childrensday .navbar-note-text {
@@ -3531,8 +3535,8 @@ input.button {
   }
 
   .navbar-note-visual {
-    width: 72px;
-    height: 44px;
+    width: 96px;
+    height: 52px;
   }
 
   .navbar-note-visual--catalog {
@@ -3542,8 +3546,8 @@ input.button {
   }
 
   .navbar-note-visual--childrensday {
-    width: 72px;
-    height: 44px;
+    width: 96px;
+    height: 52px;
     border-radius: 16px;
   }
 
@@ -3553,9 +3557,9 @@ input.button {
   }
 
   .navbar-note-kids-showcase {
-    inset: 4px;
-    width: calc(100% - 8px);
-    height: calc(100% - 8px);
+    inset: 3px;
+    width: calc(100% - 6px);
+    height: calc(100% - 6px);
     border-radius: 10px;
   }
 
@@ -3653,7 +3657,7 @@ input.button {
   }
 
   .navbar-note--childrensday {
-    grid-template-columns: 62px minmax(0, 1fr);
+    grid-template-columns: 92px minmax(0, 1fr);
     gap: 10px;
     align-items: center;
   }
