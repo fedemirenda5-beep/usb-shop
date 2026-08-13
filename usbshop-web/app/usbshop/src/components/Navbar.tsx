@@ -189,16 +189,16 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
 
   return (
     <div className="navbar-note-visual navbar-note-visual--childrensday" aria-hidden="true">
-      <span className="navbar-note-kids-track navbar-note-kids-track--sky" />
-      <span className="navbar-note-kids-track navbar-note-kids-track--rail" />
-      <span className="navbar-note-kids-track navbar-note-kids-track--road" />
-      <span className="navbar-note-kids-vehicle navbar-note-kids-vehicle--plane">
+      <span className="navbar-note-kids-aura" />
+      <span className="navbar-note-kids-grid" />
+      <span className="navbar-note-kids-ribbon">Kids tech picks</span>
+      <span className="navbar-note-kids-card navbar-note-kids-card--plane">
         <img src="/seasonal/childrensday-plane.png" alt="" />
       </span>
-      <span className="navbar-note-kids-vehicle navbar-note-kids-vehicle--train">
+      <span className="navbar-note-kids-card navbar-note-kids-card--train">
         <img src="/seasonal/childrensday-train.png" alt="" />
       </span>
-      <span className="navbar-note-kids-vehicle navbar-note-kids-vehicle--car">
+      <span className="navbar-note-kids-card navbar-note-kids-card--car">
         <img src="/seasonal/childrensday-car.png" alt="" />
       </span>
     </div>
@@ -283,11 +283,21 @@ export default function Navbar({
           >
             <CampaignVisual theme={campaignBanner.theme} />
             <div className="navbar-note-copy">
-              <span className="navbar-note-kicker">{campaignBanner.eyebrow}</span>
+              <div className="navbar-note-topline">
+                <span className="navbar-note-kicker">{campaignBanner.eyebrow}</span>
+                <span className="navbar-note-chip">Curaduria USB Shop</span>
+              </div>
               {campaignBanner.title ? (
                 <strong className="navbar-note-title">{campaignBanner.title}</strong>
               ) : null}
               <span className="navbar-note-text">{campaignBanner.message}</span>
+              {campaignBanner.theme === "childrensday" ? (
+                <div className="navbar-note-badges" aria-hidden="true">
+                  <span className="navbar-note-badge">Seleccion especial</span>
+                  <span className="navbar-note-badge">Juguetes + tech</span>
+                  <span className="navbar-note-badge">Entrega rapida</span>
+                </div>
+              ) : null}
               <div className="navbar-note-footer">
                 <span className="navbar-note-meta">{campaignBanner.meta}</span>
                 <span className="navbar-note-cta">

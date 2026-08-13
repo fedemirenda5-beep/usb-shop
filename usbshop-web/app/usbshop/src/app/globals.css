@@ -344,19 +344,19 @@ a:focus-visible {
   max-width: 720px;
   margin: 0;
   justify-self: stretch;
-  padding: 11px 18px 12px;
-  border-radius: 18px;
+  padding: 14px 18px 14px;
+  border-radius: 24px;
   border: 1px solid rgba(37, 99, 235, 0.16);
   background:
     linear-gradient(135deg, rgba(227, 240, 255, 0.98), rgba(241, 245, 249, 0.94)),
     linear-gradient(90deg, rgba(116, 192, 252, 0.08), rgba(132, 204, 22, 0.1));
   color: #334155;
   text-align: left;
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
+  align-items: center;
+  gap: 18px;
   overflow: hidden;
   position: relative;
   transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
@@ -380,8 +380,16 @@ a:focus-visible {
 
 .navbar-note-copy {
   display: grid;
-  gap: 5px;
+  gap: 8px;
   min-width: 0;
+}
+
+.navbar-note-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .navbar-note-kicker {
@@ -393,20 +401,58 @@ a:focus-visible {
   color: #2563eb;
 }
 
+.navbar-note-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #334155;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
 .navbar-note-title {
   font-family: var(--font-head);
-  font-size: 20px;
-  line-height: 1.04;
-  letter-spacing: -0.03em;
+  font-size: 24px;
+  line-height: 0.98;
+  letter-spacing: -0.04em;
   color: #0f172a;
+  text-wrap: balance;
 }
 
 .navbar-note-text {
   font-size: 12px;
   font-weight: 500;
-  line-height: 1.55;
+  line-height: 1.65;
   color: #475569;
   max-width: 56ch;
+}
+
+.navbar-note-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.navbar-note-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(191, 219, 254, 0.6);
+  color: #1e3a8a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .navbar-note-footer {
@@ -456,93 +502,151 @@ a:focus-visible {
 
 .navbar-note-visual {
   position: relative;
-  width: 90px;
-  height: 52px;
+  width: 128px;
+  height: 92px;
   flex: 0 0 auto;
 }
 
 .navbar-note-visual--childrensday {
-  width: 90px;
-  height: 52px;
+  width: 128px;
+  height: 92px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: 16px;
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 26px;
   background:
-    radial-gradient(circle at top right, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 48%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.62), rgba(254, 249, 195, 0.26) 55%, rgba(191, 219, 254, 0.42));
+    radial-gradient(circle at 74% 16%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0) 34%),
+    radial-gradient(circle at 18% 24%, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0) 32%),
+    linear-gradient(145deg, rgba(14, 116, 144, 0.22), rgba(250, 204, 21, 0.16) 40%, rgba(244, 114, 182, 0.16) 72%, rgba(59, 130, 246, 0.2));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    0 10px 18px rgba(59, 130, 246, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    0 18px 28px rgba(59, 130, 246, 0.16);
 }
 
-.navbar-note-kids-track {
+.navbar-note-visual--childrensday::before {
+  content: "";
   position: absolute;
-  pointer-events: none;
-}
-
-.navbar-note-kids-track--sky {
-  inset: 8px 10px auto 20px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
-}
-
-.navbar-note-kids-track--rail {
-  left: 12px;
-  right: 6px;
-  bottom: 9px;
-  height: 5px;
-  border-radius: 999px;
+  inset: 9px 10px 10px;
+  border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(100, 116, 139, 0.42), rgba(71, 85, 105, 0.2)),
-    repeating-linear-gradient(90deg, rgba(71, 85, 105, 0.2) 0 8px, rgba(255, 255, 255, 0) 8px 16px);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.32)),
+    linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(244, 114, 182, 0.14));
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.84),
+    inset 0 -20px 28px rgba(148, 163, 184, 0.08);
 }
 
-.navbar-note-kids-track--road {
-  left: 42px;
-  right: 4px;
-  bottom: 4px;
-  height: 7px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(147, 197, 253, 0.12), rgba(255, 255, 255, 0.9), rgba(147, 197, 253, 0.12));
-}
-
-.navbar-note-kids-vehicle {
+.navbar-note-kids-aura {
   position: absolute;
-  opacity: 0;
-  filter: drop-shadow(0 10px 18px rgba(15, 23, 42, 0.16));
-  animation-duration: 12.8s;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
+  inset: 10px 8px 8px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 16% 18%, rgba(125, 211, 252, 0.9), rgba(125, 211, 252, 0) 28%),
+    radial-gradient(circle at 82% 24%, rgba(250, 204, 21, 0.62), rgba(250, 204, 21, 0) 24%),
+    radial-gradient(circle at 50% 84%, rgba(244, 114, 182, 0.28), rgba(244, 114, 182, 0) 34%);
+  filter: blur(6px);
+  opacity: 0.92;
+  z-index: 0;
 }
 
-.navbar-note-kids-vehicle img {
+.navbar-note-kids-grid {
+  position: absolute;
+  inset: 12px 12px 12px;
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(148, 163, 184, 0.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.2) 1px, transparent 1px);
+  background-size: 16px 16px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.64), rgba(0, 0, 0, 0.12));
+  z-index: 0;
+}
+
+.navbar-note-kids-ribbon {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 16px rgba(15, 23, 42, 0.18);
+  z-index: 3;
+}
+
+.navbar-note-kids-card {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.7)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(219, 234, 254, 0.22));
+  box-shadow:
+    0 16px 24px rgba(15, 23, 42, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+
+.navbar-note-kids-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.5), transparent 40%, rgba(255, 255, 255, 0.24) 72%, transparent 100%);
+  opacity: 0.9;
+}
+
+.navbar-note-kids-card img {
+  position: relative;
   display: block;
   width: 100%;
   height: auto;
   pointer-events: none;
   user-select: none;
+  z-index: 1;
 }
 
-.navbar-note-kids-vehicle--plane {
-  top: 2px;
-  left: -2px;
-  width: 46px;
-  animation-name: navbarKidsPlane;
+.navbar-note-kids-card--plane {
+  top: 22px;
+  left: 12px;
+  width: 44px;
+  height: 28px;
+  padding: 4px;
+  transform: rotate(-10deg);
+  animation: navbarKidsCardPlane 7.2s ease-in-out infinite;
+  z-index: 2;
 }
 
-.navbar-note-kids-vehicle--train {
-  left: 4px;
-  bottom: 4px;
-  width: 66px;
-  animation-name: navbarKidsTrain;
+.navbar-note-kids-card--train {
+  left: 26px;
+  bottom: 12px;
+  width: 62px;
+  height: 34px;
+  padding: 5px 6px;
+  transform: rotate(-3deg);
+  animation: navbarKidsCardTrain 7.6s ease-in-out infinite;
+  z-index: 4;
 }
 
-.navbar-note-kids-vehicle--car {
-  right: -1px;
-  bottom: 0;
+.navbar-note-kids-card--car {
+  right: 12px;
+  top: 28px;
   width: 42px;
-  animation-name: navbarKidsCar;
+  height: 28px;
+  padding: 4px;
+  transform: rotate(9deg);
+  animation: navbarKidsCardCar 6.8s ease-in-out infinite;
+  z-index: 3;
 }
 
 .navbar-note-confetti {
@@ -655,44 +759,30 @@ a:focus-visible {
   }
 }
 
-@keyframes navbarKidsPlane {
-  0%, 8%, 100% {
-    opacity: 0;
-    transform: translate3d(-14px, 4px, 0) scale(0.9) rotate(-6deg);
+@keyframes navbarKidsCardPlane {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(-10deg);
   }
-  12%, 28% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1) rotate(-2deg);
-  }
-  34% {
-    opacity: 0;
-    transform: translate3d(12px, -4px, 0) scale(1.02) rotate(2deg);
+  50% {
+    transform: translate3d(4px, -3px, 0) rotate(-7deg);
   }
 }
 
-@keyframes navbarKidsTrain {
-  0%, 34%, 100% {
-    opacity: 0;
-    transform: translate3d(-12px, 3px, 0) scale(0.9);
+@keyframes navbarKidsCardTrain {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(-3deg);
   }
-  40%, 60% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  66% {
-    opacity: 0;
-    transform: translate3d(12px, 0, 0) scale(1.02);
+  50% {
+    transform: translate3d(2px, -4px, 0) rotate(-1deg);
   }
 }
 
-@keyframes navbarKidsCar {
-  0%, 68%, 100% {
-    opacity: 0;
-    transform: translate3d(10px, 4px, 0) scale(0.9);
+@keyframes navbarKidsCardCar {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) rotate(9deg);
   }
-  74%, 92% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+  50% {
+    transform: translate3d(-4px, -3px, 0) rotate(12deg);
   }
 }
 
@@ -3270,7 +3360,18 @@ input.button {
   }
 
   .navbar-note-copy {
-    gap: 2px;
+    gap: 5px;
+  }
+
+  .navbar-note-topline {
+    gap: 6px;
+  }
+
+  .navbar-note-chip,
+  .navbar-note-badge,
+  .navbar-note-meta,
+  .navbar-note-cta {
+    letter-spacing: 0.1em;
   }
 
   .navbar-note-kicker {
@@ -3300,43 +3401,54 @@ input.button {
   .navbar-note-visual--childrensday {
     width: 72px;
     height: 44px;
+    border-radius: 16px;
   }
 
-  .navbar-note-kids-track--sky {
-    inset: 7px 8px auto 15px;
-    height: 2px;
+  .navbar-note-kids-aura {
+    inset: 6px 5px 5px;
+    filter: blur(4px);
   }
 
-  .navbar-note-kids-track--rail {
-    left: 8px;
+  .navbar-note-kids-grid {
+    inset: 7px;
+    background-size: 10px 10px;
+  }
+
+  .navbar-note-kids-ribbon {
+    top: 6px;
+    left: 7px;
+    min-height: 12px;
+    padding: 0 5px;
+    font-size: 4px;
+    letter-spacing: 0.16em;
+  }
+
+  .navbar-note-kids-card {
+    border-radius: 10px;
+  }
+
+  .navbar-note-kids-card--plane {
+    top: 10px;
+    left: 5px;
+    width: 24px;
+    height: 15px;
+    padding: 2px;
+  }
+
+  .navbar-note-kids-card--train {
+    left: 13px;
+    bottom: 5px;
+    width: 33px;
+    height: 18px;
+    padding: 2px 3px;
+  }
+
+  .navbar-note-kids-card--car {
     right: 5px;
-    bottom: 7px;
-    height: 4px;
-  }
-
-  .navbar-note-kids-track--road {
-    left: 31px;
-    right: 4px;
-    bottom: 3px;
-    height: 6px;
-  }
-
-  .navbar-note-kids-vehicle--plane {
-    top: 2px;
-    left: -1px;
-    width: 35px;
-  }
-
-  .navbar-note-kids-vehicle--train {
-    left: 2px;
-    bottom: 3px;
-    width: 50px;
-  }
-
-  .navbar-note-kids-vehicle--car {
-    right: -1px;
-    bottom: 0;
-    width: 32px;
+    top: 12px;
+    width: 22px;
+    height: 15px;
+    padding: 2px;
   }
 
   .navbar-note--childrensday {
