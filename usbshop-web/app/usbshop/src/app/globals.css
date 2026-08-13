@@ -543,57 +543,51 @@ a:focus-visible {
     inset 0 -20px 28px rgba(148, 163, 184, 0.08);
 }
 
-.navbar-note-kids-aura {
+.navbar-note-visual--childrensday::after {
+  content: "";
   position: absolute;
-  inset: 10px 8px 8px;
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 16% 18%, rgba(125, 211, 252, 0.9), rgba(125, 211, 252, 0) 28%),
-    radial-gradient(circle at 82% 24%, rgba(250, 204, 21, 0.62), rgba(250, 204, 21, 0) 24%),
-    radial-gradient(circle at 50% 84%, rgba(244, 114, 182, 0.28), rgba(244, 114, 182, 0) 34%);
-  filter: blur(6px);
-  opacity: 0.92;
-  z-index: 0;
-}
-
-.navbar-note-kids-grid {
-  position: absolute;
-  inset: 12px 12px 12px;
-  border-radius: 18px;
-  background:
-    linear-gradient(rgba(148, 163, 184, 0.2) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.2) 1px, transparent 1px);
-  background-size: 16px 16px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.64), rgba(0, 0, 0, 0.12));
-  z-index: 0;
-}
-
-.navbar-note-kids-ribbon {
-  position: absolute;
-  top: 12px;
-  left: 14px;
-  display: inline-flex;
-  align-items: center;
-  min-height: 18px;
-  padding: 0 8px;
+  inset: auto -10px -16px auto;
+  width: 68px;
+  height: 68px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.72);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  box-shadow: 0 10px 16px rgba(15, 23, 42, 0.18);
-  z-index: 3;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 68%);
+  pointer-events: none;
 }
 
-.navbar-note-kids-card {
+.navbar-note-kids-orbit {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+  z-index: 0;
+}
+
+.navbar-note-kids-orbit--one {
+  width: 78px;
+  height: 78px;
+  top: 6px;
+  right: 6px;
+  opacity: 0.42;
+  transform: rotate(12deg);
+}
+
+.navbar-note-kids-orbit--two {
+  width: 58px;
+  height: 58px;
+  bottom: 8px;
+  left: 6px;
+  opacity: 0.28;
+  transform: rotate(-18deg);
+}
+
+.navbar-note-kids-device {
   position: absolute;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.7)),
     linear-gradient(135deg, rgba(255, 255, 255, 0.42), rgba(219, 234, 254, 0.22));
@@ -602,9 +596,10 @@ a:focus-visible {
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(10px);
   overflow: hidden;
+  transform-origin: center;
 }
 
-.navbar-note-kids-card::before {
+.navbar-note-kids-device::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -612,47 +607,107 @@ a:focus-visible {
   opacity: 0.9;
 }
 
-.navbar-note-kids-card img {
+.navbar-note-kids-screen {
   position: relative;
   display: block;
-  width: 100%;
-  height: auto;
-  pointer-events: none;
-  user-select: none;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 72% 18%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 24%),
+    linear-gradient(135deg, #2563eb, #0f172a 54%, #db2777);
   z-index: 1;
 }
 
-.navbar-note-kids-card--plane {
-  top: 22px;
-  left: 12px;
-  width: 44px;
-  height: 28px;
-  padding: 4px;
+.navbar-note-kids-screen--tablet {
+  width: 100%;
+  height: 100%;
+}
+
+.navbar-note-kids-screen--console {
+  width: 26px;
+  height: 16px;
+}
+
+.navbar-note-kids-device--tablet {
+  top: 15px;
+  left: 11px;
+  width: 40px;
+  height: 54px;
+  padding: 5px;
+  border-radius: 16px;
   transform: rotate(-10deg);
-  animation: navbarKidsCardPlane 7.2s ease-in-out infinite;
+  animation: navbarKidsTabletFloat 6.8s ease-in-out infinite;
   z-index: 2;
 }
 
-.navbar-note-kids-card--train {
-  left: 26px;
+.navbar-note-kids-device--console {
+  left: 34px;
   bottom: 12px;
-  width: 62px;
-  height: 34px;
-  padding: 5px 6px;
-  transform: rotate(-3deg);
-  animation: navbarKidsCardTrain 7.6s ease-in-out infinite;
+  width: 56px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 16px;
+  gap: 8px;
+  transform: rotate(-2deg);
+  animation: navbarKidsConsoleFloat 7.4s ease-in-out infinite;
   z-index: 4;
 }
 
-.navbar-note-kids-card--car {
+.navbar-note-kids-console-dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #cbd5e1;
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.18);
+  z-index: 1;
+}
+
+.navbar-note-kids-console-dot--left {
+  left: 8px;
+}
+
+.navbar-note-kids-console-dot--right {
+  right: 8px;
+}
+
+.navbar-note-kids-device--earbuds {
   right: 12px;
-  top: 28px;
-  width: 42px;
-  height: 28px;
-  padding: 4px;
-  transform: rotate(9deg);
-  animation: navbarKidsCardCar 6.8s ease-in-out infinite;
+  top: 20px;
+  width: 30px;
+  height: 44px;
+  padding: 7px 5px;
+  border-radius: 14px;
+  flex-direction: column;
+  justify-content: space-between;
+  transform: rotate(8deg);
+  animation: navbarKidsEarbudsFloat 6.2s ease-in-out infinite;
   z-index: 3;
+}
+
+.navbar-note-kids-earbud {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 34%),
+    linear-gradient(135deg, #38bdf8, #1d4ed8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 6px 12px rgba(37, 99, 235, 0.18);
+  z-index: 1;
+}
+
+.navbar-note-kids-earbud::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 9px;
+  width: 4px;
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(191, 219, 254, 0.86));
+  transform: translateX(-50%);
 }
 
 .navbar-note-confetti {
@@ -765,30 +820,30 @@ a:focus-visible {
   }
 }
 
-@keyframes navbarKidsCardPlane {
+@keyframes navbarKidsTabletFloat {
   0%, 100% {
     transform: translate3d(0, 0, 0) rotate(-10deg);
   }
   50% {
-    transform: translate3d(4px, -3px, 0) rotate(-7deg);
+    transform: translate3d(3px, -3px, 0) rotate(-7deg);
   }
 }
 
-@keyframes navbarKidsCardTrain {
+@keyframes navbarKidsConsoleFloat {
   0%, 100% {
-    transform: translate3d(0, 0, 0) rotate(-3deg);
+    transform: translate3d(0, 0, 0) rotate(-2deg);
   }
   50% {
-    transform: translate3d(2px, -4px, 0) rotate(-1deg);
+    transform: translate3d(2px, -3px, 0) rotate(0deg);
   }
 }
 
-@keyframes navbarKidsCardCar {
+@keyframes navbarKidsEarbudsFloat {
   0%, 100% {
-    transform: translate3d(0, 0, 0) rotate(9deg);
+    transform: translate3d(0, 0, 0) rotate(8deg);
   }
   50% {
-    transform: translate3d(-4px, -3px, 0) rotate(12deg);
+    transform: translate3d(-2px, -4px, 0) rotate(10deg);
   }
 }
 
@@ -3425,51 +3480,82 @@ input.button {
     border-radius: 16px;
   }
 
-  .navbar-note-kids-aura {
-    inset: 6px 5px 5px;
-    filter: blur(4px);
+  .navbar-note-kids-orbit--one {
+    width: 34px;
+    height: 34px;
+    top: 4px;
+    right: 4px;
   }
 
-  .navbar-note-kids-grid {
-    inset: 7px;
-    background-size: 10px 10px;
+  .navbar-note-kids-orbit--two {
+    width: 24px;
+    height: 24px;
+    left: 4px;
+    bottom: 5px;
   }
 
-  .navbar-note-kids-ribbon {
-    top: 6px;
-    left: 7px;
-    min-height: 12px;
-    padding: 0 5px;
-    font-size: 4px;
-    letter-spacing: 0.16em;
-  }
-
-  .navbar-note-kids-card {
+  .navbar-note-kids-device {
     border-radius: 10px;
   }
 
-  .navbar-note-kids-card--plane {
-    top: 10px;
+  .navbar-note-kids-device--tablet {
+    top: 8px;
     left: 5px;
-    width: 24px;
-    height: 15px;
+    width: 18px;
+    height: 25px;
     padding: 2px;
   }
 
-  .navbar-note-kids-card--train {
-    left: 13px;
+  .navbar-note-kids-device--console {
+    left: 17px;
     bottom: 5px;
-    width: 33px;
-    height: 18px;
-    padding: 2px 3px;
+    width: 31px;
+    height: 16px;
+    padding: 0 6px;
+    border-radius: 9px;
+    gap: 4px;
   }
 
-  .navbar-note-kids-card--car {
+  .navbar-note-kids-screen {
+    border-radius: 5px;
+  }
+
+  .navbar-note-kids-screen--console {
+    width: 14px;
+    height: 8px;
+  }
+
+  .navbar-note-kids-console-dot {
+    width: 3px;
+    height: 3px;
+  }
+
+  .navbar-note-kids-console-dot--left {
+    left: 4px;
+  }
+
+  .navbar-note-kids-console-dot--right {
+    right: 4px;
+  }
+
+  .navbar-note-kids-device--earbuds {
     right: 5px;
-    top: 12px;
-    width: 22px;
-    height: 15px;
-    padding: 2px;
+    top: 8px;
+    width: 15px;
+    height: 24px;
+    padding: 4px 2px;
+    border-radius: 8px;
+  }
+
+  .navbar-note-kids-earbud {
+    width: 6px;
+    height: 6px;
+  }
+
+  .navbar-note-kids-earbud::after {
+    top: 4px;
+    width: 2px;
+    height: 4px;
   }
 
   .navbar-note--childrensday {

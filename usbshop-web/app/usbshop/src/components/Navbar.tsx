@@ -189,17 +189,19 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
 
   return (
     <div className="navbar-note-visual navbar-note-visual--childrensday" aria-hidden="true">
-      <span className="navbar-note-kids-aura" />
-      <span className="navbar-note-kids-grid" />
-      <span className="navbar-note-kids-ribbon">Kids tech picks</span>
-      <span className="navbar-note-kids-card navbar-note-kids-card--plane">
-        <img src="/seasonal/childrensday-plane.png" alt="" />
+      <span className="navbar-note-kids-orbit navbar-note-kids-orbit--one" />
+      <span className="navbar-note-kids-orbit navbar-note-kids-orbit--two" />
+      <span className="navbar-note-kids-device navbar-note-kids-device--tablet">
+        <span className="navbar-note-kids-screen navbar-note-kids-screen--tablet" />
       </span>
-      <span className="navbar-note-kids-card navbar-note-kids-card--train">
-        <img src="/seasonal/childrensday-train.png" alt="" />
+      <span className="navbar-note-kids-device navbar-note-kids-device--console">
+        <span className="navbar-note-kids-screen navbar-note-kids-screen--console" />
+        <span className="navbar-note-kids-console-dot navbar-note-kids-console-dot--left" />
+        <span className="navbar-note-kids-console-dot navbar-note-kids-console-dot--right" />
       </span>
-      <span className="navbar-note-kids-card navbar-note-kids-card--car">
-        <img src="/seasonal/childrensday-car.png" alt="" />
+      <span className="navbar-note-kids-device navbar-note-kids-device--earbuds">
+        <span className="navbar-note-kids-earbud navbar-note-kids-earbud--left" />
+        <span className="navbar-note-kids-earbud navbar-note-kids-earbud--right" />
       </span>
     </div>
   );
