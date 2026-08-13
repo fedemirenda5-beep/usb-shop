@@ -222,59 +222,12 @@ export default function CuentasCorrientesPage() {
     },
   });
 
-  const mapBackofficeCustomers = (rows: Array<Record<string, unknown>>) => {
-    const normalized = rows
-      .map((row) => {
-        const balance = Number(row.balance || 0);
-        return {
-          id: Number(row.id || 0),
-          name: String(row.name || 'Sin nombre'),
-          email: typeof row.email === 'string' ? row.email : null,
-          phone: typeof row.phone === 'string' ? row.phone : null,
-          sale_mode: typeof row.sale_mode === 'string' ? row.sale_mode : null,
-          locality: typeof row.locality === 'string' ? row.locality : null,
-          address: typeof row.address === 'string' ? row.address : null,
-          tax_condition: typeof row.tax_condition === 'string' ? row.tax_condition : null,
-          cuit: typeof row.cuit === 'string' ? row.cuit : null,
-          debit: balance > 0 ? balance : 0,
-          credit: balance < 0 ? Math.abs(balance) : 0,
-          balance,
-          aging: { ...emptyAging(), total: Math.max(0, balance) },
-          classification: {
-            ...emptyAging().classification,
-            pending: Math.max(0, balance),
-          },
-          last_movement: null,
-        };
-      })
-      .filter((item) => item.balance !== 0 || String(item.sale_mode || '').trim().toUpperCase() === 'CUENTA_CORRIENTE');
-    const debit = normalized.filter((item) => item.balance > 0).reduce((sum, item) => sum + item.balance, 0);
-    const credit = Math.abs(
-      normalized.filter((item) => item.balance < 0).reduce((sum, item) => sum + item.balance, 0)
-    );
-    return {
-      customers: normalized,
-      summary: {
-        customers: normalized.length,
-        debit,
-        credit,
-        balance: normalized.reduce((sum, item) => sum + item.balance, 0),
-        pending: normalized.reduce((sum, item) => sum + Math.max(0, item.balance), 0),
-        overdue: 0,
-        collected: 0,
-        credit_notes: 0,
-        writeoffs: 0,
-        adjustments: 0,
-      },
-    };
-  };
-
   async function loadOverview() {
     const requestId = overviewRequestRef.current + 1;
     overviewRequestRef.current = requestId;
     setLoading(true);
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=${ADMIN_LIMITS.customersLargeList}`, { credentials: 'include' });
+    const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(
@@ -284,10 +237,9 @@ export default function CuentasCorrientesPage() {
       );
     }
     if (overviewRequestRef.current !== requestId) return;
-    const mapped = mapBackofficeCustomers(Array.isArray(data) ? data : []);
-    setCustomers(mapped.customers);
+    setCustomers(Array.isArray(data?.customers) ? data.customers : []);
     setSummary(
-      mapped.summary || {
+      data?.summary || {
         customers: 0,
         debit: 0,
         credit: 0,

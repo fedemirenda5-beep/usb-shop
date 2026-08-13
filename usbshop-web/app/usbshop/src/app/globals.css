@@ -3535,8 +3535,8 @@ input.button {
   }
 
   .navbar-note-visual {
-    width: 84px;
-    height: 48px;
+    width: 76px;
+    height: 46px;
   }
 
   .navbar-note-visual--catalog {
@@ -3546,8 +3546,8 @@ input.button {
   }
 
   .navbar-note-visual--childrensday {
-    width: 84px;
-    height: 48px;
+    width: 76px;
+    height: 46px;
     border-radius: 16px;
   }
 
@@ -3658,17 +3658,23 @@ input.button {
   }
 
   .navbar-note--childrensday {
-    grid-template-columns: 80px minmax(0, 1fr);
-    gap: 8px;
-    align-items: center;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
   }
 
   .navbar-note--childrensday .navbar-note-visual--childrensday {
     justify-self: start;
+    margin-top: 1px;
   }
 
   .navbar-note--childrensday .navbar-note-topline {
     margin-bottom: 1px;
+  }
+
+  .navbar-note--childrensday .navbar-note-title {
+    font-size: 15px;
+    line-height: 1.06;
   }
 
   .navbar-note--childrensday .navbar-note-footer {

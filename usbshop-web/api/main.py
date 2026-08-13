@@ -816,6 +816,14 @@ def _set_admin_cc_overview_cache(role: str, payload: dict[str, Any]) -> dict[str
     return _set_admin_cached_payload(f"cc-overview:{role}", payload)
 
 
+def _get_admin_daily_report_cache(role: str, start_date: str, end_date: str) -> Optional[dict[str, Any]]:
+    return _get_admin_cached_payload(f"daily-report:{role}:{start_date}:{end_date}")
+
+
+def _set_admin_daily_report_cache(role: str, start_date: str, end_date: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return _set_admin_cached_payload(f"daily-report:{role}:{start_date}:{end_date}", payload)
+
+
 def _ensure_users_table(conn: DBConn) -> None:
     if DB_IS_POSTGRES:
         conn.execute(
@@ -9656,7 +9664,8 @@ def admin_reports_daily(
     end_date: Optional[str] = None,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
-    _require_full_admin(session_token)
+    session_payload = _require_full_admin(session_token)
+    session_role = str(session_payload.get("role") or "").strip().lower() or ROLE_STAFF
     target_date = _argentina_now().date()
     range_start = None
     range_end = None
@@ -9679,6 +9688,13 @@ def admin_reports_daily(
         raise HTTPException(status_code=400, detail="La fecha inicial no puede ser mayor a la final")
     effective_start = range_start or target_date
     effective_end = range_end or target_date
+    cached_payload = _get_admin_daily_report_cache(
+        session_role,
+        effective_start.isoformat(),
+        effective_end.isoformat(),
+    )
+    if cached_payload is not None:
+        return cached_payload
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
@@ -9840,7 +9856,11 @@ def admin_reports_daily(
         total_sales = round(sum(float(item["total"]) for item in selected_invoices), 2)
         total_commissions = round(sum(float(item["commission"]) for item in sellers), 2)
         invoice_count = len(selected_invoices)
-        return {
+        return _set_admin_daily_report_cache(
+            session_role,
+            effective_start.isoformat(),
+            effective_end.isoformat(),
+            {
             "date": target_date.isoformat(),
             "start_date": effective_start.isoformat(),
             "end_date": effective_end.isoformat(),
@@ -9857,7 +9877,8 @@ def admin_reports_daily(
             "customers": customers,
             "sellers": sellers,
             "invoices": selected_invoices,
-        }
+            },
+        )
     finally:
         conn.close()
 
