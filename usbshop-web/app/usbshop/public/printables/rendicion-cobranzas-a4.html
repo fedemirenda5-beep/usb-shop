@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rendicion diaria de cobranzas</title>
+    <style>
+      :root {
+        --ink: #0f172a;
+        --muted: #475569;
+        --line: #cbd5e1;
+        --soft: #e2e8f0;
+        --panel: #f8fafc;
+        --accent: #1d4ed8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #eef2f7;
+        color: var(--ink);
+        font-family: "Segoe UI", Tahoma, sans-serif;
+      }
+
+      body {
+        padding: 12mm;
+      }
+
+      .sheet {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 6mm;
+        background: white;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4mm;
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+      }
+
+      .slip {
+        min-height: 138mm;
+        border: 1px solid var(--line);
+        border-radius: 3mm;
+        padding: 4mm;
+        display: grid;
+        gap: 3mm;
+        background:
+          linear-gradient(180deg, rgba(248, 250, 252, 0.88), rgba(255, 255, 255, 1) 24mm),
+          white;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        gap: 4mm;
+        align-items: flex-start;
+        padding-bottom: 2.5mm;
+        border-bottom: 1px solid var(--soft);
+      }
+
+      .brand {
+        display: grid;
+        gap: 1mm;
+      }
+
+      .eyebrow {
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .title {
+        font-size: 13pt;
+        line-height: 1.05;
+        font-weight: 800;
+      }
+
+      .subtitle {
+        font-size: 8pt;
+        color: var(--muted);
+        max-width: 75mm;
+      }
+
+      .folio {
+        min-width: 28mm;
+        border: 1px solid var(--soft);
+        border-radius: 2.5mm;
+        padding: 2.5mm 3mm;
+        background: rgba(248, 250, 252, 0.95);
+        display: grid;
+        gap: 0.5mm;
+        text-align: right;
+      }
+
+      .folio span {
+        font-size: 7pt;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+      }
+
+      .folio strong {
+        font-size: 12pt;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 2mm;
+      }
+
+      .field {
+        min-height: 12mm;
+        border: 1px solid var(--soft);
+        border-radius: 2.5mm;
+        padding: 2mm 2.5mm;
+        display: grid;
+        gap: 1mm;
+        background: white;
+      }
+
+      .field span {
+        font-size: 7pt;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .line {
+        min-height: 5mm;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .detail {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 7.5pt;
+      }
+
+      .detail thead th {
+        text-align: left;
+        padding: 1.5mm 1.5mm;
+        border: 1px solid var(--soft);
+        background: var(--panel);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 6.8pt;
+        color: var(--muted);
+      }
+
+      .detail tbody td {
+        height: 7mm;
+        border: 1px solid var(--soft);
+        padding: 1mm 1.5mm;
+        vertical-align: middle;
+      }
+
+      .detail .col-concepto {
+        width: 24%;
+      }
+
+      .detail .col-ref {
+        width: 18%;
+      }
+
+      .detail .col-detalle {
+        width: 40%;
+      }
+
+      .detail .col-importe {
+        width: 18%;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 2mm;
+      }
+
+      .summary-card {
+        border: 1px solid var(--soft);
+        border-radius: 2.5mm;
+        padding: 2mm 2.5mm;
+        display: grid;
+        gap: 1mm;
+        background: var(--panel);
+      }
+
+      .summary-card span {
+        font-size: 7pt;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .summary-card strong {
+        min-height: 5mm;
+        border-bottom: 1px solid var(--line);
+        font-size: 9.5pt;
+      }
+
+      .notes {
+        min-height: 14mm;
+        border: 1px solid var(--soft);
+        border-radius: 2.5mm;
+        padding: 2mm 2.5mm;
+        display: grid;
+        gap: 1mm;
+      }
+
+      .notes span {
+        font-size: 7pt;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .notes .write-area {
+        flex: 1;
+        border-bottom: 1px dashed var(--line);
+      }
+
+      .signatures {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4mm;
+        margin-top: 1mm;
+      }
+
+      .signature {
+        display: grid;
+        gap: 1mm;
+      }
+
+      .signature .sign-line {
+        height: 8mm;
+        border-bottom: 1px solid var(--ink);
+      }
+
+      .signature span {
+        font-size: 7pt;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .cut {
+        position: relative;
+      }
+
+      .cut::after {
+        content: "";
+        position: absolute;
+        inset-inline: -2mm;
+        bottom: -2.1mm;
+        border-bottom: 1px dashed rgba(71, 85, 105, 0.45);
+      }
+
+      .sheet .slip:nth-child(3)::after,
+      .sheet .slip:nth-child(4)::after {
+        display: none;
+      }
+
+      @page {
+        size: A4;
+        margin: 6mm;
+      }
+
+      @media print {
+        html,
+        body {
+          background: white;
+        }
+
+        body {
+          padding: 0;
+        }
+
+        .sheet {
+          margin: 0;
+          padding: 0;
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="sheet">
+      <section class="slip cut">
+        <header class="header">
+          <div class="brand">
+            <span class="eyebrow">Rendicion diaria</span>
+            <div class="title">Entrega de cobranzas y gastos</div>
+            <div class="subtitle">Control simple para que el vendedor entregue efectivo, detalle cobrado y gastos del dia.</div>
+          </div>
+          <div class="folio">
+            <span>Comprobante</span>
+            <strong>____</strong>
+          </div>
+        </header>
+
+        <div class="meta-grid">
+          <div class="field"><span>Vendedor</span><div class="line"></div></div>
+          <div class="field"><span>Fecha</span><div class="line"></div></div>
+          <div class="field"><span>Hora de entrega</span><div class="line"></div></div>
+          <div class="field"><span>Recibe</span><div class="line"></div></div>
+        </div>
+
+        <table class="detail">
+          <thead>
+            <tr>
+              <th class="col-concepto">Concepto</th>
+              <th class="col-ref">Factura / Ref.</th>
+              <th class="col-detalle">Cliente / Detalle</th>
+              <th class="col-importe">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+
+        <div class="summary">
+          <div class="summary-card"><span>Total cobranzas</span><strong></strong></div>
+          <div class="summary-card"><span>Total gastos</span><strong></strong></div>
+          <div class="summary-card"><span>Neto entregado</span><strong></strong></div>
+        </div>
+
+        <div class="notes">
+          <span>Observaciones</span>
+          <div class="write-area"></div>
+        </div>
+
+        <div class="signatures">
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma vendedor</span>
+          </div>
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma quien recibe</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="slip cut">
+        <header class="header">
+          <div class="brand">
+            <span class="eyebrow">Rendicion diaria</span>
+            <div class="title">Entrega de cobranzas y gastos</div>
+            <div class="subtitle">Control simple para que el vendedor entregue efectivo, detalle cobrado y gastos del dia.</div>
+          </div>
+          <div class="folio">
+            <span>Comprobante</span>
+            <strong>____</strong>
+          </div>
+        </header>
+
+        <div class="meta-grid">
+          <div class="field"><span>Vendedor</span><div class="line"></div></div>
+          <div class="field"><span>Fecha</span><div class="line"></div></div>
+          <div class="field"><span>Hora de entrega</span><div class="line"></div></div>
+          <div class="field"><span>Recibe</span><div class="line"></div></div>
+        </div>
+
+        <table class="detail">
+          <thead>
+            <tr>
+              <th class="col-concepto">Concepto</th>
+              <th class="col-ref">Factura / Ref.</th>
+              <th class="col-detalle">Cliente / Detalle</th>
+              <th class="col-importe">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+
+        <div class="summary">
+          <div class="summary-card"><span>Total cobranzas</span><strong></strong></div>
+          <div class="summary-card"><span>Total gastos</span><strong></strong></div>
+          <div class="summary-card"><span>Neto entregado</span><strong></strong></div>
+        </div>
+
+        <div class="notes">
+          <span>Observaciones</span>
+          <div class="write-area"></div>
+        </div>
+
+        <div class="signatures">
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma vendedor</span>
+          </div>
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma quien recibe</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="slip">
+        <header class="header">
+          <div class="brand">
+            <span class="eyebrow">Rendicion diaria</span>
+            <div class="title">Entrega de cobranzas y gastos</div>
+            <div class="subtitle">Control simple para que el vendedor entregue efectivo, detalle cobrado y gastos del dia.</div>
+          </div>
+          <div class="folio">
+            <span>Comprobante</span>
+            <strong>____</strong>
+          </div>
+        </header>
+
+        <div class="meta-grid">
+          <div class="field"><span>Vendedor</span><div class="line"></div></div>
+          <div class="field"><span>Fecha</span><div class="line"></div></div>
+          <div class="field"><span>Hora de entrega</span><div class="line"></div></div>
+          <div class="field"><span>Recibe</span><div class="line"></div></div>
+        </div>
+
+        <table class="detail">
+          <thead>
+            <tr>
+              <th class="col-concepto">Concepto</th>
+              <th class="col-ref">Factura / Ref.</th>
+              <th class="col-detalle">Cliente / Detalle</th>
+              <th class="col-importe">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+
+        <div class="summary">
+          <div class="summary-card"><span>Total cobranzas</span><strong></strong></div>
+          <div class="summary-card"><span>Total gastos</span><strong></strong></div>
+          <div class="summary-card"><span>Neto entregado</span><strong></strong></div>
+        </div>
+
+        <div class="notes">
+          <span>Observaciones</span>
+          <div class="write-area"></div>
+        </div>
+
+        <div class="signatures">
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma vendedor</span>
+          </div>
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma quien recibe</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="slip">
+        <header class="header">
+          <div class="brand">
+            <span class="eyebrow">Rendicion diaria</span>
+            <div class="title">Entrega de cobranzas y gastos</div>
+            <div class="subtitle">Control simple para que el vendedor entregue efectivo, detalle cobrado y gastos del dia.</div>
+          </div>
+          <div class="folio">
+            <span>Comprobante</span>
+            <strong>____</strong>
+          </div>
+        </header>
+
+        <div class="meta-grid">
+          <div class="field"><span>Vendedor</span><div class="line"></div></div>
+          <div class="field"><span>Fecha</span><div class="line"></div></div>
+          <div class="field"><span>Hora de entrega</span><div class="line"></div></div>
+          <div class="field"><span>Recibe</span><div class="line"></div></div>
+        </div>
+
+        <table class="detail">
+          <thead>
+            <tr>
+              <th class="col-concepto">Concepto</th>
+              <th class="col-ref">Factura / Ref.</th>
+              <th class="col-detalle">Cliente / Detalle</th>
+              <th class="col-importe">Importe</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+            <tr><td></td><td></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+
+        <div class="summary">
+          <div class="summary-card"><span>Total cobranzas</span><strong></strong></div>
+          <div class="summary-card"><span>Total gastos</span><strong></strong></div>
+          <div class="summary-card"><span>Neto entregado</span><strong></strong></div>
+        </div>
+
+        <div class="notes">
+          <span>Observaciones</span>
+          <div class="write-area"></div>
+        </div>
+
+        <div class="signatures">
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma vendedor</span>
+          </div>
+          <div class="signature">
+            <div class="sign-line"></div>
+            <span>Firma quien recibe</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
