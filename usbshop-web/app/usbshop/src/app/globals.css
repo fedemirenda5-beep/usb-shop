@@ -380,7 +380,7 @@ a:focus-visible {
 
 .navbar-note-copy {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -389,7 +389,7 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .navbar-note-kicker {
@@ -414,21 +414,23 @@ a:focus-visible {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  flex: 0 0 auto;
 }
 
 .navbar-note-title {
   font-family: var(--font-head);
-  font-size: 24px;
+  font-size: 22px;
   line-height: 0.98;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.045em;
   color: #0f172a;
   text-wrap: balance;
+  text-rendering: optimizeLegibility;
 }
 
 .navbar-note-text {
   font-size: 12px;
   font-weight: 500;
-  line-height: 1.65;
+  line-height: 1.4;
   color: #475569;
   max-width: 56ch;
 }
@@ -460,8 +462,9 @@ a:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 2px;
+  flex-wrap: nowrap;
+  margin-top: 0;
+  min-width: 0;
 }
 
 .navbar-note-meta {
@@ -477,6 +480,8 @@ a:focus-visible {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #475569;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .navbar-note-cta {
@@ -489,6 +494,7 @@ a:focus-visible {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #0f172a;
+  flex: 0 0 auto;
 }
 
 .navbar-note-cta span {
@@ -869,10 +875,15 @@ a:focus-visible {
 
 .navbar-note--childrensday .navbar-note-kicker {
   color: #db2777;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .navbar-note--childrensday .navbar-note-title {
-  color: #1d4ed8;
+  color: transparent;
+  background: linear-gradient(135deg, #1d4ed8, #0f172a 62%, #db2777);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 10px 24px rgba(29, 78, 216, 0.14);
 }
 
 .navbar-note--childrensday .navbar-note-meta {
@@ -883,11 +894,18 @@ a:focus-visible {
 
 .navbar-note--childrensday .navbar-note-copy {
   order: 2;
+  gap: 4px;
+}
+
+.navbar-note--childrensday .navbar-note-text {
+  color: #334155;
+  font-weight: 600;
 }
 
 .navbar-note--childrensday .navbar-note-visual--childrensday {
   order: 1;
   justify-self: start;
+  transform: translateZ(0);
 }
 
 .navbar-note--fathersday {
@@ -3360,11 +3378,12 @@ input.button {
   }
 
   .navbar-note-copy {
-    gap: 5px;
+    gap: 4px;
   }
 
   .navbar-note-topline {
     gap: 6px;
+    flex-wrap: nowrap;
   }
 
   .navbar-note-chip,
@@ -3380,11 +3399,13 @@ input.button {
   }
 
   .navbar-note-title {
-    font-size: 16px;
+    font-size: 17px;
+    line-height: 1;
   }
 
   .navbar-note-text {
-    font-size: 11px;
+    font-size: 10px;
+    line-height: 1.25;
   }
 
   .navbar-note-visual {
@@ -3459,6 +3480,24 @@ input.button {
 
   .navbar-note--childrensday .navbar-note-visual--childrensday {
     justify-self: start;
+  }
+
+  .navbar-note--childrensday .navbar-note-topline {
+    margin-bottom: 1px;
+  }
+
+  .navbar-note--childrensday .navbar-note-footer {
+    gap: 8px;
+  }
+
+  .navbar-note--childrensday .navbar-note-meta {
+    min-height: 22px;
+    padding: 0 7px;
+    font-size: 8px;
+  }
+
+  .navbar-note--childrensday .navbar-note-cta {
+    font-size: 9px;
   }
 
   .navbar-note-confetti {

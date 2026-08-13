@@ -285,24 +285,19 @@ export default function Navbar({
             <div className="navbar-note-copy">
               <div className="navbar-note-topline">
                 <span className="navbar-note-kicker">{campaignBanner.eyebrow}</span>
-                <span className="navbar-note-chip">Curaduria USB Shop</span>
+                {campaignBanner.theme !== "childrensday" ? (
+                  <span className="navbar-note-chip">Curaduria USB Shop</span>
+                ) : null}
               </div>
               {campaignBanner.title ? (
                 <strong className="navbar-note-title">{campaignBanner.title}</strong>
               ) : null}
               <span className="navbar-note-text">{campaignBanner.message}</span>
-              {campaignBanner.theme === "childrensday" ? (
-                <div className="navbar-note-badges" aria-hidden="true">
-                  <span className="navbar-note-badge">Seleccion especial</span>
-                  <span className="navbar-note-badge">Juguetes + tech</span>
-                  <span className="navbar-note-badge">Entrega rapida</span>
-                </div>
-              ) : null}
               <div className="navbar-note-footer">
                 <span className="navbar-note-meta">{campaignBanner.meta}</span>
                 <span className="navbar-note-cta">
                   {campaignBanner.ctaLabel}
-                  <span aria-hidden="true">→</span>
+                  <span aria-hidden="true">-&gt;</span>
                 </span>
               </div>
             </div>
