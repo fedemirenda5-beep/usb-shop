@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { canViewProfitMetrics } from '../../adminPermissions';
+import { ADMIN_LIMITS } from '../../adminConfig';
 import { ProductForm } from '../components/ProductForm';
 
 type ProductPayload = {
@@ -40,7 +41,10 @@ export default function NuevaProductoPage() {
       await loadRuntimeConfig();
       const [categoriesRes, productsRes] = await Promise.all([
         fetch(`${getApiBaseUrl()}/admin/categories`, { credentials: 'include' }),
-        fetch(`${getApiBaseUrl()}/admin/products?limit=2000`, { credentials: 'include' }),
+        fetch(
+          `${getApiBaseUrl()}/admin/products?limit=${ADMIN_LIMITS.productsLargeList}&summary=true`,
+          { credentials: 'include' }
+        ),
       ]);
       if (categoriesRes.ok) {
         const categoriesData = await categoriesRes.json().catch(() => []);

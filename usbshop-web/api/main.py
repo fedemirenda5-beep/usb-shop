@@ -4098,6 +4098,7 @@ def list_products(
     offset: int = 0,
     q: Optional[str] = None,
     sort: Optional[str] = None,
+    ids: Optional[str] = None,
 ) -> list[dict]:
     conn = _connect()
     try:
@@ -4164,6 +4165,21 @@ def list_products(
         if conditions:
             query += f" WHERE {' AND '.join(conditions)}"
         params: list = []
+        parsed_ids: list[int] = []
+        if ids:
+            for raw_value in str(ids).split(","):
+                raw_value = raw_value.strip()
+                if not raw_value:
+                    continue
+                try:
+                    parsed_ids.append(int(raw_value))
+                except ValueError:
+                    continue
+            parsed_ids = list(dict.fromkeys([value for value in parsed_ids if value > 0]))
+        if parsed_ids:
+            placeholders = ", ".join(["?"] * len(parsed_ids))
+            query += f" AND p.id IN ({placeholders})" if conditions else f" WHERE p.id IN ({placeholders})"
+            params.extend(parsed_ids)
         if q:
             query += " AND (p.name LIKE ? OR p.sku LIKE ?)" if conditions else " WHERE (p.name LIKE ? OR p.sku LIKE ?)"
             like = f"%{q}%"
@@ -5154,6 +5170,7 @@ def admin_list_products(
     category: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    summary: bool = False,
 ) -> list[dict]:
     """Lista productos. Requiere sesión admin."""
     _require_admin(session_token)
@@ -5198,6 +5215,17 @@ def admin_list_products(
             """,
             params + [limit, offset],
         ).fetchall()
+
+        if summary:
+            return [
+                {
+                    "id": int(row["id"]),
+                    "name": row["name"],
+                    "sku": row["sku"],
+                    "is_bundle": bool(row["is_bundle"]),
+                }
+                for row in rows
+            ]
 
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
@@ -5868,6 +5896,7 @@ def admin_backoffice_customers(
     q: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
+    summary: bool = False,
 ) -> list[dict]:
     _require_admin(session_token)
     conn = _connect()
@@ -5903,6 +5932,19 @@ def admin_backoffice_customers(
                     filtered_rows.append(row)
             rows = filtered_rows
         rows = rows[offset : offset + limit]
+        if summary:
+            return [
+                {
+                    "id": int(row["id"]),
+                    "name": row["name"],
+                    "email": row["email"],
+                    "phone": row["phone"],
+                    "sale_mode": row["sale_mode"],
+                    "cuit": row["cuit"],
+                    "seller_id": int(row["seller_id"]) if row["seller_id"] is not None else None,
+                }
+                for row in rows
+            ]
         movements = conn.execute(
             """
             SELECT customer_id, amount, movement_type

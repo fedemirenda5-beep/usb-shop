@@ -57,6 +57,7 @@ type SellerRangeSummary = {
 
 type DashboardPanel = 'overview' | 'ranking' | 'seller';
 type PerformanceWindow = 'day' | 'week' | 'month' | 'year';
+const SELLERS_AUTO_REFRESH_MS = 2 * 60 * 1000;
 
 type SellerMonthlyInvoiceItem = {
   product_id?: number | null;
@@ -900,7 +901,7 @@ export default function VendedoresPage() {
       if (canViewCommissionBreakdown) {
         void loadRangeSummary(true);
       }
-    }, 30000);
+    }, SELLERS_AUTO_REFRESH_MS);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {

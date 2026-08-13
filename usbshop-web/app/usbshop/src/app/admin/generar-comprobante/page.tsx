@@ -278,7 +278,10 @@ export default function GenerarComprobantePage() {
         setLoading(true);
         await loadRuntimeConfig();
         const [customersRes, productsRes, sellersRes, categoriesRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/backoffice-customers?limit=${ADMIN_LIMITS.customersLargeList}`, { credentials: 'include' }),
+          fetch(
+            `${getApiBaseUrl()}/admin/backoffice-customers?limit=${ADMIN_LIMITS.customersLargeList}&summary=true`,
+            { credentials: 'include' }
+          ),
           fetch(`${getApiBaseUrl()}/admin/products?limit=${ADMIN_LIMITS.productsLargeList}`, { credentials: 'include' }),
           fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { credentials: 'include' }),
           fetch(`${getApiBaseUrl()}/admin/categories`, { credentials: 'include' }),

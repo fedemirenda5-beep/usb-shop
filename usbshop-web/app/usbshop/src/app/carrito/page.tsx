@@ -85,6 +85,16 @@ export default function CartPage() {
     if (cartItems.length === 0) {
       return;
     }
+    const cartProductIds = Array.from(
+      new Set(
+        cartItems
+          .map((item) => Number(item.product.id))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )
+    );
+    if (cartProductIds.length === 0) {
+      return;
+    }
 
     const host = typeof window !== "undefined" ? window.location.hostname : "";
     const protocol = typeof window !== "undefined" ? window.location.protocol || "http:" : "http:";
@@ -100,10 +110,13 @@ export default function CartPage() {
 
     for (const baseUrl of bases) {
       try {
-        const response = await fetch(`${baseUrl}/products?limit=2000`, {
+        const response = await fetch(
+          `${baseUrl}/products?ids=${encodeURIComponent(cartProductIds.join(","))}&limit=${cartProductIds.length}`,
+          {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-        });
+          }
+        );
         if (!response.ok) {
           continue;
         }
