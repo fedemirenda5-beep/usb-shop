@@ -573,6 +573,113 @@ a:focus-visible {
   z-index: 1;
 }
 
+.navbar-note-pinata {
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  width: 24px;
+  height: 42px;
+  z-index: 3;
+  animation: navbarPinataSwing 3.8s ease-in-out infinite;
+}
+
+.navbar-note-pinata-string {
+  position: absolute;
+  left: 50%;
+  top: -8px;
+  width: 1px;
+  height: 10px;
+  background: rgba(148, 163, 184, 0.9);
+  transform: translateX(-50%);
+}
+
+.navbar-note-pinata-body {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 22px;
+  height: 16px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #facc15, #f97316);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 8px 14px rgba(15, 23, 42, 0.16);
+  transform: translateX(-50%);
+}
+
+.navbar-note-pinata-body--mid {
+  bottom: 11px;
+  width: 18px;
+  height: 13px;
+  background: linear-gradient(180deg, #fb7185, #ec4899);
+}
+
+.navbar-note-pinata-body--top {
+  bottom: 20px;
+  width: 14px;
+  height: 10px;
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+}
+
+.navbar-note-pinata-burst,
+.navbar-note-pinata-star {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.navbar-note-pinata-burst {
+  right: 16px;
+  top: 26px;
+  width: 5px;
+  height: 10px;
+  border-radius: 2px;
+  animation: navbarPinataBurst 2.4s ease-out infinite;
+}
+
+.navbar-note-pinata-burst--1 {
+  background: #38bdf8;
+  animation-delay: 0s;
+}
+
+.navbar-note-pinata-burst--2 {
+  background: #facc15;
+  animation-delay: 0.3s;
+}
+
+.navbar-note-pinata-burst--3 {
+  background: #fb7185;
+  animation-delay: 0.5s;
+}
+
+.navbar-note-pinata-burst--4 {
+  background: #a3e635;
+  animation-delay: 0.8s;
+}
+
+.navbar-note-pinata-star {
+  right: 18px;
+  top: 18px;
+  width: 8px;
+  height: 8px;
+  background: #fff7b1;
+  clip-path: polygon(50% 0%, 62% 36%, 100% 38%, 70% 58%, 82% 100%, 50% 74%, 18% 100%, 30% 58%, 0% 38%, 38% 36%);
+  filter: drop-shadow(0 2px 4px rgba(250, 204, 21, 0.35));
+  animation: navbarPinataStar 2.6s ease-out infinite;
+}
+
+.navbar-note-pinata-star--1 {
+  animation-delay: 0.1s;
+}
+
+.navbar-note-pinata-star--2 {
+  animation-delay: 0.6s;
+}
+
+.navbar-note-pinata-star--3 {
+  animation-delay: 1s;
+}
+
 .navbar-note-kids-stage {
   position: absolute;
   inset: 14px 12px 14px;
@@ -891,6 +998,43 @@ a:focus-visible {
   100% {
     transform: translateY(52px) rotate(220deg);
     opacity: 0;
+  }
+}
+
+@keyframes navbarPinataSwing {
+  0%, 100% {
+    transform: rotate(-5deg);
+  }
+  50% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes navbarPinataBurst {
+  0%, 18% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg) scale(0.7);
+  }
+  26% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(18px, 16px, 0) rotate(130deg) scale(1);
+  }
+}
+
+@keyframes navbarPinataStar {
+  0%, 22% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) scale(0.6) rotate(0deg);
+  }
+  32% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(10px, -12px, 0) scale(1.15) rotate(120deg);
   }
 }
 
@@ -3561,6 +3705,50 @@ input.button {
     width: calc(100% - 6px);
     height: calc(100% - 6px);
     border-radius: 10px;
+  }
+
+  .navbar-note-pinata {
+    right: 4px;
+    top: 5px;
+    width: 16px;
+    height: 28px;
+  }
+
+  .navbar-note-pinata-string {
+    top: -5px;
+    height: 7px;
+  }
+
+  .navbar-note-pinata-body {
+    width: 14px;
+    height: 10px;
+    border-radius: 4px;
+  }
+
+  .navbar-note-pinata-body--mid {
+    bottom: 7px;
+    width: 11px;
+    height: 8px;
+  }
+
+  .navbar-note-pinata-body--top {
+    bottom: 13px;
+    width: 8px;
+    height: 6px;
+  }
+
+  .navbar-note-pinata-burst {
+    right: 8px;
+    top: 14px;
+    width: 3px;
+    height: 6px;
+  }
+
+  .navbar-note-pinata-star {
+    right: 9px;
+    top: 10px;
+    width: 5px;
+    height: 5px;
   }
 
   .navbar-note-kids-sheen {

@@ -194,6 +194,19 @@ const CampaignVisual = ({ theme }: { theme: CampaignTheme }) => {
         src="/seasonal/childrensday-tech-showcase-v1.png"
         alt=""
       />
+      <span className="navbar-note-pinata">
+        <span className="navbar-note-pinata-body" />
+        <span className="navbar-note-pinata-body navbar-note-pinata-body--mid" />
+        <span className="navbar-note-pinata-body navbar-note-pinata-body--top" />
+        <span className="navbar-note-pinata-string" />
+      </span>
+      <span className="navbar-note-pinata-burst navbar-note-pinata-burst--1" />
+      <span className="navbar-note-pinata-burst navbar-note-pinata-burst--2" />
+      <span className="navbar-note-pinata-burst navbar-note-pinata-burst--3" />
+      <span className="navbar-note-pinata-burst navbar-note-pinata-burst--4" />
+      <span className="navbar-note-pinata-star navbar-note-pinata-star--1" />
+      <span className="navbar-note-pinata-star navbar-note-pinata-star--2" />
+      <span className="navbar-note-pinata-star navbar-note-pinata-star--3" />
     </div>
   );
 };
