@@ -331,6 +331,33 @@ function ProductCard({
           />
         ) : (
           <div className="product-image-fallback" aria-hidden="true">
+            <div className="product-image-fallback-illustration">
+              <svg viewBox="0 0 160 120" role="presentation">
+                <defs>
+                  <linearGradient id="fallback-surface" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#ffffff" stopOpacity="0.96" />
+                    <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.82" />
+                  </linearGradient>
+                  <linearGradient id="fallback-accent" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#84cc16" />
+                    <stop offset="100%" stopColor="#0ea5e9" />
+                  </linearGradient>
+                  <linearGradient id="fallback-ribbon" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#1e293b" />
+                    <stop offset="100%" stopColor="#334155" />
+                  </linearGradient>
+                </defs>
+                <ellipse cx="80" cy="96" rx="42" ry="10" fill="rgba(15,23,42,0.12)" />
+                <path d="M44 40h72c8 0 14 6 14 14v30c0 9-7 16-16 16H46c-9 0-16-7-16-16V54c0-8 6-14 14-14Z" fill="url(#fallback-surface)" stroke="rgba(15,23,42,0.14)" strokeWidth="2" />
+                <path d="M48 48h64c6 0 10 4 10 10v20c0 6-4 10-10 10H48c-6 0-10-4-10-10V58c0-6 4-10 10-10Z" fill="rgba(255,255,255,0.72)" />
+                <path d="M76 40h8v60h-8z" fill="url(#fallback-ribbon)" />
+                <path d="M30 60h100v8H30z" fill="url(#fallback-ribbon)" />
+                <path d="M67 30c-8 0-14 5-14 11 0 4 2 7 5 9 5-1 12-4 18-10-2-6-5-10-9-10Z" fill="url(#fallback-accent)" />
+                <path d="M93 30c8 0 14 5 14 11 0 4-2 7-5 9-5-1-12-4-18-10 2-6 5-10 9-10Z" fill="#38bdf8" />
+                <circle cx="80" cy="64" r="11" fill="url(#fallback-accent)" />
+                <path d="M80 53v22M69 64h22" stroke="#ffffff" strokeWidth="4" strokeLinecap="round" />
+              </svg>
+            </div>
             <div className="product-image-fallback-icon">{fallbackLabel}</div>
             <div className="product-image-fallback-text">{product.name}</div>
             <div className="product-image-fallback-meta">{fallbackMeta}</div>

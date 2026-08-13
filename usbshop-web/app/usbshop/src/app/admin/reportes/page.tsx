@@ -3,7 +3,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { getArgentinaNowDateInput } from '@/lib/datetime';
+import InteractiveDualLineChart from '@/components/charts/InteractiveDualLineChart';
 import styles from './reportes.module.css';
+
+const buildLinePath = (points: number[], width: number, height: number) => {
+  if (points.length === 0) return '';
+  const max = Math.max(1, ...points);
+  return points
+    .map((value, index) => {
+      const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
+      const y = height - (value / max) * height;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+};
 
 const REPORTS_AUTO_REFRESH_MS = 5 * 60 * 1000;
 
@@ -103,18 +116,6 @@ const getMonthRange = (value: string) => {
   const format = (date: Date) =>
     `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
   return { start: format(first), end: format(last) };
-};
-
-const buildLinePath = (points: number[], width: number, height: number) => {
-  if (points.length === 0) return '';
-  const max = Math.max(1, ...points);
-  return points
-    .map((value, index) => {
-      const x = points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
-      const y = height - (value / max) * height;
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(' ');
 };
 
 export default function ReportesPage() {
@@ -439,6 +440,21 @@ export default function ReportesPage() {
           </div>
           <div className={styles.chartCard}>
             <div className={styles.lineChartWrap}>
+              <InteractiveDualLineChart
+                data={monthly.map((point) => ({
+                  id: point.month,
+                  label: point.month,
+                  meta: `Mes ${point.month}`,
+                  primary: point.sales,
+                  secondary: point.count,
+                }))}
+                primaryLabel="Facturacion"
+                secondaryLabel="Comprobantes"
+                formatPrimary={money}
+                formatSecondary={(value) => integer(Math.round(value))}
+                primaryColor="#84cc16"
+                secondaryColor="#0f172a"
+              />
               <svg viewBox="0 0 560 220" className={styles.lineChart} aria-hidden="true">
                 <defs>
                   <linearGradient id="salesArea" x1="0" y1="0" x2="0" y2="1">

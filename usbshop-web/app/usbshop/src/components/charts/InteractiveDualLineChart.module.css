@@ -1,0 +1,212 @@
+.shell {
+  display: grid;
+  gap: 14px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.legendSwatch {
+  width: 22px;
+  height: 4px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.viewport {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 20px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.82), transparent 32%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 1));
+}
+
+.tooltip {
+  position: absolute;
+  top: 14px;
+  z-index: 2;
+  min-width: 178px;
+  max-width: 220px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28);
+  color: white;
+  pointer-events: none;
+  display: grid;
+  gap: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.tooltipLabel {
+  display: grid;
+  gap: 2px;
+}
+
+.tooltipLabel strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.tooltipLabel span {
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tooltipMetrics {
+  display: grid;
+  gap: 6px;
+}
+
+.tooltipMetric {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.tooltipMetric span {
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 12px;
+}
+
+.tooltipMetric strong {
+  font-size: 13px;
+}
+
+.chart {
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+  display: block;
+}
+
+.gridLine {
+  stroke: rgba(148, 163, 184, 0.24);
+  stroke-width: 1;
+  stroke-dasharray: 4 7;
+}
+
+.axisLabel {
+  fill: #64748b;
+  font-size: 11px;
+}
+
+.monthLabel {
+  fill: #64748b;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.primaryArea {
+  opacity: 1;
+}
+
+.secondaryArea {
+  opacity: 0.55;
+}
+
+.primaryLine,
+.secondaryLine {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.primaryLine {
+  stroke-width: 3.5;
+}
+
+.secondaryLine {
+  stroke-width: 2.5;
+  opacity: 0.95;
+}
+
+.activeGuide {
+  stroke: rgba(15, 23, 42, 0.14);
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
+.primaryPoint,
+.secondaryPoint {
+  transition: transform 140ms ease, opacity 140ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.primaryPoint {
+  stroke-width: 3;
+}
+
+.secondaryPoint {
+  stroke-width: 2.5;
+}
+
+.activePoint {
+  transform: scale(1.15);
+}
+
+.hotspot {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.insightCard {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+}
+
+.insightCard span {
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.insightCard strong {
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+@media (max-width: 899px) {
+  .tooltip {
+    position: static;
+    margin: 12px 12px 0;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .chart {
+    min-width: 640px;
+  }
+}

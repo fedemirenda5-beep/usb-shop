@@ -1205,9 +1205,28 @@ export default function GenerarComprobantePage() {
             </div>
             <section className={styles.specialDiscountPanel}>
               <div className={styles.specialDiscountHeader}>
-                <div>
-                  <strong>Descuento especial</strong>
-                  <p>Aplicalo solo si queres descontar un monto extra del total final del comprobante o presupuesto.</p>
+                <div className={styles.specialDiscountIntro}>
+                  <span className={styles.specialDiscountEyebrow}>Ajuste comercial</span>
+                  <div className={styles.specialDiscountTitleRow}>
+                    <strong>Descuento especial</strong>
+                    <span className={hasSpecialDiscount ? styles.specialDiscountStatusActive : styles.specialDiscountStatusIdle}>
+                      {hasSpecialDiscount ? 'Activo' : 'Disponible'}
+                    </span>
+                  </div>
+                  <p>Aplicalo cuando necesites cerrar un precio final con una bonificacion extra sobre el subtotal del comprobante o presupuesto.</p>
+                </div>
+                <div className={styles.specialDiscountAside}>
+                  <div className={styles.specialDiscountMetric}>
+                    <span>Descuento actual</span>
+                    <strong>{hasSpecialDiscount ? `${specialDiscountPercent}%` : '0%'}</strong>
+                    <small>{hasSpecialDiscount ? `${money(specialDiscount)} descontados` : 'Sin impacto en el total'}</small>
+                  </div>
+                </div>
+              </div>
+              <div className={styles.specialDiscountToolbar}>
+                <div className={styles.specialDiscountNote}>
+                  <span />
+                  <small>El ajuste se calcula automaticamente sobre el subtotal antes del total final.</small>
                 </div>
                 <button
                   type="button"

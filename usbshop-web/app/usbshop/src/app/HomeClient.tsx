@@ -116,6 +116,17 @@ const getProductActivityTimestamp = (product: Product) => {
   }
   return product.id;
 };
+const getFlashOfferCampaignLabel = (product: Product) => {
+  const badge = (product.badge || "").trim();
+  if (!badge) {
+    return "Dia especial";
+  }
+  const normalized = normalizeLabel(badge);
+  if (normalized === "relampago" || normalized === "oferta" || normalized === "destacado") {
+    return "Dia especial";
+  }
+  return badge;
+};
 const toComparableTimestamp = (product: Product) => {
   return getProductActivityTimestamp(product);
 };
@@ -1523,13 +1534,24 @@ export default function HomeClient({
       {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
         <section className="flash-offers">
           {flashOfferProducts.map((product, index) => {
+            const campaignLabel = getFlashOfferCampaignLabel(product);
             return (
               <article key={`flash-offer-${product.id}`} className="flash-offer">
                 <div className="flash-offer__content">
                   <div className="flash-offer__copy">
-                    <p className="section-kicker flash-offer__kicker">Oferta relampago</p>
-                    <h2>{product.name}</h2>
-                    <p className="flash-offer__subtitle">Precio especial por tiempo limitado.</p>
+                    <div className="flash-offer__header">
+                      <div className="flash-offer__campaign">
+                        <p className="section-kicker flash-offer__kicker">{campaignLabel}</p>
+                        <span className="flash-offer__campaign-tag">Seleccion destacada</span>
+                      </div>
+                      <div className="flash-offer__editorial">
+                        <span className="flash-offer__overline">Coleccion especial</span>
+                        <h2>{product.name}</h2>
+                        <p className="flash-offer__subtitle">
+                          Precio preferencial por evento, con stock limitado y cierre automatico al finalizar la campana.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                   <div className="flash-offer__price" aria-label="Precio de oferta">
                     {product.originalPrice && product.originalPrice > product.price ? (
