@@ -7665,7 +7665,6 @@ def admin_create_invoice(
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
         _ensure_invoice_special_discount_column(conn)
-        _ensure_invoice_items_cost_snapshot_column(conn)
         _ensure_products_barcode_column(conn)
         _ensure_product_imeis_table(conn)
         _ensure_invoice_item_imeis_table(conn)
