@@ -523,9 +523,7 @@ export default function GenerarComprobantePage() {
         };
       })
       .filter(Boolean) as Array<{ index: number; product: ProductOption; matchesAvailableList: boolean }>;
-    const target =
-      pendingCellphoneIndexes.find((item) => item.matchesAvailableList) ||
-      (pendingCellphoneIndexes.length === 1 ? pendingCellphoneIndexes[0] : null);
+    const target = pendingCellphoneIndexes.find((item) => item.matchesAvailableList) || null;
     if (!target) {
       return false;
     }
@@ -961,16 +959,6 @@ export default function GenerarComprobantePage() {
     }
     const availableImeis = Array.isArray(selectedProduct.imeis) ? selectedProduct.imeis : [];
     if (availableImeis.includes(scannedValue)) {
-      const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
-      if (!wasAdded) {
-        setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
-        return;
-      }
-      setImeiDrafts((current) => ({ ...current, [index]: '' }));
-      setError('');
-      return;
-    }
-    if (selectedProduct.category_id && celularesCategoryIds.has(selectedProduct.category_id) && isValidImeiCandidate(scannedValue)) {
       const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
       if (!wasAdded) {
         setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
