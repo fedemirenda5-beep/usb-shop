@@ -99,6 +99,9 @@
 .notesBox p { margin: 0; color: #0b0b0b; line-height: 1.45; font-size: 12px; }
 .documentTableWrap { border: 1px solid #0b0b0b; border-radius: 12px; overflow: hidden; background: white; }
 .productDescriptionCell { font-size: 14px; }
+.invoiceImeis { display: grid; gap: 2px; margin-top: 4px; }
+.invoiceImeis span { color: #64748b; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.invoiceImeis strong { color: #1e293b; font-size: 11px; font-weight: 700; overflow-wrap: anywhere; }
 .productDetailCell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .productDetailImage { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; border: 1px solid #cbd5e1; flex: 0 0 auto; background: #fff; }
 .productDetailCell span { overflow-wrap: anywhere; }

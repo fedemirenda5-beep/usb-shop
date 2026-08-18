@@ -728,7 +728,12 @@ export default function ComprobantesPage() {
                               <td className={styles.productDescriptionCell}>
                                 <div>{item.product_name}</div>
                                 {item.imeis && item.imeis.length > 0 ? (
-                                  <small>IMEIs: {item.imeis.join(', ')}</small>
+                                  <div className={styles.invoiceImeis}>
+                                    <span>{item.imeis.length === 1 ? 'IMEI asignado' : 'IMEIs asignados'}</span>
+                                    {item.imeis.map((imei) => (
+                                      <strong key={`${item.id}-${imei}`}>{imei}</strong>
+                                    ))}
+                                  </div>
                                 ) : null}
                               </td>
                               <td>{money(item.unit_price)}</td>

@@ -66,10 +66,14 @@ const escapeHtml = (value: unknown) =>
 const buildPrintableHtml = (detail: InvoicePrintDetail, logoUrl: string) => {
   const itemRows = detail.items
     .map((item) => {
-      const imeisHtml =
-        Array.isArray(item.imeis) && item.imeis.length > 0
-          ? `<div class="imei-list">IMEI${item.imeis.length === 1 ? '' : 's'}: ${escapeHtml(item.imeis.join(', '))}</div>`
-          : '';
+      const imeisHtml = Array.isArray(item.imeis) && item.imeis.length > 0
+        ? `
+            <div class="imei-list">
+              <span>${escapeHtml(item.imeis.length === 1 ? 'IMEI asignado' : 'IMEIs asignados')}</span>
+              ${item.imeis.map((imei) => `<strong>${escapeHtml(imei)}</strong>`).join('')}
+            </div>
+          `
+        : '';
       return `
         <tr>
           <td>${escapeHtml(item.quantity)}</td>
@@ -165,7 +169,9 @@ const buildPrintableHtml = (detail: InvoicePrintDetail, logoUrl: string) => {
     th { background: #f8fafc; text-transform: uppercase; font-size: 12px; }
     .product-info { display: grid; gap: 4px; min-width: 0; }
     .product-info span { overflow-wrap: anywhere; }
-    .imei-list { font-size: 11px; color: #475569; overflow-wrap: anywhere; }
+    .imei-list { display: grid; gap: 2px; font-size: 11px; color: #475569; overflow-wrap: anywhere; margin-top: 2px; }
+    .imei-list span { text-transform: uppercase; letter-spacing: .05em; font-size: 10px; color: #64748b; }
+    .imei-list strong { font-size: 11px; font-weight: 700; color: #1e293b; }
     .total-cell { color: #111827; font-weight: 700; }
     .footer { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(260px,.9fr); gap: 16px; align-items: start; }
     .payments { display: grid; gap: 10px; }
