@@ -880,10 +880,10 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
         conn.execute(
             """
             UPDATE users
-            SET password_hash = ?, role = ?, active = 1
+            SET role = ?, active = 1
             WHERE id = ?
             """,
-            (password_hash, role, int(row["id"])),
+            (role, int(row["id"])),
         )
     conn.commit()
 
