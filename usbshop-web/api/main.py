@@ -7819,11 +7819,6 @@ def admin_create_invoice(
                         status_code=400,
                         detail=f"El producto {product['name']} tiene mas IMEIs cargados que unidades",
                     )
-                if document_type == "FACTURA" and requires_imei and len(item_imeis) < quantity:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"El producto {product['name']} requiere {quantity} IMEI{'s' if quantity != 1 else ''} para emitir la factura",
-                    )
                 duplicated_imei = next((imei for imei in item_imeis if imei in seen_imeis), None)
                 if duplicated_imei:
                     raise HTTPException(status_code=400, detail=f"El IMEI {duplicated_imei} esta repetido en el comprobante")
