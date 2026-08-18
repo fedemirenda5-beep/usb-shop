@@ -855,6 +855,11 @@ def _ensure_users_table(conn: DBConn) -> None:
     conn.commit()
 
 
+def _env_is_truthy(name: str) -> bool:
+    value = str(os.getenv(name) or "").strip().lower()
+    return value in {"1", "true", "yes", "on", "si"}
+
+
 def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, role: str) -> None:
     username = (os.getenv(username_env) or "").strip()
     password = os.getenv(password_env) or ""
@@ -868,6 +873,7 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
         (username_key,),
     ).fetchall()
     row = rows[0] if rows else None
+    force_password_reset = _env_is_truthy(f"{password_env}_RESET_ON_BOOT")
     if row is None:
         conn.execute(
             """
@@ -880,10 +886,11 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
         conn.execute(
             """
             UPDATE users
-            SET role = ?, active = 1
+            SET password_hash = CASE WHEN ? THEN ? ELSE password_hash END,
+                role = ?, active = 1
             WHERE id = ?
             """,
-            (role, int(row["id"])),
+            (1 if force_password_reset else 0, password_hash, role, int(row["id"])),
         )
     conn.commit()
 
