@@ -1615,17 +1615,27 @@ def _store_invoice_item_imeis(
     product_id: int,
     imeis: list[str],
 ) -> None:
-    _ensure_invoice_item_imeis_table(conn)
     normalized_imeis = _normalize_imei_list(imeis)
     if invoice_item_id <= 0 or invoice_id <= 0 or product_id <= 0 or not normalized_imeis:
         return
-    for imei in normalized_imeis:
-        conn.execute(
-            """
-            INSERT INTO invoice_item_imeis (invoice_item_id, invoice_id, product_id, imei)
-            VALUES (?, ?, ?, ?)
-            """,
-            (invoice_item_id, invoice_id, product_id, imei),
+    try:
+        _ensure_invoice_item_imeis_table(conn)
+        for imei in normalized_imeis:
+            conn.execute(
+                """
+                INSERT INTO invoice_item_imeis (invoice_item_id, invoice_id, product_id, imei)
+                VALUES (?, ?, ?, ?)
+                """,
+                (invoice_item_id, invoice_id, product_id, imei),
+            )
+    except Exception:
+        LOGGER.exception(
+            "No se pudieron guardar IMEIs auxiliares del item de comprobante. "
+            "invoice_id=%s invoice_item_id=%s product_id=%s imeis=%s",
+            invoice_id,
+            invoice_item_id,
+            product_id,
+            ",".join(normalized_imeis),
         )
 
 
