@@ -1018,7 +1018,13 @@ export default function GenerarComprobantePage() {
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
     if (hasPendingOrderCellphoneImeis) {
-      setError('');
+      const firstPending = pendingOrderCellphoneImeiItems[0];
+      if (firstPending) {
+        setError(
+          `Faltan ${firstPending.missingCount} IMEI${firstPending.missingCount === 1 ? '' : 's'} para ${firstPending.product.name}. Cargalos antes de emitir la factura.`
+        );
+        return;
+      }
     }
     try {
       setCreating(true);
