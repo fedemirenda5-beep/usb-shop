@@ -83,6 +83,7 @@ type SellerOption = {
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const CELULARES_COMMISSION_PERCENT = 5;
+const CELULARES_COMMISSION_PERCENT_FEDE = 10;
 const normalizeSearchValue = (value: string) =>
   value
     .normalize('NFD')
@@ -93,13 +94,16 @@ const isNokia106ExceptionProduct = (value?: string | null) => {
   const normalized = normalizeSearchValue(String(value || ''));
   return normalized === 'nokia 106' || normalized.startsWith('nokia 106 ');
 };
+const isFedeSellerName = (value?: string | null) => normalizeSearchValue(String(value || '')) === 'fede';
 const calculateCommissionPreview = ({
   items,
   sellerPercent,
+  sellerName,
   specialDiscount,
 }: {
   items: InvoiceDetail['items'];
   sellerPercent: number;
+  sellerName?: string | null;
   specialDiscount: number;
 }) => {
   const normalizedItems = items.filter((item) => Number(item.line_total || 0) > 0);
@@ -110,7 +114,7 @@ const calculateCommissionPreview = ({
     const discountShare = specialDiscount > 0 ? (specialDiscount * lineTotal) / subtotal : 0;
     const commissionable = Math.max(0, lineTotal - discountShare);
     const percent = item.is_cellphone && !isNokia106ExceptionProduct(item.product_name)
-      ? CELULARES_COMMISSION_PERCENT
+      ? (isFedeSellerName(sellerName) ? CELULARES_COMMISSION_PERCENT_FEDE : CELULARES_COMMISSION_PERCENT)
       : Number(sellerPercent || 0);
     return acc + (commissionable * percent) / 100;
   }, 0);
@@ -691,6 +695,7 @@ export default function ComprobantesPage() {
                               Nueva comision estimada: {money(calculateCommissionPreview({
                                 items: detail.items,
                                 sellerPercent: Number(selectedSellerOption.commission_percent || 0),
+                                sellerName: selectedSellerOption.name,
                                 specialDiscount: Number(detail.invoice.special_discount || 0),
                               }))}
                             </div>

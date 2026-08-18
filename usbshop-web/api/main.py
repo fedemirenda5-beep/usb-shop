@@ -1375,6 +1375,8 @@ CELLPHONE_WARRANTY_NOTE = (
     "pantalla rota ni equipos abiertos. Pasados los 30 dias, la garantia debe "
     "reclamarse con la marca y tiene una cobertura de 1 ano."
 )
+CELLPHONE_COMMISSION_PERCENT_DEFAULT = 5.0
+CELLPHONE_COMMISSION_PERCENT_FEDE = 10.0
 
 
 def _append_cellphone_warranty_note(notes: Optional[str], include_warranty_note: bool) -> Optional[str]:
@@ -1388,15 +1390,22 @@ def _append_cellphone_warranty_note(notes: Optional[str], include_warranty_note:
     return f"{base_notes}\n{CELLPHONE_WARRANTY_NOTE}"
 
 
+def _is_fede_seller_name(value: Any) -> bool:
+    return _normalize_search_text(value or "") == "fede"
+
+
 def _seller_commission_percent_for_item(
     conn: DBConn,
     category_id: Any,
     product_name: Any,
     default_percent: float,
+    seller_name: Any = None,
 ) -> float:
     if _is_nokia_106_exception_product_name(product_name):
         return float(default_percent or 0)
-    return 5.0 if _category_requires_imei(conn, category_id) else float(default_percent or 0)
+    if _category_requires_imei(conn, category_id):
+        return CELLPHONE_COMMISSION_PERCENT_FEDE if _is_fede_seller_name(seller_name) else CELLPHONE_COMMISSION_PERCENT_DEFAULT
+    return float(default_percent or 0)
 
 
 def _calculate_invoice_seller_commission(
@@ -1404,6 +1413,7 @@ def _calculate_invoice_seller_commission(
     items: list[dict[str, Any]],
     seller_commission_percent: float,
     special_discount: float = 0.0,
+    seller_name: Any = None,
 ) -> float:
     subtotal = round(
         sum(max(0.0, float(item.get("quantity") or 0) * float(item.get("unit_price") or 0)) for item in items),
@@ -1426,6 +1436,7 @@ def _calculate_invoice_seller_commission(
             item.get("category_id"),
             item.get("product_name"),
             seller_commission_percent,
+            seller_name,
         )
         line_commission = (commissionable_total * effective_percent) / 100
         if not _category_requires_imei(conn, item.get("category_id")):
@@ -7882,6 +7893,7 @@ def admin_create_invoice(
             normalized_items,
             commission_percent,
             special_discount,
+            seller["name"] if seller is not None else None,
         )
         if DB_IS_POSTGRES:
             # Serialize manual external_ref generation to avoid duplicate values
@@ -8284,6 +8296,7 @@ def admin_update_invoice_seller(
             ],
             commission_percent,
             float(invoice["special_discount"] or 0),
+            seller["name"],
         )
 
         conn.execute(

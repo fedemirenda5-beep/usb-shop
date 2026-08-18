@@ -88,6 +88,7 @@ type ImeiLookupResponse = {
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const CELULARES_COMMISSION_PERCENT = 5;
+const CELULARES_COMMISSION_PERCENT_FEDE = 10;
 const CELLPHONE_WARRANTY_NOTE =
   'Garantia de 30 dias solo por fallas de fabrica. No cubre equipos golpeados, pantalla rota ni equipos abiertos. Pasados los 30 dias, la garantia debe reclamarse con la marca y tiene una cobertura de 1 ano.';
 const normalizeSearchValue = (value: string) =>
@@ -101,6 +102,7 @@ const isNokia106ExceptionProduct = (value?: string | null) => {
   const normalized = normalizeSearchValue(String(value || ''));
   return normalized === 'nokia 106' || normalized.startsWith('nokia 106 ');
 };
+const isFedeSellerName = (value?: string | null) => normalizeSearchValue(String(value || '')) === 'fede';
 const sameProductIdentity = (
   left?: { id?: number | null; name?: string | null; sku?: string | null } | null,
   right?: { id?: number | null; name?: string | null; sku?: string | null } | null
@@ -127,12 +129,14 @@ const normalizePhoneValue = (value?: string | null) => {
 const calculateCommissionPreview = ({
   items,
   sellerPercent,
+  sellerName,
   celularesCategoryIds,
   productMap,
   specialDiscount,
 }: {
   items: InvoiceFormItem[];
   sellerPercent: number;
+  sellerName?: string | null;
   celularesCategoryIds: Set<number>;
   productMap: Map<number, ProductOption>;
   specialDiscount: number;
@@ -161,7 +165,9 @@ const calculateCommissionPreview = ({
       const commissionable = Math.max(0, round(item.line_total - discountShare, 2));
       const isCellphone =
         !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id);
-      const percent = isCellphone ? CELULARES_COMMISSION_PERCENT : Number(sellerPercent || 0);
+      const percent = isCellphone
+        ? (isFedeSellerName(sellerName) ? CELULARES_COMMISSION_PERCENT_FEDE : CELULARES_COMMISSION_PERCENT)
+        : Number(sellerPercent || 0);
       let lineCommission = (commissionable * percent) / 100;
       if (!isCellphone) {
         const maxCommission = Math.max(0, round(commissionable - item.quantity * item.cost, 2));
@@ -435,6 +441,7 @@ export default function GenerarComprobantePage() {
         ? calculateCommissionPreview({
             items: form.items,
             sellerPercent: Number(selectedSeller.commission_percent || 0),
+            sellerName: selectedSeller.name,
             celularesCategoryIds,
             productMap,
             specialDiscount,
