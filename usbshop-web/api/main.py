@@ -883,15 +883,24 @@ def _ensure_bootstrap_user(conn: DBConn, username_env: str, password_env: str, r
             (username, password_hash, role),
         )
     else:
-        conn.execute(
-            """
-            UPDATE users
-            SET password_hash = CASE WHEN ? THEN ? ELSE password_hash END,
-                role = ?, active = 1
-            WHERE id = ?
-            """,
-            (1 if force_password_reset else 0, password_hash, role, int(row["id"])),
-        )
+        if force_password_reset:
+            conn.execute(
+                """
+                UPDATE users
+                SET password_hash = ?, role = ?, active = 1
+                WHERE id = ?
+                """,
+                (password_hash, role, int(row["id"])),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE users
+                SET role = ?, active = 1
+                WHERE id = ?
+                """,
+                (role, int(row["id"])),
+            )
     conn.commit()
 
 
