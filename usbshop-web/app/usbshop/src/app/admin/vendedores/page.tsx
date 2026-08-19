@@ -97,49 +97,6 @@ type SellerMonthlyDetail = {
   items: SellerMonthlyInvoice[];
 };
 
-type InvoiceListItem = {
-  id: number;
-  customer_id?: number | null;
-  customer_name: string;
-  seller_id?: number | null;
-  total: number;
-  created_at: string;
-  document_type?: string | null;
-  sale_mode?: string | null;
-  notes?: string | null;
-  payment_method?: string | null;
-  commission_amount?: number | null;
-  special_discount?: number | null;
-};
-
-type InvoiceDetailResponse = {
-  invoice: {
-    id: number;
-    customer_id?: number | null;
-    customer_name: string;
-    seller_id?: number | null;
-    total: number;
-    created_at: string;
-    document_type?: string | null;
-    sale_mode?: string | null;
-    notes?: string | null;
-    payment_method?: string | null;
-    commission_amount?: number | null;
-    special_discount?: number | null;
-  };
-  summary?: {
-    balance_due?: number | null;
-  };
-  items: Array<{
-    product_id?: number | null;
-    product_name: string;
-    quantity: number;
-    unit_price: number;
-    line_total: number;
-    cost_total?: number | null;
-  }>;
-};
-
 const emptySellerForm = (): SellerFormState => ({
   name: '',
   commission_percent: '0',
@@ -175,7 +132,6 @@ const getWeekRange = (value: string) => {
     `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
   return { start: format(monday), end: format(sunday) };
 };
-const isDateWithinRange = (value: string, start: string, end: string) => value >= start && value <= end;
 const formatShortDate = (value: string) => {
   const parsed = new Date(`${value}T12:00:00Z`);
   return Number.isNaN(parsed.getTime())
@@ -184,8 +140,6 @@ const formatShortDate = (value: string) => {
 };
 
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
-const lineMargin = (lineTotal: number, costTotal: number) => Math.max(0, Number(lineTotal || 0) - Number(costTotal || 0));
 
 const getWindowMetrics = (summary: SellerRangeSummary | null | undefined, window: PerformanceWindow) => {
   if (window === 'day') {
@@ -376,318 +330,6 @@ export default function VendedoresPage() {
     ? sellerPerformanceRows.find((item) => item.seller.id === selectedSeller.id) ?? null
     : null;
 
-  const buildRangeSummaryFromInvoices = (
-    invoices: InvoiceListItem[],
-    sellerList: Seller[],
-    baseDate: string
-  ): SellerRangeSummary[] => {
-    const monthKey = baseDate.slice(0, 7);
-    const range = getWeekRange(baseDate);
-    const summaryMap = new Map<number, SellerRangeSummary>();
-
-    sellerList.forEach((seller) => {
-      summaryMap.set(seller.id, {
-        seller_id: seller.id,
-        sales_day: 0,
-        profit_day: null,
-        commission_day: 0,
-        invoice_count_day: 0,
-        sales_week: 0,
-        profit_week: null,
-        commission_week: 0,
-        invoice_count_week: 0,
-        sales_month: 0,
-        profit_month: null,
-        commission_month: 0,
-        invoice_count_month: 0,
-        sales_year: 0,
-        profit_year: null,
-        commission_year: 0,
-        invoice_count_year: 0,
-      });
-    });
-
-    invoices.forEach((item) => {
-      const sellerId = Number(item.seller_id || 0);
-      if (sellerId <= 0) return;
-      const documentType = String(item.document_type || '').trim().toUpperCase();
-      if (documentType === 'PRESUPUESTO') return;
-      const dateKey = toDateInput(item.created_at);
-      if (!dateKey) return;
-      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
-      const salesValue = roundMoney(Number(item.total || 0) * sign);
-      const commissionValue = roundMoney(Number(item.commission_amount || 0) * sign);
-      const current = summaryMap.get(sellerId) ?? {
-        seller_id: sellerId,
-        sales_day: 0,
-        profit_day: null,
-        commission_day: 0,
-        invoice_count_day: 0,
-        sales_week: 0,
-        profit_week: null,
-        commission_week: 0,
-        invoice_count_week: 0,
-        sales_month: 0,
-        profit_month: null,
-        commission_month: 0,
-        invoice_count_month: 0,
-        sales_year: 0,
-        profit_year: null,
-        commission_year: 0,
-        invoice_count_year: 0,
-      };
-      if (dateKey === baseDate) {
-        current.sales_day = roundMoney(current.sales_day + salesValue);
-        current.commission_day = roundMoney(current.commission_day + commissionValue);
-        current.invoice_count_day += 1;
-      }
-      if (isDateWithinRange(dateKey, range.start, range.end)) {
-        current.sales_week = roundMoney(current.sales_week + salesValue);
-        current.commission_week = roundMoney(current.commission_week + commissionValue);
-        current.invoice_count_week += 1;
-      }
-      if (dateKey.slice(0, 7) === monthKey) {
-        current.sales_month = roundMoney(current.sales_month + salesValue);
-        current.commission_month = roundMoney(current.commission_month + commissionValue);
-        current.invoice_count_month += 1;
-      }
-      if (dateKey.slice(0, 4) === baseDate.slice(0, 4)) {
-        current.sales_year = roundMoney(current.sales_year + salesValue);
-        current.commission_year = roundMoney(current.commission_year + commissionValue);
-        current.invoice_count_year += 1;
-      }
-      summaryMap.set(sellerId, current);
-    });
-
-    return sellerList
-      .map((seller) => summaryMap.get(seller.id))
-      .filter((item): item is SellerRangeSummary => Boolean(item));
-  };
-
-  const buildMonthlySummaryFromInvoices = async (): Promise<{
-    period: string;
-    items: SellerMonthlySummary[];
-  }> => {
-    const availableSellers =
-      sellers.length > 0
-        ? sellers
-        : await (async () => {
-            const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersExtendedList}`, {
-              credentials: 'include',
-              cache: 'no-store',
-            });
-            const sellerData = await sellerRes.json().catch(() => null);
-            if (!sellerRes.ok) {
-              throw new Error(sellerData?.detail || 'No se pudieron cargar los vendedores');
-            }
-            return Array.isArray(sellerData) ? (sellerData as Seller[]) : [];
-          })();
-
-    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    const listData = await listRes.json().catch(() => null);
-    if (!listRes.ok) {
-      throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
-    }
-    const invoices = Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
-    const detectedPeriod =
-      monthlyPeriod ||
-      invoices
-        .filter((item) => Number(item.seller_id || 0) > 0 && String(item.document_type || '').trim().toUpperCase() !== 'PRESUPUESTO')
-        .map((item) => (typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : ''))
-        .filter((value) => /^\d{4}-\d{2}$/.test(value))
-        .sort()
-        .at(-1) ||
-      getArgentinaNowDateInput().slice(0, 7);
-    const period = detectedPeriod;
-
-    const summaryMap = new Map<number, SellerMonthlySummary>();
-    availableSellers
-      .filter((seller) => seller.is_active)
-      .forEach((seller) => {
-        summaryMap.set(seller.id, {
-          seller_id: seller.id,
-          name: seller.name,
-          commission_percent: Number(seller.commission_percent || 0),
-          sales: 0,
-          profit: null,
-          commission: 0,
-          invoice_count: 0,
-        });
-      });
-
-    invoices.forEach((item: InvoiceListItem) => {
-      const sellerId = Number(item.seller_id || 0);
-      const summary = summaryMap.get(sellerId);
-      const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
-      const documentType = String(item.document_type || '').trim().toUpperCase();
-      if (!summary || createdAt !== period || documentType === 'PRESUPUESTO') {
-        return;
-      }
-      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
-      summary.sales = roundMoney(summary.sales + Number(item.total || 0) * sign);
-      summary.commission = roundMoney(summary.commission + Number(item.commission_amount || 0) * sign);
-      summary.invoice_count += 1;
-    });
-
-    const filteredInvoices = invoices.filter((item: InvoiceListItem) => {
-      const sellerId = Number(item.seller_id || 0);
-      const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
-      const documentType = String(item.document_type || '').trim().toUpperCase();
-      return sellerId > 0 && createdAt === period && documentType !== 'PRESUPUESTO';
-    });
-
-    const detailResponses = await Promise.all(
-      filteredInvoices.map(async (item: InvoiceListItem) => {
-        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${item.id}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(data?.detail || `No se pudo cargar el comprobante ${item.id}`);
-        }
-        return { item, data: data as InvoiceDetailResponse };
-      })
-    );
-
-    detailResponses.forEach(({ item, data }) => {
-      const sellerId = Number(item.seller_id || 0);
-      const summary = summaryMap.get(sellerId);
-      if (!summary) {
-        return;
-      }
-      const documentType = String(item.document_type || '').trim().toUpperCase();
-      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
-      const itemsProfit = data.items.reduce(
-        (sum, detailItem) => sum + lineMargin(Number(detailItem.line_total || 0), Number(detailItem.cost_total || 0)),
-        0
-      );
-      summary.profit = roundMoney(
-        Number(summary.profit || 0) + (itemsProfit * sign) - (Number(item.special_discount || 0) * sign)
-      );
-    });
-
-    return {
-      period,
-      items: Array.from(summaryMap.values()).sort((a, b) => a.name.localeCompare(b.name, 'es-AR')),
-    };
-  };
-
-  const buildSellerDetailFromInvoices = async (sellerId: number): Promise<SellerMonthlyDetail> => {
-    let selected = sellers.find((seller) => seller.id === sellerId) ?? null;
-    if (!selected) {
-      const sellerRes = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersExtendedList}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
-      const sellerData = await sellerRes.json().catch(() => null);
-      if (!sellerRes.ok) {
-        throw new Error(sellerData?.detail || 'No se pudo cargar el vendedor');
-      }
-      selected = (Array.isArray(sellerData) ? sellerData : []).find((seller: Seller) => seller.id === sellerId) ?? null;
-    }
-    if (!selected) {
-      throw new Error('Vendedor no encontrado');
-    }
-
-    const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
-      credentials: 'include',
-      cache: 'no-store',
-    });
-    const listData = await listRes.json().catch(() => null);
-    if (!listRes.ok) {
-      throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes del vendedor');
-    }
-    const invoices = Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
-    const period =
-      monthlyPeriod ||
-      invoices
-        .filter((item) => Number(item.seller_id || 0) === sellerId && String(item.document_type || '').trim().toUpperCase() !== 'PRESUPUESTO')
-        .map((item) => (typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : ''))
-        .filter((value) => /^\d{4}-\d{2}$/.test(value))
-        .sort()
-        .at(-1) ||
-      getArgentinaNowDateInput().slice(0, 7);
-
-    const filteredInvoices = invoices
-      .filter((item: InvoiceListItem) => {
-        const createdAt = typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : '';
-        const documentType = String(item.document_type || '').trim().toUpperCase();
-        return (
-          Number(item.seller_id || 0) === sellerId &&
-          createdAt === period &&
-          documentType !== 'PRESUPUESTO'
-        );
-      })
-      .sort((a: InvoiceListItem, b: InvoiceListItem) => {
-        const left = new Date(b.created_at).getTime();
-        const right = new Date(a.created_at).getTime();
-        return left - right;
-      });
-
-    const detailResponses = await Promise.all(
-      filteredInvoices.map(async (item: InvoiceListItem) => {
-        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${item.id}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const data = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(data?.detail || `No se pudo cargar el comprobante ${item.id}`);
-        }
-        return { item, data: data as InvoiceDetailResponse };
-      })
-    );
-
-    const items = detailResponses.map(({ item, data }) => {
-      const documentType = String(item.document_type || '').trim().toUpperCase();
-      const sign = documentType === 'NOTA_CREDITO' ? -1 : 1;
-      const detailedItems = data.items.map((detailItem) => ({
-        product_id: detailItem.product_id,
-        product_name: detailItem.product_name,
-        quantity: Number(detailItem.quantity || 0),
-        unit_price: roundMoney(Number(detailItem.unit_price || 0) * sign),
-        line_total: roundMoney(Number(detailItem.line_total || 0) * sign),
-        cost_total: roundMoney(Number(detailItem.cost_total || 0) * sign),
-      }));
-      const itemsProfit = data.items.reduce(
-        (sum, detailItem) => sum + lineMargin(Number(detailItem.line_total || 0), Number(detailItem.cost_total || 0)),
-        0
-      );
-      return {
-        invoice_id: item.id,
-        created_at: item.created_at,
-        document_type: item.document_type,
-        sale_mode: item.sale_mode,
-        payment_method: item.payment_method,
-        notes: item.notes,
-        customer_id: item.customer_id,
-        customer_name: item.customer_name || 'Sin cliente',
-        total: roundMoney(Number(item.total || 0) * sign),
-        balance_due: roundMoney(Number(data.summary?.balance_due ?? item.total ?? 0) * sign),
-        special_discount: roundMoney(Number(item.special_discount || 0) * sign),
-        commission: roundMoney(Number(item.commission_amount || 0) * sign),
-        profit: roundMoney((itemsProfit * sign) - (Number(item.special_discount || 0) * sign)),
-        items: detailedItems,
-      };
-    });
-
-    return {
-      period,
-      seller: selected,
-      summary: {
-        sales: roundMoney(items.reduce((sum, item) => sum + Number(item.total || 0), 0)),
-        commission: roundMoney(items.reduce((sum, item) => sum + Number(item.commission || 0), 0)),
-        profit: roundMoney(items.reduce((sum, item) => sum + Number(item.profit || 0), 0)),
-        invoice_count: items.length,
-      },
-      items,
-    };
-  };
-
   const loadSellers = async (query = '') => {
     try {
       setLoading(true);
@@ -739,13 +381,7 @@ export default function VendedoresPage() {
       setMonthlySummary(Array.isArray(data.items) ? data.items : []);
       setMonthlyPeriod(typeof data.period === 'string' ? data.period : '');
     } catch (err) {
-      try {
-        const fallbackSummary = await buildMonthlySummaryFromInvoices();
-        setMonthlySummary(fallbackSummary.items);
-        setMonthlyPeriod(fallbackSummary.period);
-      } catch (fallbackErr) {
-        setError(getErrorMessage(fallbackErr, 'Error cargando resumen mensual'));
-      }
+      setError(getErrorMessage(err, 'Error cargando resumen mensual'));
     } finally {
       if (!silent) {
         setSummaryLoading(false);
@@ -770,20 +406,7 @@ export default function VendedoresPage() {
       }
       setRangeSummary(Array.isArray(data?.items) ? (data.items as SellerRangeSummary[]) : []);
     } catch (err) {
-      try {
-        const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const listData = await listRes.json().catch(() => null);
-        if (!listRes.ok) {
-          throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
-        }
-        const invoices = Array.isArray(listData) ? (listData as InvoiceListItem[]) : [];
-        setRangeSummary(buildRangeSummaryFromInvoices(invoices, sellers, referenceDate));
-      } catch (fallbackErr) {
-        setError(getErrorMessage(fallbackErr, 'Error cargando resumen por periodo'));
-      }
+      setError(getErrorMessage(err, 'Error cargando resumen por periodo'));
     } finally {
       if (!silent) {
         setSummaryLoading(false);
@@ -859,9 +482,8 @@ export default function VendedoresPage() {
             throw new Error(data?.detail || 'No se pudo cargar el detalle mensual del vendedor');
           }
           setSellerDetail(data);
-        } catch {
-          const fallbackDetail = await buildSellerDetailFromInvoices(detailSellerId);
-          setSellerDetail(fallbackDetail);
+        } catch (detailErr) {
+          throw detailErr;
         }
       } catch (err) {
         setSellerDetail(null);
