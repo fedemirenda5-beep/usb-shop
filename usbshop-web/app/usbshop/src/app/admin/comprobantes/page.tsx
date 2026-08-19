@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -199,8 +199,7 @@ export default function ComprobantesPage() {
       setDetailLoading(true);
       setDetailError('');
       setDetail(null);
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoiceId}`, { credentials: 'include' });
+      const res = await fetchApiResponse(`/admin/invoices/${invoiceId}`);
       if (!res.ok) throw new Error('No se pudo cargar el detalle del comprobante');
       const payload = await res.json();
       if (detailRequestRef.current !== requestId) return null;
@@ -209,7 +208,7 @@ export default function ComprobantesPage() {
       return payload as InvoiceDetail;
     } catch (err) {
       if (detailRequestRef.current !== requestId) return null;
-      setDetailError(err instanceof Error ? err.message : 'Error cargando detalle');
+      setDetailError(getFriendlyApiError(err, 'Error cargando detalle'));
       setDetail(null);
       return null;
     } finally {
@@ -229,8 +228,7 @@ export default function ComprobantesPage() {
   }
 
   async function loadInvoices() {
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, { credentials: 'include' });
+    const res = await fetchApiResponse(`/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`);
     if (!res.ok) throw new Error('No se pudieron cargar los comprobantes');
     const data = await res.json();
     setItems(data);
@@ -238,8 +236,7 @@ export default function ComprobantesPage() {
   }
 
   async function loadSellerOptions() {
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { credentials: 'include' });
+    const res = await fetchApiResponse(`/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`);
     if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
     const data = (await res.json()) as SellerOption[];
     setSellerOptions(data.filter((item) => item.is_active));
@@ -251,7 +248,7 @@ export default function ComprobantesPage() {
         setLoading(true);
         await Promise.all([loadInvoices(), loadSellerOptions()]);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando comprobantes');
+        setError(getFriendlyApiError(err, 'Error cargando comprobantes'));
       } finally {
         setLoading(false);
       }
@@ -309,10 +306,8 @@ export default function ComprobantesPage() {
       setSellerSaving(true);
       setSellerActionError('');
       setSellerActionMessage('');
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${detail.invoice.id}/seller`, {
+      const res = await fetchApiResponse(`/admin/invoices/${detail.invoice.id}/seller`, {
         method: 'PUT',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seller_id: nextSellerId }),
       });
@@ -321,7 +316,7 @@ export default function ComprobantesPage() {
       await loadDetail(detail.invoice.id);
       setSellerActionMessage('Vendedor reasignado y comision actualizada.');
     } catch (err) {
-      setSellerActionError(err instanceof Error ? err.message : 'No se pudo actualizar el vendedor');
+      setSellerActionError(getFriendlyApiError(err, 'No se pudo actualizar el vendedor'));
     } finally {
       setSellerSaving(false);
     }
@@ -337,7 +332,7 @@ export default function ComprobantesPage() {
       setError('');
       await openAdminInvoicePrint(invoiceId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo preparar la impresion');
+      setError(getFriendlyApiError(err, 'No se pudo preparar la impresion'));
     }
   };
 
@@ -346,10 +341,8 @@ export default function ComprobantesPage() {
       setDeletingId(invoice.id);
       setError('');
       setDetailError('');
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${invoice.id}`, {
+      const res = await fetchApiResponse(`/admin/invoices/${invoice.id}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo cancelar el comprobante');
@@ -361,7 +354,7 @@ export default function ComprobantesPage() {
         setDetailOnly(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cancelando comprobante');
+      setError(getFriendlyApiError(err, 'Error cancelando comprobante'));
     } finally {
       setDeletingId(null);
     }
