@@ -8987,6 +8987,168 @@ def admin_reports_overview(
             WHERE deleted_at IS NULL AND COALESCE(is_active, 1) = 1
             """
         ).fetchall()
+        total_stock_units = sum(int(row["stock"] or 0) for row in products)
+        stock_value_cost = round(sum(float(row["cost"] or 0) * int(row["stock"] or 0) for row in products), 2)
+        stock_value_sale = round(sum(float(row["price"] or 0) * int(row["stock"] or 0) for row in products), 2)
+        low_stock = [
+            {
+                "id": int(row["id"]),
+                "name": row["name"],
+                "stock": int(row["stock"] or 0),
+                "reorder_point": int(row["reorder_point"] or 0),
+            }
+            for row in products
+            if int(row["stock"] or 0) <= max(0, int(row["reorder_point"] or 0))
+        ][:20]
+
+        if session_role == ROLE_STAFF:
+            invoice_summary_row = conn.execute(
+                """
+                SELECT
+                    COUNT(*) AS sales_count,
+                    MAX(created_at) AS latest_invoice_at,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN UPPER(COALESCE(document_type, '')) = 'NOTA_CREDITO' THEN -COALESCE(total, 0)
+                            ELSE COALESCE(total, 0)
+                        END
+                    ), 0) AS sales_total,
+                    COALESCE(SUM(
+                        CASE
+                            WHEN UPPER(COALESCE(sale_mode, '')) <> 'CUENTA_CORRIENTE' THEN
+                                CASE
+                                    WHEN UPPER(COALESCE(document_type, '')) = 'NOTA_CREDITO' THEN -COALESCE(total, 0)
+                                    ELSE COALESCE(total, 0)
+                                END
+                            ELSE 0
+                        END
+                    ), 0) AS cash_sales_total
+                FROM invoices
+                WHERE UPPER(COALESCE(document_type, '')) <> 'PRESUPUESTO'
+                """
+            ).fetchone()
+            customer_count_row = conn.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM customers
+                WHERE deleted_at IS NULL
+                """
+            ).fetchone()
+            account_movements_count_row = conn.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM account_movements
+                WHERE 1 = 1
+                """
+                + _active_account_movements_clause(conn)
+            ).fetchone()
+            cc_balance_rows = conn.execute(
+                """
+                SELECT
+                    am.customer_id,
+                    c.name AS customer_name,
+                    SUM(
+                        CASE
+                            WHEN UPPER(COALESCE(am.movement_type, '')) = 'DEBIT' THEN COALESCE(am.amount, 0)
+                            ELSE -COALESCE(am.amount, 0)
+                        END
+                    ) AS balance,
+                    SUM(
+                        CASE
+                            WHEN UPPER(COALESCE(am.movement_type, '')) = 'CREDIT' THEN COALESCE(am.amount, 0)
+                            ELSE 0
+                        END
+                    ) AS credits_total
+                FROM account_movements am
+                LEFT JOIN customers c ON c.id = am.customer_id
+                WHERE 1 = 1
+                """
+                + _active_account_movements_clause(conn, "am")
+                + """
+                GROUP BY am.customer_id, c.name
+                HAVING am.customer_id IS NOT NULL
+                """
+            ).fetchall()
+            purchase_total = (
+                float(
+                    (
+                        conn.execute(
+                            """
+                            SELECT COALESCE(SUM(total), 0)
+                            FROM purchases
+                            """
+                        ).fetchone()[0]
+                    )
+                    or 0
+                )
+                if _has_table(conn, "purchases")
+                else 0.0
+            )
+            expense_total = (
+                float(
+                    (
+                        conn.execute(
+                            """
+                            SELECT COALESCE(SUM(amount), 0)
+                            FROM expenses
+                            """
+                        ).fetchone()[0]
+                    )
+                    or 0
+                )
+                if _has_table(conn, "expenses")
+                else 0.0
+            )
+            cc_open_balance = round(sum(float(row["balance"] or 0) for row in cc_balance_rows), 2)
+            cash_on_hand = round(
+                float(invoice_summary_row["cash_sales_total"] or 0)
+                + sum(float(row["credits_total"] or 0) for row in cc_balance_rows)
+                - purchase_total
+                - expense_total,
+                2,
+            )
+            top_debtors = sorted(
+                [
+                    {
+                        "customer_id": int(row["customer_id"] or 0),
+                        "name": row["customer_name"] or f"Cliente {int(row['customer_id'] or 0)}",
+                        "balance": round(float(row["balance"] or 0), 2),
+                    }
+                    for row in cc_balance_rows
+                    if int(row["customer_id"] or 0) > 0 and float(row["balance"] or 0) > 0
+                ],
+                key=lambda item: (-item["balance"], item["name"].lower()),
+            )[:10]
+            return _set_admin_overview_cache(session_role, {
+                "summary": {
+                    "products": len(products),
+                    "active_customers": int(customer_count_row["total"] or 0),
+                    "stock_units": total_stock_units,
+                    "stock_value_cost": stock_value_cost,
+                    "stock_value_sale": stock_value_sale,
+                    "sales_count": int(invoice_summary_row["sales_count"] or 0),
+                    "sales_total": round(float(invoice_summary_row["sales_total"] or 0), 2),
+                    "estimated_margin": None,
+                    "operating_result": None,
+                    "cc_open_balance": cc_open_balance,
+                    "cash_on_hand": cash_on_hand,
+                    "account_movements": int(account_movements_count_row["total"] or 0),
+                    "debtors": sum(1 for row in cc_balance_rows if float(row["balance"] or 0) > 0),
+                    "latest_invoice_at": invoice_summary_row["latest_invoice_at"],
+                },
+                "monthly_sales": [],
+                "monthly_sales_all": [],
+                "top_products": [],
+                "top_customers": [],
+                "sales_by_category": [],
+                "sales_by_seller": [],
+                "top_debtors": top_debtors,
+                "low_stock": low_stock,
+                "current_year_detail": None,
+                "annual_history": [],
+                "year_projection": None,
+            })
+
         categories = conn.execute(
             """
             SELECT id, name
@@ -9058,22 +9220,9 @@ def admin_reports_overview(
                 continue
             invoice_items.append(row)
 
-        total_stock_units = sum(int(row["stock"] or 0) for row in products)
         cost_by_product = {int(row["id"]): float(row["cost"] or 0) for row in products}
         category_by_product = {int(row["id"]): int(row["category_id"] or 0) for row in products}
         category_names = {int(row["id"]): row["name"] for row in categories if row["id"] is not None}
-        stock_value_cost = round(sum(float(row["cost"] or 0) * int(row["stock"] or 0) for row in products), 2)
-        stock_value_sale = round(sum(float(row["price"] or 0) * int(row["stock"] or 0) for row in products), 2)
-        low_stock = [
-            {
-                "id": int(row["id"]),
-                "name": row["name"],
-                "stock": int(row["stock"] or 0),
-                "reorder_point": int(row["reorder_point"] or 0),
-            }
-            for row in products
-            if int(row["stock"] or 0) <= max(0, int(row["reorder_point"] or 0))
-        ][:20]
 
         monthly_map: dict[str, dict[str, Any]] = {}
         snapshot_stats_by_year: dict[int, dict[str, int]] = {}
