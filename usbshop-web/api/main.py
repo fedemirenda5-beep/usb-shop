@@ -6135,19 +6135,32 @@ def admin_backoffice_customers(
             params.extend(parsed_ids)
         query_text = str(q or "").strip()
         if query_text:
-            like = f"%{query_text}%"
-            conditions.append(
-                "("
-                "name LIKE ? OR "
-                "COALESCE(email, '') LIKE ? OR "
-                "COALESCE(phone, '') LIKE ? OR "
-                "COALESCE(cuit, '') LIKE ? OR "
-                "COALESCE(address, '') LIKE ? OR "
-                "COALESCE(locality, '') LIKE ? OR "
-                "CAST(id AS TEXT) = ?"
-                ")"
-            )
-            params.extend([like, like, like, like, like, like, query_text])
+            query_tokens = [token.strip().lower() for token in query_text.split() if token.strip()]
+            if not query_tokens:
+                query_tokens = [query_text.lower()]
+            for token in query_tokens:
+                like = f"%{token}%"
+                digits_only = re.sub(r"\D+", "", token)
+                conditions.append(
+                    "("
+                    "LOWER(COALESCE(name, '')) LIKE ? OR "
+                    "LOWER(COALESCE(email, '')) LIKE ? OR "
+                    "LOWER(COALESCE(address, '')) LIKE ? OR "
+                    "LOWER(COALESCE(locality, '')) LIKE ? OR "
+                    "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') LIKE ? OR "
+                    "REPLACE(REPLACE(REPLACE(COALESCE(cuit, ''), '-', ''), ' ', ''), '.', '') LIKE ? OR "
+                    "CAST(id AS TEXT) = ?"
+                    ")"
+                )
+                params.extend([
+                    like,
+                    like,
+                    like,
+                    like,
+                    f"%{digits_only}%" if digits_only else like,
+                    f"%{digits_only}%" if digits_only else like,
+                    token,
+                ])
         where_clause = " AND ".join(conditions)
         rows = conn.execute(
             f"""
