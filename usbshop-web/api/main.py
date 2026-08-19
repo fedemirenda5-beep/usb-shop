@@ -843,6 +843,14 @@ def _set_admin_daily_report_cache(role: str, start_date: str, end_date: str, pay
     return _set_admin_cached_payload(f"daily-report:{role}:{start_date}:{end_date}", payload)
 
 
+def _get_admin_customer_ranking_cache(role: str, year: int, limit: int) -> Optional[dict[str, Any]]:
+    return _get_admin_cached_payload(f"customer-ranking:{role}:{year}:{limit}")
+
+
+def _set_admin_customer_ranking_cache(role: str, year: int, limit: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return _set_admin_cached_payload(f"customer-ranking:{role}:{year}:{limit}", payload)
+
+
 def _ensure_users_table(conn: DBConn) -> None:
     if DB_IS_POSTGRES:
         conn.execute(
@@ -2706,6 +2714,18 @@ def _argentina_month_bucket(value: Any) -> Optional[str]:
     if parsed is None:
         return None
     return parsed.strftime("%Y-%m")
+
+
+def _argentina_date_sql_range(start_date: datetime.date, end_date: datetime.date) -> tuple[str, str]:
+    start_dt = datetime(start_date.year, start_date.month, start_date.day, tzinfo=ARGENTINA_TZ)
+    end_next_day = end_date + timedelta(days=1)
+    end_dt = datetime(end_next_day.year, end_next_day.month, end_next_day.day, tzinfo=ARGENTINA_TZ)
+    start_utc = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return (
+        start_utc.strftime("%Y-%m-%d %H:%M:%S"),
+        end_utc.strftime("%Y-%m-%d %H:%M:%S"),
+    )
 
 
 def _matches_argentina_date_range(value: Any, start_date: Optional[str], end_date: Optional[str]) -> bool:
@@ -9813,6 +9833,7 @@ def admin_reports_daily(
     )
     if cached_payload is not None:
         return cached_payload
+    sql_range_start, sql_range_end = _argentina_date_sql_range(effective_start, effective_end)
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
@@ -9826,8 +9847,11 @@ def admin_reports_daily(
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
             LEFT JOIN sellers s ON s.id = i.seller_id
+            WHERE i.created_at >= ? AND i.created_at < ?
+              AND UPPER(COALESCE(i.document_type, '')) <> 'PRESUPUESTO'
             ORDER BY i.created_at ASC, i.id ASC
-            """
+            """,
+            (sql_range_start, sql_range_end),
         ).fetchall()
         selected_invoices: list[dict[str, Any]] = []
         selected_invoice_map: dict[int, dict[str, Any]] = {}
@@ -9835,12 +9859,7 @@ def admin_reports_daily(
         customer_summary: dict[int, dict[str, Any]] = {}
         seller_summary: dict[int, dict[str, Any]] = {}
         for row in invoices:
-            created_date = _argentina_date_for_filter(row["created_at"])
-            if created_date is None or created_date < effective_start or created_date > effective_end:
-                continue
             document_type = str(row["document_type"] or "").strip().upper()
-            if document_type == "PRESUPUESTO":
-                continue
             invoice_id = int(row["id"] or 0)
             sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
             total = round(float(row["total"] or 0) * sign, 2)
@@ -9972,7 +9991,7 @@ def admin_reports_daily(
         )[:20]
 
         total_sales = round(sum(float(item["total"]) for item in selected_invoices), 2)
-        total_commissions = round(sum(float(item["commission"]) for item in sellers), 2)
+        total_commissions = round(sum(float(item["commission"]) for item in seller_summary.values()), 2)
         invoice_count = len(selected_invoices)
         return _set_admin_daily_report_cache(
             session_role,
@@ -10010,9 +10029,17 @@ def admin_reports_customer_ranking(
     session_role = str(session_payload.get("role") or "").strip().lower() or ROLE_STAFF
     safe_limit = max(1, min(int(limit or 20), 50))
     current_year = _argentina_now().year
+    cached_payload = _get_admin_customer_ranking_cache(session_role, current_year, safe_limit)
+    if cached_payload is not None:
+        return cached_payload
+    year_start, year_end = _argentina_date_sql_range(
+        datetime(current_year, 1, 1).date(),
+        datetime(current_year, 12, 31).date(),
+    )
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_reporting_indexes(conn)
         _ensure_invoice_special_discount_column(conn)
         _ensure_invoice_items_cost_snapshot_column(conn)
         invoice_rows = conn.execute(
@@ -10020,32 +10047,27 @@ def admin_reports_customer_ranking(
             SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type, c.name AS customer_name
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
+            WHERE i.created_at >= ? AND i.created_at < ?
+              AND UPPER(COALESCE(i.document_type, '')) <> 'PRESUPUESTO'
             ORDER BY i.created_at ASC, i.id ASC
-            """
+            """,
+            (year_start, year_end),
         ).fetchall()
-        selected_invoices: list[dict[str, Any]] = []
-        invoice_ids: list[int] = []
+        selected_invoices: dict[int, dict[str, Any]] = {}
         customer_summary: dict[int, dict[str, Any]] = {}
         for row in invoice_rows:
-            created = _argentina_datetime(row["created_at"])
-            if created is None or created.year != current_year:
-                continue
             document_type = str(row["document_type"] or "").strip().upper()
-            if document_type == "PRESUPUESTO":
-                continue
             invoice_id = int(row["id"] or 0)
             customer_id = int(row["customer_id"] or 0)
             sign = -1.0 if document_type == "NOTA_CREDITO" else 1.0
             total = round(float(row["total"] or 0) * sign, 2)
             discount = round(float(row["special_discount"] or 0) * sign, 2)
-            invoice_payload = {
+            selected_invoices[invoice_id] = {
                 "id": invoice_id,
                 "customer_id": customer_id,
                 "document_type": document_type,
                 "discount": discount,
             }
-            selected_invoices.append(invoice_payload)
-            invoice_ids.append(invoice_id)
             customer_entry = customer_summary.setdefault(
                 customer_id,
                 {
@@ -10059,21 +10081,21 @@ def admin_reports_customer_ranking(
             customer_entry["invoice_count"] += 1
             customer_entry["sales_total"] = round(float(customer_entry["sales_total"]) + total, 2)
 
-        if invoice_ids:
-            placeholders = ",".join(["?"] * len(invoice_ids))
+        if selected_invoices:
             invoice_item_rows = conn.execute(
-                f"""
+                """
                 SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, ii.cost_snapshot, p.cost
                 FROM invoice_items ii
+                JOIN invoices i ON i.id = ii.invoice_id
                 LEFT JOIN products p ON p.id = ii.product_id
-                WHERE ii.invoice_id IN ({placeholders})
+                WHERE i.created_at >= ? AND i.created_at < ?
+                  AND UPPER(COALESCE(i.document_type, '')) <> 'PRESUPUESTO'
                 """,
-                tuple(invoice_ids),
+                (year_start, year_end),
             ).fetchall()
-            invoice_map = {int(item["id"]): item for item in selected_invoices}
             for row in invoice_item_rows:
                 invoice_id = int(row["invoice_id"] or 0)
-                invoice_payload = invoice_map.get(invoice_id)
+                invoice_payload = selected_invoices.get(invoice_id)
                 if invoice_payload is None:
                     continue
                 customer_id = int(invoice_payload["customer_id"] or 0)
@@ -10086,7 +10108,7 @@ def admin_reports_customer_ranking(
                 cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0)
                 margin = quantity * max(0.0, unit_price - cost) * sign
                 customer_entry["profit_total"] = round(float(customer_entry["profit_total"]) + margin, 2)
-            for invoice_payload in selected_invoices:
+            for invoice_payload in selected_invoices.values():
                 customer_id = int(invoice_payload["customer_id"] or 0)
                 customer_entry = customer_summary.get(customer_id)
                 if customer_entry is None:
@@ -10111,7 +10133,7 @@ def admin_reports_customer_ranking(
             key=lambda item: (-item["sales_total"], item["name"].lower()),
         )[:safe_limit]
 
-        response = {
+        response = _set_admin_customer_ranking_cache(session_role, current_year, safe_limit, {
             "year": current_year,
             "limit": safe_limit,
             "customers": ranking,
@@ -10119,7 +10141,7 @@ def admin_reports_customer_ranking(
                 "sales_total": round(sum(float(item["sales_total"] or 0) for item in ranking), 2),
                 "profit_total": round(sum(float(item["profit_total"] or 0) for item in ranking), 2),
             },
-        }
+        })
         if session_role == ROLE_STAFF:
             return {
                 **response,
