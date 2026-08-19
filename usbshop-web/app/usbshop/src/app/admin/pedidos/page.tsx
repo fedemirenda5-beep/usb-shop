@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ensureApiBaseUrl, fetchApiResponse, getApiBaseUrl, getFriendlyApiError } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { ARGENTINA_TZ } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -30,7 +30,7 @@ interface Order {
   created_at: string;
   confirmed_at: string | null;
   confirmed_invoice_id: string | null;
-  items: OrderItem[];
+  items?: OrderItem[];
 }
 
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
@@ -46,18 +46,21 @@ const money = (value: number) =>
 export default function PedidosPage() {
   useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [orderDetails, setOrderDetails] = useState<Record<number, Order>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
+  const [loadingDetailOrderId, setLoadingDetailOrderId] = useState<number | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<number | null>(null);
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState<Order | null>(null);
+  const detailAbortControllerRef = useRef<AbortController | null>(null);
 
   const loadOrders = async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError('');
       const res = await fetchApiResponse(
-        `/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=true`,
+        `/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=false`,
         { signal }
       );
       if (!res.ok) throw new Error('No se pudieron cargar las ordenes de compra');
@@ -77,7 +80,10 @@ export default function PedidosPage() {
   useEffect(() => {
     const controller = new AbortController();
     void loadOrders(controller.signal);
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      detailAbortControllerRef.current?.abort();
+    };
   }, []);
 
   const pendingOrders = useMemo(() => orders.filter((order) => order.status === 'PENDING'), [orders]);
@@ -110,10 +116,8 @@ export default function PedidosPage() {
     try {
       setDeletingOrderId(order.id);
       setError('');
-      await ensureApiBaseUrl();
-      const res = await fetch(`${getApiBaseUrl()}/admin/orders/${order.id}/status`, {
+      const res = await fetchApiResponse(`/admin/orders/${order.id}/status`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'DELETED' }),
       });
@@ -121,6 +125,11 @@ export default function PedidosPage() {
       if (!res.ok) throw new Error(data.detail || 'No se pudo eliminar la orden de compra');
       setPendingDeleteOrder(null);
       setDetailOrderId((current) => (current === order.id ? null : current));
+      setOrderDetails((current) => {
+        const next = { ...current };
+        delete next[order.id];
+        return next;
+      });
       await loadOrders();
     } catch (err) {
       setError(getFriendlyApiError(err, 'Error eliminando orden de compra'));
@@ -129,12 +138,58 @@ export default function PedidosPage() {
     }
   };
 
-  const orderRequiresImei = (order: Order) => order.items.some((item) => item.requires_imei);
+  const loadOrderDetail = async (orderId: number) => {
+    if (orderDetails[orderId]) {
+      return;
+    }
+    detailAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortControllerRef.current = controller;
+    try {
+      setLoadingDetailOrderId(orderId);
+      setError('');
+      const res = await fetchApiResponse(`/admin/orders/${orderId}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error('No se pudo cargar el detalle del pedido');
+      const data = (await res.json()) as Order;
+      if (controller.signal.aborted) return;
+      setOrderDetails((current) => ({ ...current, [orderId]: data }));
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      setError(getFriendlyApiError(err, 'Error cargando el detalle del pedido'));
+      setDetailOrderId((current) => (current === orderId ? null : current));
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoadingDetailOrderId((current) => (current === orderId ? null : current));
+      }
+      if (detailAbortControllerRef.current === controller) {
+        detailAbortControllerRef.current = null;
+      }
+    }
+  };
+
+  const toggleOrderDetail = (orderId: number) => {
+    if (detailOrderId === orderId) {
+      detailAbortControllerRef.current?.abort();
+      setLoadingDetailOrderId((current) => (current === orderId ? null : current));
+      setDetailOrderId(null);
+      return;
+    }
+    setDetailOrderId(orderId);
+    if (!orderDetails[orderId]) {
+      void loadOrderDetail(orderId);
+    }
+  };
+
+  const orderRequiresImei = (order: Order) => (order.items || []).some((item) => item.requires_imei);
 
   const renderRows = (source: Order[], history = false) =>
     source.flatMap((order) => {
+      const detailOrder = orderDetails[order.id] || order;
       const color = statusColors[order.status];
-      const requiresImei = orderRequiresImei(order);
+      const requiresImei = orderRequiresImei(detailOrder);
+      const isLoadingDetail = loadingDetailOrderId === order.id && !orderDetails[order.id];
       const rows = [
         <tr key={`row-${history ? 'history' : 'pending'}-${order.id}`} className={styles.orderRow}>
           <td className={styles.orderCode}>Orden de compra #{order.id}</td>
@@ -150,13 +205,13 @@ export default function PedidosPage() {
           <td className={styles.actions}>
             <button
               className={styles.btnDetails}
-              onClick={() => setDetailOrderId(detailOrderId === order.id ? null : order.id)}
+              onClick={() => toggleOrderDetail(order.id)}
             >
-              Ver detalle
+              {detailOrderId === order.id ? 'Ocultar detalle' : isLoadingDetail ? 'Cargando...' : 'Ver detalle'}
             </button>
             {order.status === 'PENDING' ? (
               <Link href={`/admin/generar-comprobante?order_id=${order.id}`} className={styles.btnInvoice}>
-                {requiresImei ? 'Escanear IMEIs y emitir' : 'Procesar orden'}
+                Procesar orden
               </Link>
             ) : null}
             <button
@@ -175,29 +230,33 @@ export default function PedidosPage() {
           <tr key={`detail-${history ? 'history' : 'pending'}-${order.id}`} className={styles.detailsRow}>
             <td colSpan={7}>
               <div className={styles.detailsContent}>
+                {isLoadingDetail ? (
+                  <div className={styles.loading}>Cargando detalle del pedido...</div>
+                ) : (
+                  <>
                 <div className={styles.detailsColumns}>
                   <div className={styles.detailColumn}>
                     <h4>Cliente</h4>
-                    <p><strong>Nombre:</strong> {order.customer_name}</p>
-                    <p><strong>Email:</strong> {order.customer_email || '-'}</p>
-                    <p><strong>Telefono:</strong> {order.customer_phone || '-'}</p>
+                    <p><strong>Nombre:</strong> {detailOrder.customer_name}</p>
+                    <p><strong>Email:</strong> {detailOrder.customer_email || '-'}</p>
+                    <p><strong>Telefono:</strong> {detailOrder.customer_phone || '-'}</p>
                   </div>
 
                   <div className={styles.detailColumn}>
                     <h4>Orden de compra</h4>
-                    <p><strong>Ingreso:</strong> {formatDate(order.created_at)}</p>
+                    <p><strong>Ingreso:</strong> {formatDate(detailOrder.created_at)}</p>
                     <p><strong>Estado:</strong> {color.label}</p>
-                    {order.confirmed_at ? (
-                      <p><strong>Procesada:</strong> {formatDate(order.confirmed_at)}</p>
+                    {detailOrder.confirmed_at ? (
+                      <p><strong>Procesada:</strong> {formatDate(detailOrder.confirmed_at)}</p>
                     ) : null}
-                    {order.confirmed_invoice_id ? (
-                      <p><strong>Comprobante emitido:</strong> #{order.confirmed_invoice_id}</p>
+                    {detailOrder.confirmed_invoice_id ? (
+                      <p><strong>Comprobante emitido:</strong> #{detailOrder.confirmed_invoice_id}</p>
                     ) : null}
-                    {order.notes ? <p><strong>Observaciones:</strong> {order.notes}</p> : null}
+                    {detailOrder.notes ? <p><strong>Observaciones:</strong> {detailOrder.notes}</p> : null}
                   </div>
                 </div>
 
-                {order.items.length > 0 ? (
+                {(detailOrder.items || []).length > 0 ? (
                   <div className={styles.itemsSection}>
                     <div className={styles.itemsHeader}>
                       <h4>Detalle de articulos</h4>
@@ -220,7 +279,7 @@ export default function PedidosPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {order.items.map((item, idx) => (
+                        {(detailOrder.items || []).map((item, idx) => (
                           <tr key={`${order.id}-${idx}`}>
                             <td>{item.name || `Producto ${item.product_id}`}</td>
                             <td>{item.category_name || '-'}</td>
@@ -234,6 +293,8 @@ export default function PedidosPage() {
                     </table>
                   </div>
                 ) : null}
+                  </>
+                )}
               </div>
             </td>
           </tr>
