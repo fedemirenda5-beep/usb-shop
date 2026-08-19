@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, resolveImageUrl } from '@/lib/api';
 import styles from './ProductForm.module.css';
 
 const MAX_PRODUCT_IMAGES = 3;
@@ -410,14 +410,12 @@ export function ProductForm({
 
     setUploadingSlots((prev) => prev.map((current, currentIndex) => (currentIndex === index ? true : current)));
     try {
-      await loadRuntimeConfig();
       const body = new FormData();
       body.append('file', selectedFile);
       body.append('product_name', formData.name || selectedFile.name);
 
-      const res = await fetch(`${getApiBaseUrl()}/admin/uploads/product-image`, {
+      const res = await fetchApiResponse('/admin/uploads/product-image', {
         method: 'POST',
-        credentials: 'include',
         body,
       });
 
@@ -445,6 +443,8 @@ export function ProductForm({
         })
       );
       return uploadedUrl;
+    } catch (error) {
+      throw new Error(getFriendlyApiError(error, 'No se pudo subir la imagen'));
     } finally {
       setUploadingSlots((prev) => prev.map((current, currentIndex) => (currentIndex === index ? false : current)));
     }
