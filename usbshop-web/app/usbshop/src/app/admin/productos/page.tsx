@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { canViewProfitMetrics } from '../adminPermissions';
 import { ProductForm } from './components/ProductForm';
@@ -1495,9 +1495,8 @@ export default function ProductosPage() {
                 await loadRuntimeConfig();
                 let res: Response;
                 try {
-                  res = await fetch(`${getApiBaseUrl()}/admin/products/${editProduct.id}`, {
+                  res = await fetchApiResponse(`/admin/products/${editProduct.id}`, {
                     method: 'PUT',
-                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data),
                   });

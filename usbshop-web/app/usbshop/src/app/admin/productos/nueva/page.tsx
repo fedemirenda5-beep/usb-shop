@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig } from '@/lib/api';
 import { canViewProfitMetrics } from '../../adminPermissions';
 import { ADMIN_LIMITS } from '../../adminConfig';
 import { ProductForm } from '../components/ProductForm';
@@ -59,17 +59,15 @@ export default function NuevaProductoPage() {
   }, []);
 
   const handleSubmit = async (data: ProductPayload) => {
-    await loadRuntimeConfig();
     let res: Response;
     try {
-      res = await fetch(`${getApiBaseUrl()}/admin/products`, {
+      res = await fetchApiResponse('/admin/products', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-    } catch {
-      throw new Error('No se pudo conectar con la API para crear el producto');
+    } catch (error) {
+      throw new Error(getFriendlyApiError(error, 'No se pudo conectar con la API para crear el producto'));
     }
 
     if (!res.ok) {
