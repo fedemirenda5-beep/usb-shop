@@ -5250,6 +5250,7 @@ def admin_list_products(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
     category: Optional[str] = None,
+    ids: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
     summary: bool = False,
@@ -5281,6 +5282,21 @@ def admin_list_products(
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
             params.append(category)
+        parsed_ids: list[int] = []
+        if ids:
+            for raw_value in str(ids).split(","):
+                raw_value = raw_value.strip()
+                if not raw_value:
+                    continue
+                try:
+                    parsed_ids.append(int(raw_value))
+                except ValueError:
+                    continue
+            parsed_ids = list(dict.fromkeys([value for value in parsed_ids if value > 0]))
+        if parsed_ids:
+            placeholders = ", ".join(["?"] * len(parsed_ids))
+            conditions.append(f"id IN ({placeholders})")
+            params.extend(parsed_ids)
         if out_of_stock_only:
             conditions.append("COALESCE(stock, 0) <= 0")
         
@@ -5979,6 +5995,7 @@ def admin_backoffice_customers(
     request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
+    ids: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
     summary: bool = False,
@@ -5988,35 +6005,49 @@ def admin_backoffice_customers(
     try:
         _ensure_syncable_tables(conn)
         customer_fields = _customer_select_fields(conn)
+        conditions = ["deleted_at IS NULL"]
+        params: list[Any] = []
+        parsed_ids: list[int] = []
+        if ids:
+            for raw_value in str(ids).split(","):
+                raw_value = raw_value.strip()
+                if not raw_value:
+                    continue
+                try:
+                    parsed_ids.append(int(raw_value))
+                except ValueError:
+                    continue
+            parsed_ids = list(dict.fromkeys([value for value in parsed_ids if value > 0]))
+        if parsed_ids:
+            placeholders = ", ".join(["?"] * len(parsed_ids))
+            conditions.append(f"id IN ({placeholders})")
+            params.extend(parsed_ids)
+        query_text = str(q or "").strip()
+        if query_text:
+            like = f"%{query_text}%"
+            conditions.append(
+                "("
+                "name LIKE ? OR "
+                "COALESCE(email, '') LIKE ? OR "
+                "COALESCE(phone, '') LIKE ? OR "
+                "COALESCE(cuit, '') LIKE ? OR "
+                "COALESCE(address, '') LIKE ? OR "
+                "COALESCE(locality, '') LIKE ? OR "
+                "CAST(id AS TEXT) = ?"
+                ")"
+            )
+            params.extend([like, like, like, like, like, like, query_text])
+        where_clause = " AND ".join(conditions)
         rows = conn.execute(
             f"""
             SELECT {customer_fields}
             FROM customers
-            WHERE deleted_at IS NULL
+            WHERE {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
+            LIMIT ? OFFSET ?
             """,
+            params + [limit, offset],
         ).fetchall()
-        query_text = _normalize_search_text(q)
-        if query_text:
-            query_tokens = [token for token in query_text.split() if token]
-            filtered_rows = []
-            for row in rows:
-                haystack = _normalize_search_text(
-                    " ".join(
-                        [
-                            row["name"] or "",
-                            row["email"] or "",
-                            row["phone"] or "",
-                            row["cuit"] or "",
-                            row["address"] or "",
-                            row["locality"] or "",
-                        ]
-                    )
-                )
-                if query_text in haystack or all(token in haystack for token in query_tokens):
-                    filtered_rows.append(row)
-            rows = filtered_rows
-        rows = rows[offset : offset + limit]
         if summary:
             return [
                 {
