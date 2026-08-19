@@ -99,6 +99,23 @@ PUBLIC_STORE_BASE_URL = (
     or os.getenv("NEXT_PUBLIC_SITE_URL")
     or "https://usbshop.com.ar"
 ).strip().rstrip("/")
+PREFER_SOURCE_DB_READS = os.getenv("USB_PREFER_SOURCE_DB", "0").strip() == "1"
+
+
+def _configure_sqlite_connection(conn: sqlite3.Connection) -> None:
+    conn.row_factory = sqlite3.Row
+    pragmas = (
+        "PRAGMA foreign_keys = ON",
+        "PRAGMA busy_timeout = 30000",
+        "PRAGMA journal_mode = WAL",
+        "PRAGMA synchronous = NORMAL",
+        "PRAGMA temp_store = MEMORY",
+    )
+    for statement in pragmas:
+        try:
+            conn.execute(statement)
+        except Exception:
+            continue
 
 def _adapt_query(query: str) -> str:
     if not DB_IS_POSTGRES:
@@ -160,7 +177,9 @@ def _effective_db_path() -> Path:
     if os.getenv("CONTROLSTOCK_DB"):
         return DB_PATH
     source = SOURCE_DB_PATH.expanduser()
-    return source if source.exists() else DB_PATH
+    if PREFER_SOURCE_DB_READS and source.exists():
+        return source
+    return DB_PATH
 
 
 def _connect() -> DBConn:
@@ -179,8 +198,8 @@ def _connect() -> DBConn:
         else:
             raise FileNotFoundError(f"DB no encontrada en {db_path}")
         db_path = _effective_db_path()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = sqlite3.connect(db_path, timeout=30)
+    _configure_sqlite_connection(conn)
     return DBConn(conn, False)
 
 
@@ -3704,7 +3723,25 @@ def _ensure_reporting_indexes(conn: DBConn) -> None:
     if _has_table(conn, "purchases"):
         statements.append("CREATE INDEX IF NOT EXISTS idx_purchases_created_at ON purchases(created_at)")
     if _has_table(conn, "products"):
-        statements.append("CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id)")
+        statements.extend(
+            [
+                "CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id)",
+                "CREATE INDEX IF NOT EXISTS idx_products_active_deleted_id ON products(is_active, deleted_at, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_products_featured_active_id ON products(is_featured, is_active, deleted_at, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_products_updated_at_id ON products(updated_at, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_products_created_at_id ON products(created_at, id DESC)",
+            ]
+        )
+        if not DB_IS_POSTGRES:
+            statements.append(
+                "CREATE INDEX IF NOT EXISTS idx_products_active_name_expr ON products(is_active, deleted_at, LOWER(TRIM(name)), id DESC)"
+            )
+    if _has_table(conn, "categories"):
+        statements.append("CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name)")
+    if _has_table(conn, "product_images"):
+        statements.append(
+            "CREATE INDEX IF NOT EXISTS idx_product_images_product_sort ON product_images(product_id, sort_order, id)"
+        )
     for statement in statements:
         try:
             conn.execute(statement)
@@ -4337,8 +4374,8 @@ def create_order(payload: OrderPayload) -> dict:
         target_db = None
     else:
         target_db = _write_db_path()
-        raw = sqlite3.connect(target_db)
-        raw.row_factory = sqlite3.Row
+        raw = sqlite3.connect(target_db, timeout=30)
+        _configure_sqlite_connection(raw)
         conn = DBConn(raw, False)
     try:
         _ensure_web_order_tables(conn)
