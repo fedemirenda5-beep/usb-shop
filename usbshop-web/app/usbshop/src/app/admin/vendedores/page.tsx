@@ -239,7 +239,6 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export default function VendedoresPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const hasExplicitPeriod = Boolean(searchParams.get('period'));
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const canViewCommissionBreakdown = canViewSellerCommissionBreakdown(user?.role);
@@ -724,27 +723,9 @@ export default function VendedoresPage() {
         setSummaryLoading(true);
       }
       await loadRuntimeConfig();
-      let requestedPeriod = monthlyPeriod;
-      if (!requestedPeriod && !hasExplicitPeriod) {
-        const listRes = await fetch(`${getApiBaseUrl()}/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`, {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        const listData = await listRes.json().catch(() => null);
-        if (!listRes.ok) {
-          throw new Error(listData?.detail || 'No se pudieron cargar los comprobantes');
-        }
-        requestedPeriod =
-          (Array.isArray(listData) ? (listData as InvoiceListItem[]) : [])
-            .filter((item) => Number(item.seller_id || 0) > 0 && String(item.document_type || '').trim().toUpperCase() !== 'PRESUPUESTO')
-            .map((item) => (typeof item.created_at === 'string' ? item.created_at.slice(0, 7) : ''))
-            .filter((value) => /^\d{4}-\d{2}$/.test(value))
-            .sort()
-            .at(-1) || '';
-      }
       const params = new URLSearchParams();
-      if (requestedPeriod) {
-        params.set('period', requestedPeriod);
+      if (monthlyPeriod) {
+        params.set('period', monthlyPeriod);
       }
       const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary?${params.toString()}`, {
         credentials: 'include',
