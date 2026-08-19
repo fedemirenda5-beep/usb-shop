@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ensureApiBaseUrl, fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
@@ -376,17 +376,16 @@ export default function GenerarComprobantePage() {
     const load = async () => {
       try {
         setLoading(true);
-        await loadRuntimeConfig();
         const [sellersRes, categoriesRes] = await Promise.all([
-          fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { credentials: 'include' }),
-          fetch(`${getApiBaseUrl()}/admin/categories`, { credentials: 'include' }),
+          fetchApiResponse(`/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`),
+          fetchApiResponse('/admin/categories'),
         ]);
         if (!sellersRes.ok || !categoriesRes.ok) throw new Error('No se pudieron cargar las opciones base');
         setSellers((await sellersRes.json()).filter((seller: SellerOption) => seller.is_active));
         setCategories(await categoriesRes.json());
         setError('');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando formulario');
+        setError(getFriendlyApiError(err, 'Error cargando formulario'));
       } finally {
         setLoading(false);
       }
@@ -398,8 +397,7 @@ export default function GenerarComprobantePage() {
     if (!orderIdParam || budgetInvoiceIdParam) return;
     const prefill = async () => {
       try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/orders/${orderIdParam}`, { credentials: 'include' });
+        const res = await fetchApiResponse(`/admin/orders/${orderIdParam}`);
         if (!res.ok) throw new Error('No se pudo cargar el pedido');
         const draft = (await res.json()) as OrderDraft;
         const matchedCustomerCandidates = await fetchCustomerOptions(
@@ -428,7 +426,7 @@ export default function GenerarComprobantePage() {
         setCustomerOptions(matchedCustomerCandidates.slice(0, 10));
         setError('');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando el pedido');
+        setError(getFriendlyApiError(err, 'Error cargando el pedido'));
       }
     };
     void prefill();
@@ -438,8 +436,7 @@ export default function GenerarComprobantePage() {
     if (!budgetInvoiceIdParam) return;
     const prefillBudget = async () => {
       try {
-        await loadRuntimeConfig();
-        const res = await fetch(`${getApiBaseUrl()}/admin/invoices/${budgetInvoiceIdParam}`, { credentials: 'include' });
+        const res = await fetchApiResponse(`/admin/invoices/${budgetInvoiceIdParam}`);
         if (!res.ok) throw new Error('No se pudo cargar el presupuesto');
         const draft = (await res.json()) as BudgetDraft;
         const invoice = draft.invoice;
@@ -479,7 +476,7 @@ export default function GenerarComprobantePage() {
         setCustomerOptions(matchedCustomers.slice(0, 10));
         setError('');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Error cargando el presupuesto');
+        setError(getFriendlyApiError(err, 'Error cargando el presupuesto'));
       }
     };
     void prefillBudget();
@@ -828,9 +825,8 @@ export default function GenerarComprobantePage() {
 
   const lookupImeiValue = async (rawValue: string) => {
     try {
-      await loadRuntimeConfig();
       const params = new URLSearchParams({ q: rawValue.trim() });
-      const res = await fetch(`${getApiBaseUrl()}/admin/imei-lookup?${params.toString()}`, { credentials: 'include' });
+      const res = await fetchApiResponse(`/admin/imei-lookup?${params.toString()}`);
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload.detail || 'No se pudo consultar el IMEI');
@@ -1171,7 +1167,6 @@ export default function GenerarComprobantePage() {
     try {
       setCreating(true);
       setError('');
-      await ensureApiBaseUrl();
       const payload = {
         order_id: form.order_id ? Number(form.order_id) : null,
         customer_id: Number(form.customer_id),
@@ -1191,9 +1186,8 @@ export default function GenerarComprobantePage() {
           imeis: item.imeis,
         })),
       };
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices`, {
+      const res = await fetchApiResponse('/admin/invoices', {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });

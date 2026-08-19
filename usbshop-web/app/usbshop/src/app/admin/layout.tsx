@@ -1,7 +1,7 @@
 'use client';
 
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { getApiBaseUrl, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, resolveImageUrl } from '@/lib/api';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -82,14 +82,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   };
 
   const loadScannerProducts = async (rawValue: string) => {
-    await loadRuntimeConfig();
     const params = new URLSearchParams({
       q: rawValue.trim(),
       limit: String(ADMIN_LIMITS.scannerLookup),
     });
-    const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
-      credentials: 'include',
-    });
+    const res = await fetchApiResponse(`/admin/products?${params.toString()}`);
     if (!res.ok) {
       throw new Error('No se pudieron cargar los productos para el lector');
     }
@@ -183,9 +180,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             router.push(`/admin/productos?edit=${matchedProduct.id}`);
           } catch (scanError) {
             setScannerPreviewProduct(null);
-            setScannerPreviewError(
-              scanError instanceof Error ? scanError.message : 'No se pudo resolver el producto escaneado'
-            );
+            setScannerPreviewError(getFriendlyApiError(scanError, 'No se pudo resolver el producto escaneado'));
           }
         })();
         return;
