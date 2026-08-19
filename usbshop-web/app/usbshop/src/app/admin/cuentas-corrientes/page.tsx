@@ -362,9 +362,7 @@ export default function CuentasCorrientesPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || (editingMovementId ? 'No se pudo actualizar el movimiento' : 'No se pudo registrar el movimiento'));
-      await loadOverview();
-      await loadDetail(selectedId);
-      await loadInvoices(selectedId);
+      await Promise.all([loadOverview(), loadDetail(selectedId), loadInvoices(selectedId)]);
       setEditingMovementId(null);
       setForm((current) => ({
         ...current,
@@ -585,35 +583,27 @@ export default function CuentasCorrientesPage() {
   const hideGlobalTotals = (user?.role || '').toLowerCase() === 'staff';
 
   const refreshAll = async () => {
-      try {
+    try {
       setError('');
       await loadOverview();
       if (selectedId) {
-        await loadDetail(selectedId);
-        await loadInvoices(selectedId);
+        await Promise.all([loadDetail(selectedId), loadInvoices(selectedId)]);
       }
-      } catch (err) {
+    } catch (err) {
       setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
     }
   };
 
-  const openCustomerDetail = async (customerId: number) => {
+  const openCustomerDetail = (customerId: number) => {
     setError('');
     setSelectedId(customerId);
     setDetail(null);
     setInvoices([]);
     setDetailOnly(true);
     setOutputRange(null);
-    try {
-      await loadDetail(customerId);
-      await loadInvoices(customerId);
-    } catch (err) {
-      setError(getErrorMessage(err, 'Error cargando el detalle'));
-    } finally {
-      window.requestAnimationFrame(() => {
-        detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    }
+    window.requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const openDesktopWorkspace = (customerId: number) => {
@@ -659,7 +649,6 @@ export default function CuentasCorrientesPage() {
       let currentDetail = detail;
       if (!currentDetail || currentDetail.customer.id !== selectedId) {
         currentDetail = await loadDetail(selectedId);
-        await loadInvoices(selectedId);
       }
       const nextRange = { ...dateRangeDraft };
       setOutputRange(nextRange);
@@ -740,9 +729,7 @@ export default function CuentasCorrientesPage() {
       if (editingMovementId === movement.id) {
         resetMovementForm();
       }
-      await loadOverview();
-      await loadDetail(selectedId);
-      await loadInvoices(selectedId);
+      await Promise.all([loadOverview(), loadDetail(selectedId), loadInvoices(selectedId)]);
     } catch (err) {
       setError(getErrorMessage(err, 'Error eliminando movimiento'));
     } finally {
