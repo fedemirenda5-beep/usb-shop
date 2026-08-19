@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
@@ -190,11 +190,7 @@ export default function ClientesPage() {
       setLoading(true);
       const params = new URLSearchParams({ limit: '300' });
       if (query.trim()) params.set('q', query.trim());
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?${params}`, {
-        credentials: 'include',
-        signal,
-      });
+      const res = await fetchApiResponse(`/admin/backoffice-customers?${params.toString()}`, { signal });
       if (!res.ok) throw new Error('No se pudieron cargar los clientes');
       const data = await res.json();
       setCustomers(data);
@@ -204,7 +200,7 @@ export default function ClientesPage() {
       }
     } catch (err) {
       if (signal?.aborted) return;
-      setError(err instanceof Error ? err.message : 'Error cargando clientes');
+      setError(getFriendlyApiError(err, 'Error cargando clientes'));
     } finally {
       if (!signal?.aborted) {
         setLoading(false);
@@ -216,11 +212,7 @@ export default function ClientesPage() {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${customerId}`, {
-        credentials: 'include',
-        signal,
-      });
+      const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}`, { signal });
       if (!res.ok) throw new Error('No se pudo cargar el cliente');
       const customerData = await res.json();
       if (signal?.aborted || requestId !== detailRequestRef.current) return;
@@ -245,23 +237,19 @@ export default function ClientesPage() {
       setSelectedCustomer(null);
       setCustomerForm(emptyCustomerForm());
       setQuickSellerId('');
-      setError(err instanceof Error ? err.message : 'Error cargando el detalle');
+      setError(getFriendlyApiError(err, 'Error cargando el detalle'));
     }
   };
 
   const loadSellers = async (signal?: AbortSignal) => {
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, {
-        credentials: 'include',
-        signal,
-      });
+      const res = await fetchApiResponse(`/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { signal });
       if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
       const data = await res.json();
       setSellers(Array.isArray(data) ? data.filter((item: Seller) => item.is_active) : []);
     } catch (err) {
       if (signal?.aborted) return;
-      setError(err instanceof Error ? err.message : 'Error cargando vendedores');
+      setError(getFriendlyApiError(err, 'Error cargando vendedores'));
     }
   };
 
@@ -314,10 +302,7 @@ export default function ClientesPage() {
   };
 
   const loadCustomerDetailData = async (customerId: number) => {
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${customerId}`, {
-      credentials: 'include',
-    });
+    const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}`);
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       throw new Error(data?.detail || 'No se pudo cargar el cliente');
@@ -512,9 +497,7 @@ export default function ClientesPage() {
     setRankingLoading(true);
     setError('');
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/reports/customer-ranking?limit=20`, {
-        credentials: 'include',
+      const res = await fetchApiResponse('/admin/reports/customer-ranking?limit=20', {
         cache: 'no-store',
       });
       if (!res.ok) {
@@ -532,7 +515,7 @@ export default function ClientesPage() {
             : Number(data.summary.profit_total || 0),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo cargar el ranking de clientes');
+      setError(getFriendlyApiError(err, 'No se pudo cargar el ranking de clientes'));
       setRankingCustomers([]);
       setRankingSummary({ sales_total: 0, profit_total: canViewProfit ? 0 : null });
     } finally {
@@ -545,14 +528,12 @@ export default function ClientesPage() {
     setSaving(true);
     setError('');
     try {
-      await loadRuntimeConfig();
       const url = selectedCustomerId
-        ? `${getApiBaseUrl()}/admin/backoffice-customers/${selectedCustomerId}`
-        : `${getApiBaseUrl()}/admin/backoffice-customers`;
+        ? `/admin/backoffice-customers/${selectedCustomerId}`
+        : '/admin/backoffice-customers';
       const method = selectedCustomerId ? 'PUT' : 'POST';
-      const res = await fetch(url, {
+      const res = await fetchApiResponse(url, {
         method,
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...customerForm,
@@ -569,7 +550,7 @@ export default function ClientesPage() {
       if (nextId) setSelectedCustomerId(nextId);
       setShowCustomerForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error guardando cliente');
+      setError(getFriendlyApiError(err, 'Error guardando cliente'));
     } finally {
       setSaving(false);
     }
@@ -594,9 +575,8 @@ export default function ClientesPage() {
       zone: selectedCustomer.zone || '',
       ...overrides,
     };
-    const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${selectedCustomerId}`, {
+    const res = await fetchApiResponse(`/admin/backoffice-customers/${selectedCustomerId}`, {
       method: 'PUT',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...payload,
@@ -619,10 +599,9 @@ export default function ClientesPage() {
     try {
       setAssigningSeller(true);
       setError('');
-      await loadRuntimeConfig();
       await updateSelectedCustomer({ seller_id: quickSellerId }, { keepFormOpen: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo asignar el vendedor');
+      setError(getFriendlyApiError(err, 'No se pudo asignar el vendedor'));
     } finally {
       setAssigningSeller(false);
     }
@@ -633,13 +612,12 @@ export default function ClientesPage() {
     try {
       setTogglingCustomerStatus(true);
       setError('');
-      await loadRuntimeConfig();
       await updateSelectedCustomer(
         { is_active: selectedCustomer.is_active === false ? '1' : '0' },
         { keepFormOpen: true }
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo actualizar el estado del cliente');
+      setError(getFriendlyApiError(err, 'No se pudo actualizar el estado del cliente'));
     } finally {
       setTogglingCustomerStatus(false);
     }
@@ -653,10 +631,8 @@ export default function ClientesPage() {
     try {
       setDeletingCustomer(true);
       setError('');
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/${customerId}`, {
+      const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -670,7 +646,7 @@ export default function ClientesPage() {
       }
       await loadCustomers(search);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error eliminando cliente');
+      setError(getFriendlyApiError(err, 'Error eliminando cliente'));
     } finally {
       setDeletingCustomer(false);
     }
@@ -680,10 +656,8 @@ export default function ClientesPage() {
     setSyncingCustomers(true);
     setError('');
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers/sync-web-orders`, {
+      const res = await fetchApiResponse('/admin/backoffice-customers/sync-web-orders', {
         method: 'POST',
-        credentials: 'include',
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -694,7 +668,7 @@ export default function ClientesPage() {
         await loadCustomerDetail(selectedCustomerId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error actualizando clientes');
+      setError(getFriendlyApiError(err, 'Error actualizando clientes'));
     } finally {
       setSyncingCustomers(false);
     }
