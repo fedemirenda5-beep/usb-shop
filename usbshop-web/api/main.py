@@ -5253,6 +5253,7 @@ def admin_list_products(
     limit: int = 50,
     offset: int = 0,
     summary: bool = False,
+    out_of_stock_only: bool = False,
 ) -> list[dict]:
     """Lista productos. Requiere sesión admin."""
     _require_admin(session_token)
@@ -5280,6 +5281,8 @@ def admin_list_products(
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
             params.append(category)
+        if out_of_stock_only:
+            conditions.append("COALESCE(stock, 0) <= 0")
         
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         

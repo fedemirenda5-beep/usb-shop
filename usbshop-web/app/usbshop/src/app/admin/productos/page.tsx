@@ -129,19 +129,6 @@ const normalizeSearchValue = (value: string) =>
     .toLowerCase()
     .trim();
 
-const buildSearchTokens = (value: string) => {
-  const base = normalizeSearchValue(value);
-  if (!base) return [];
-  const tokens = base.split(/\s+/).filter(Boolean);
-  const expanded = new Set<string>();
-  for (const token of tokens) {
-    expanded.add(token);
-    if (token.endsWith('es') && token.length > 4) expanded.add(token.slice(0, -2));
-    if (token.endsWith('s') && token.length > 3) expanded.add(token.slice(0, -1));
-  }
-  return Array.from(expanded);
-};
-
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -231,6 +218,7 @@ export default function ProductosPage() {
   const [loading, setLoading] = useState(true);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [error, setError] = useState('');
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [onlyOutOfStock, setOnlyOutOfStock] = useState(false);
@@ -261,34 +249,41 @@ export default function ProductosPage() {
     return () => media.removeEventListener('change', sync);
   }, []);
 
-  const loadProducts = async () => {
+  const loadProducts = async (targetPage = page) => {
     try {
       setLoading(true);
       setError('');
 
       const params = new URLSearchParams();
-      params.append('limit', '1000');
+      params.append('limit', String(PAGE_SIZE));
+      params.append('offset', String(Math.max(0, targetPage - 1) * PAGE_SIZE));
+      const searchValue = deferredSearch.trim();
+      if (searchValue) {
+        params.append('q', searchValue);
+      }
+      if (categoryFilter) {
+        const categoryName = categories.find((item) => String(item.id) === categoryFilter)?.name;
+        if (categoryName) {
+          params.append('category', categoryName);
+        }
+      }
+      if (onlyOutOfStock) {
+        params.append('out_of_stock_only', 'true');
+      }
 
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
-        credentials: 'include',
-      });
+      const res = await fetchApiResponse(`/admin/products?${params.toString()}`);
 
       if (!res.ok) throw new Error('No se pudieron cargar los productos');
 
       const data = await res.json();
-      const sorted = Array.isArray(data)
-        ? [...data].sort(
-            (a, b) =>
-              String(a.name || '').localeCompare(String(b.name || ''), 'es', {
-                sensitivity: 'base',
-                numeric: true,
-              }) || a.id - b.id
-          )
-        : [];
-      setProducts(sorted);
+      const nextProducts = Array.isArray(data) ? (data as Product[]) : [];
+      setProducts(nextProducts);
+      setHasMoreProducts(nextProducts.length === PAGE_SIZE);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error cargando productos');
+      setProducts([]);
+      setHasMoreProducts(false);
+      setError(getFriendlyApiError(err, 'Error cargando productos'));
     } finally {
       setLoading(false);
     }
@@ -313,16 +308,44 @@ export default function ProductosPage() {
   };
 
   useEffect(() => {
-    void Promise.all([loadProducts(), loadCategories()]);
+    void loadCategories();
   }, []);
 
   useEffect(() => {
-    if (editId && products.length > 0) {
-      const product = products.find((item) => item.id === Number.parseInt(editId, 10));
-      setEditProduct(product || null);
-    } else {
+    void loadProducts(page);
+  }, [page, deferredSearch, categoryFilter, onlyOutOfStock, categories]);
+
+  useEffect(() => {
+    if (!editId) {
       setEditProduct(null);
+      return;
     }
+    const parsedId = Number.parseInt(editId, 10);
+    if (!Number.isFinite(parsedId)) {
+      setEditProduct(null);
+      return;
+    }
+    const localProduct = products.find((item) => item.id === parsedId) || null;
+    if (localProduct) {
+      setEditProduct(localProduct);
+      return;
+    }
+    void (async () => {
+      try {
+        await loadRuntimeConfig();
+        const res = await fetchApiResponse(`/admin/products?q=${parsedId}&limit=25`);
+        if (!res.ok) {
+          setEditProduct(null);
+          return;
+        }
+        const data = await res.json();
+        const remoteProducts = Array.isArray(data) ? (data as Product[]) : [];
+        const exactMatch = remoteProducts.find((item) => item.id === parsedId) || null;
+        setEditProduct(exactMatch);
+      } catch {
+        setEditProduct(null);
+      }
+    })();
   }, [editId, products]);
 
   useEffect(() => {
@@ -331,44 +354,12 @@ export default function ProductosPage() {
     }
   }, [isMobileLayout]);
 
-  const filteredProducts = useMemo(() => {
-    const tokens = buildSearchTokens(deferredSearch);
-    return products.filter((product) => {
-      if (categoryFilter && String(product.category_id || '') !== categoryFilter) {
-        return false;
-      }
-      if (onlyOutOfStock && Number(product.stock || 0) > 0) {
-        return false;
-      }
-      if (tokens.length === 0) {
-        return true;
-      }
-      const haystack = normalizeSearchValue(
-        [product.name, product.sku, product.barcode || '', product.category || '', product.image_path || '', ...(product.image_urls || [])].join(' ')
-      );
-      return tokens.every((token) => haystack.includes(token));
-    });
-  }, [products, deferredSearch, categoryFilter, onlyOutOfStock]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
   useEffect(() => () => {
     if (scannerAutoSubmitTimeoutRef.current) {
       clearTimeout(scannerAutoSubmitTimeoutRef.current);
       scannerAutoSubmitTimeoutRef.current = null;
     }
   }, []);
-
-  const visibleProducts = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return filteredProducts.slice(start, start + PAGE_SIZE);
-  }, [filteredProducts, page]);
 
   const baseUrl = getApiBaseUrl();
   const categoryMap = useMemo(
@@ -380,8 +371,8 @@ export default function ProductosPage() {
     return null;
   }, [editProduct]);
   const trackingMatches = useMemo(() => {
-    const tokens = buildSearchTokens(trackingSearch);
-    if (tokens.length === 0) {
+    const normalized = normalizeSearchValue(trackingSearch);
+    if (!normalized) {
       return products.slice(0, 12);
     }
     return products
@@ -389,10 +380,14 @@ export default function ProductosPage() {
         const haystack = normalizeSearchValue(
           [product.name, product.sku, product.barcode || '', product.category || ''].join(' ')
         );
-        return tokens.every((token) => haystack.includes(token));
+        return haystack.includes(normalized);
       })
       .slice(0, 12);
   }, [products, trackingSearch]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [deferredSearch, categoryFilter, onlyOutOfStock]);
 
   const openEditor = (productId: number) => {
     router.push(`/admin/productos?edit=${productId}`);
@@ -735,7 +730,7 @@ export default function ProductosPage() {
   };
 
   const exportPriceListPdf = async (includeImages: boolean, valueMode: ExportValueMode) => {
-    const exportItems = filteredProducts;
+    const exportItems = products;
     if (exportItems.length === 0) {
       alert('No hay productos para exportar con el filtro actual.');
       return;
@@ -1005,17 +1000,17 @@ export default function ProductosPage() {
               <h2>Productos disponibles</h2>
               <p>Busca un producto y toca una tarjeta para ver el detalle completo.</p>
             </div>
-            <strong>{filteredProducts.length}</strong>
+            <strong>{products.length}</strong>
           </div>
           <div className={styles.mobileCardList}>
             {loading ? (
               <div className={styles.loading}>Cargando...</div>
-            ) : filteredProducts.length === 0 ? (
+            ) : products.length === 0 ? (
               <div className={styles.empty}>
                 <p>No hay productos para ese filtro</p>
               </div>
             ) : (
-              visibleProducts.map((product) => {
+              products.map((product) => {
                 const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const storefrontPrice = getStorefrontPrice(product);
                 return (
@@ -1053,7 +1048,7 @@ export default function ProductosPage() {
 
       <div className={styles.pagination}>
         <span>
-          {filteredProducts.length} productos{search ? ` para "${search}"` : ''} |
+          {products.length} productos en esta pagina{search ? ` para "${search}"` : ''} |
           {' '}orden alfabetico
         </span>
       </div>
@@ -1061,7 +1056,7 @@ export default function ProductosPage() {
       {!isMobileLayout ? <div className={styles.tableWrapper}>
         {loading ? (
           <div className={styles.loading}>Cargando...</div>
-        ) : visibleProducts.length === 0 ? (
+        ) : products.length === 0 ? (
           <div className={styles.empty}>
             <p>No hay productos para ese filtro</p>
           </div>
@@ -1086,7 +1081,7 @@ export default function ProductosPage() {
               </tr>
             </thead>
             <tbody>
-              {visibleProducts.map((product) => {
+              {products.map((product) => {
                 const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const margin = calculateMargin(product.cost, product.price);
                 const storefrontPrice = getStorefrontPrice(product);
@@ -1283,7 +1278,7 @@ export default function ProductosPage() {
         </section>
       ) : null}
 
-      {filteredProducts.length > 0 ? (
+      {products.length > 0 ? (
         <div className={styles.pagination}>
           <button
             disabled={page === 1}
@@ -1293,11 +1288,11 @@ export default function ProductosPage() {
             Anterior
           </button>
           <span>
-            Pagina {page} de {totalPages} | Mostrando {visibleProducts.length} de {filteredProducts.length}
+            Pagina {page} | Mostrando {products.length} productos
           </span>
           <button
-            disabled={page >= totalPages}
-            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={!hasMoreProducts}
+            onClick={() => setPage((current) => current + 1)}
             className={styles.btnPagination}
           >
             Siguiente
