@@ -134,6 +134,7 @@ export default function ClientesPage() {
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const detailRequestRef = useRef(0);
+  const skipNextDetailLoadRef = useRef<number | null>(null);
   const detailSectionRef = useRef<HTMLElement | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -187,7 +188,7 @@ export default function ClientesPage() {
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ limit: '1000' });
+      const params = new URLSearchParams({ limit: '300' });
       if (query.trim()) params.set('q', query.trim());
       await loadRuntimeConfig();
       const res = await fetch(`${getApiBaseUrl()}/admin/backoffice-customers?${params}`, {
@@ -283,6 +284,10 @@ export default function ClientesPage() {
 
   useEffect(() => {
     if (selectedCustomerId) {
+      if (skipNextDetailLoadRef.current === selectedCustomerId) {
+        skipNextDetailLoadRef.current = null;
+        return;
+      }
       const controller = new AbortController();
       void loadCustomerDetail(selectedCustomerId, controller.signal);
       return () => controller.abort();
@@ -324,6 +329,7 @@ export default function ClientesPage() {
     try {
       setError('');
       const customerData = await loadCustomerDetailData(customerId);
+      skipNextDetailLoadRef.current = customerId;
       setSelectedCustomerId(customerId);
       setSelectedCustomer(customerData);
       setCustomerForm({
@@ -601,8 +607,7 @@ export default function ClientesPage() {
       const data = await res.json().catch(() => null);
       throw new Error(data?.detail || 'No se pudo actualizar el cliente');
     }
-    await loadCustomers(search);
-    await loadCustomerDetail(selectedCustomerId);
+    await Promise.all([loadCustomers(search), loadCustomerDetail(selectedCustomerId)]);
     if (!options?.keepFormOpen) {
       setShowCustomerForm(false);
     }
