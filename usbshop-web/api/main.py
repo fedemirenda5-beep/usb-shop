@@ -1892,17 +1892,69 @@ def _fetch_bundle_items_map(conn: DBConn, bundle_product_ids: list[int]) -> dict
     return payload
 
 
-def _bundle_available_stock(bundle_items: list[dict[str, Any]]) -> int:
+def _bundle_available_stock(
+    bundle_items: list[dict[str, Any]],
+    reserved_stock_by_product: Optional[dict[int, int]] = None,
+) -> int:
     if not bundle_items:
         return 0
     return min(
-        max(0, int(item.get("stock") or 0)) // max(1, int(item.get("quantity") or 0))
+        max(
+            0,
+            int(item.get("stock") or 0)
+            - int((reserved_stock_by_product or {}).get(int(item.get("product_id") or 0), 0) or 0),
+        )
+        // max(1, int(item.get("quantity") or 0))
         for item in bundle_items
     )
 
 
 def _bundle_requires_imei(conn: DBConn, bundle_items: list[dict[str, Any]]) -> bool:
     return any(_category_requires_imei(conn, item.get("category_id")) for item in bundle_items)
+
+
+def _fetch_reserved_web_order_stock(conn: DBConn) -> dict[int, int]:
+    if not _has_table(conn, "web_orders") or not _has_table(conn, "web_order_items"):
+        return {}
+    _ensure_product_bundle_support(conn)
+    rows = conn.execute(
+        """
+        SELECT wi.product_id, wi.quantity, COALESCE(p.is_bundle, 0) AS is_bundle
+        FROM web_order_items wi
+        JOIN web_orders wo ON wo.id = wi.order_id
+        LEFT JOIN products p ON p.id = wi.product_id
+        WHERE UPPER(COALESCE(wo.status, '')) IN ('PENDING', 'BUDGETED')
+        """
+    ).fetchall()
+    if not rows:
+        return {}
+    bundle_product_ids = list(
+        {
+            int(row["product_id"] if isinstance(row, dict) else row[0] or 0)
+            for row in rows
+            if bool(row["is_bundle"] if isinstance(row, dict) else row[2])
+        }
+    )
+    bundle_items_map = _fetch_bundle_items_map(conn, bundle_product_ids)
+    reserved_stock_by_product: dict[int, int] = {}
+    for row in rows:
+        product_id = int(row["product_id"] if isinstance(row, dict) else row[0] or 0)
+        quantity = max(0, int(row["quantity"] if isinstance(row, dict) else row[1] or 0))
+        if product_id <= 0 or quantity <= 0:
+            continue
+        is_bundle = bool(row["is_bundle"] if isinstance(row, dict) else row[2])
+        if is_bundle:
+            for component in bundle_items_map.get(product_id, []):
+                component_id = int(component.get("product_id") or 0)
+                component_quantity = max(0, int(component.get("quantity") or 0))
+                if component_id <= 0 or component_quantity <= 0:
+                    continue
+                reserved_stock_by_product[component_id] = (
+                    reserved_stock_by_product.get(component_id, 0) + (quantity * component_quantity)
+                )
+            continue
+        reserved_stock_by_product[product_id] = reserved_stock_by_product.get(product_id, 0) + quantity
+    return reserved_stock_by_product
 
 
 def _assert_bundle_components_valid(
@@ -4205,6 +4257,7 @@ def list_products(
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
+        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -4319,9 +4372,12 @@ def list_products(
             "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
             "cost": float(row["cost"] or 0),
-            "stock": _bundle_available_stock(bundle_items_map.get(int(row["id"]), []))
+            "stock": _bundle_available_stock(
+                bundle_items_map.get(int(row["id"]), []),
+                reserved_stock_by_product,
+            )
             if bool(row["is_bundle"])
-            else int(row["stock"] or 0),
+            else max(0, int(row["stock"] or 0) - int(reserved_stock_by_product.get(int(row["id"]), 0) or 0)),
             "category": row["category"] or "General",
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -4401,6 +4457,7 @@ def create_order(payload: OrderPayload) -> dict:
         _ensure_web_order_tables(conn)
         _ensure_product_bundle_support(conn)
         _ensure_products_flash_offer_columns(conn)
+        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
         has_description = _has_column(conn, "products", "description")
         has_image_path = _has_column(conn, "products", "image_path")
         total = 0.0
@@ -4433,12 +4490,25 @@ def create_order(payload: OrderPayload) -> dict:
             is_bundle = bool(row["is_bundle"])
             if is_bundle:
                 bundle_items = _fetch_bundle_items_map(conn, [int(row["id"])]).get(int(row["id"]), [])
-                stock = _bundle_available_stock(bundle_items)
+                stock = _bundle_available_stock(bundle_items, reserved_stock_by_product)
             else:
-                stock = row["stock"] or 0
+                stock = max(0, int(row["stock"] or 0) - int(reserved_stock_by_product.get(int(row["id"]), 0) or 0))
             if int(stock) < int(item.quantity):
                 product_label = str(row["name"] or "").strip() or f"#{row['id']}"
                 raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product_label}")
+            if is_bundle:
+                for component in bundle_items:
+                    component_id = int(component.get("product_id") or 0)
+                    component_quantity = max(0, int(component.get("quantity") or 0))
+                    if component_id <= 0 or component_quantity <= 0:
+                        continue
+                    reserved_stock_by_product[component_id] = (
+                        reserved_stock_by_product.get(component_id, 0) + (int(item.quantity) * component_quantity)
+                    )
+            else:
+                reserved_stock_by_product[int(row["id"])] = (
+                    reserved_stock_by_product.get(int(row["id"]), 0) + int(item.quantity)
+                )
             submitted_price = float(item.unit_price or 0)
             unit_price = submitted_price if submitted_price > 0 else _storefront_price(row)
             total += unit_price * int(item.quantity)
@@ -4785,6 +4855,8 @@ def admin_update_order_status(
 def featured_products(limit: int = 6) -> list[dict]:
     conn = _connect()
     try:
+        _ensure_product_bundle_support(conn)
+        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -4801,6 +4873,7 @@ def featured_products(limit: int = 6) -> list[dict]:
             "p.sku",
             "p.price",
             "p.stock",
+            "COALESCE(p.is_bundle, 0) AS is_bundle",
             "p.image_path",
             "c.name AS category",
         ]
@@ -4856,6 +4929,10 @@ def featured_products(limit: int = 6) -> list[dict]:
         rows = conn.execute(query, (limit,)).fetchall()
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
+        bundle_items_map = _fetch_bundle_items_map(
+            conn,
+            [int(row["id"]) for row in rows if bool(row["is_bundle"])],
+        )
     finally:
         conn.close()
 
@@ -4867,7 +4944,12 @@ def featured_products(limit: int = 6) -> list[dict]:
             "price": _storefront_price(row),
             "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
-            "stock": int(row["stock"] or 0),
+            "stock": _bundle_available_stock(
+                bundle_items_map.get(int(row["id"]), []),
+                reserved_stock_by_product,
+            )
+            if bool(row["is_bundle"])
+            else max(0, int(row["stock"] or 0) - int(reserved_stock_by_product.get(int(row["id"]), 0) or 0)),
             "category": row["category"] or "General",
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -4884,6 +4966,7 @@ def featured_products(limit: int = 6) -> list[dict]:
             "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
             if highlight_new_arrivals_enabled
             else False,
+            "is_bundle": bool(row["is_bundle"]),
         }
         for row in rows
     ]
