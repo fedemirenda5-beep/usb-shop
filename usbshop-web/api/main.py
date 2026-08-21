@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional, List, Any
 from urllib.error import HTTPError
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode, quote, urlparse
 from urllib.request import Request as UrlRequest, urlopen
 from zoneinfo import ZoneInfo
 
@@ -674,6 +674,9 @@ _ADMIN_OVERVIEW_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _AUTH_USERS_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_AUTH_USERS_CACHE_TTL", "60") or "60"))
 _AUTH_USERS_CACHE_LOCK = threading.Lock()
 _AUTH_USERS_CACHE: Optional[tuple[float, list[dict[str, str]]]] = None
+_REMOTE_IMAGE_CACHE_TTL_SECONDS = max(300, int(os.getenv("USB_REMOTE_IMAGE_CACHE_TTL", "21600") or "21600"))
+_REMOTE_IMAGE_CACHE_LOCK = threading.Lock()
+_REMOTE_IMAGE_CACHE: dict[str, tuple[float, bytes, str]] = {}
 _RUNTIME_SCHEMA_READY = False
 _RUNTIME_SCHEMA_LOCK = threading.Lock()
 
@@ -1243,6 +1246,94 @@ def _render_thumbnail_bytes(
         working = working.convert("RGBA")
     working.save(output, format="WEBP", quality=quality, method=6)
     return output.getvalue(), "image/webp"
+
+
+def _render_thumbnail_from_bytes(
+    source_bytes: bytes,
+    width: Optional[int],
+    height: Optional[int],
+    quality: int,
+    fmt: str,
+) -> tuple[bytes, str]:
+    if Image is None or ImageOps is None:
+        raise RuntimeError("Pillow no disponible")
+    with Image.open(io.BytesIO(source_bytes)) as source_image:
+        image = ImageOps.exif_transpose(source_image)
+        working = image.copy()
+    if width or height:
+        max_width = width or working.width
+        max_height = height or working.height
+        working.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+    output = io.BytesIO()
+    if fmt == "jpeg":
+        if working.mode not in {"RGB", "L"}:
+            working = working.convert("RGB")
+        working.save(output, format="JPEG", quality=quality, optimize=True, progressive=True)
+        return output.getvalue(), "image/jpeg"
+    if fmt == "png":
+        if working.mode not in {"RGB", "RGBA", "L"}:
+            working = working.convert("RGBA")
+        working.save(output, format="PNG", optimize=True)
+        return output.getvalue(), "image/png"
+    if working.mode not in {"RGB", "RGBA", "L"}:
+        working = working.convert("RGBA")
+    working.save(output, format="WEBP", quality=quality, method=6)
+    return output.getvalue(), "image/webp"
+
+
+def _is_allowed_remote_image_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme.lower() != "https":
+        return False
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        return False
+    return host == "dmswdxfxidraqobuthhj.supabase.co" or host.endswith(".supabase.co")
+
+
+def _get_remote_image_cache(url: str) -> Optional[tuple[bytes, str]]:
+    now = time.time()
+    with _REMOTE_IMAGE_CACHE_LOCK:
+        cached = _REMOTE_IMAGE_CACHE.get(url)
+        if not cached:
+            return None
+        expires_at, content, media_type = cached
+        if expires_at <= now:
+            _REMOTE_IMAGE_CACHE.pop(url, None)
+            return None
+        return content, media_type
+
+
+def _set_remote_image_cache(url: str, content: bytes, media_type: str) -> tuple[bytes, str]:
+    with _REMOTE_IMAGE_CACHE_LOCK:
+        _REMOTE_IMAGE_CACHE[url] = (
+            time.time() + _REMOTE_IMAGE_CACHE_TTL_SECONDS,
+            content,
+            media_type,
+        )
+    return content, media_type
+
+
+def _fetch_remote_image_bytes(url: str) -> tuple[bytes, str]:
+    if not _is_allowed_remote_image_url(url):
+        raise HTTPException(status_code=400, detail="Origen remoto de imagen no permitido")
+    cached = _get_remote_image_cache(url)
+    if cached is not None:
+        return cached
+    request = UrlRequest(url, method="GET")
+    request.add_header("User-Agent", "USBShopImageProxy/1.0")
+    request.add_header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+    with urlopen(request, timeout=15) as response:
+        content = response.read()
+        media_type = response.headers.get_content_type() or "application/octet-stream"
+    if not content:
+        raise HTTPException(status_code=404, detail="Imagen remota vacia")
+    if len(content) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Imagen remota demasiado grande")
+    return _set_remote_image_cache(url, content, media_type)
 
 
 def _has_column(conn: DBConn, table: str, column: str) -> bool:
@@ -5362,15 +5453,36 @@ def product_image(
     image_value = image_candidates[image_index] if image_index < len(image_candidates) else ""
     if not image_value:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
+    width, height, quality, normalized_format = _normalize_thumbnail_params(w, h, q, format)
+    should_resize = bool(width or height)
     if image_value.startswith("http://") or image_value.startswith("https://"):
-        return Response(status_code=307, headers={"Location": image_value})
+        remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
+        if should_resize and Image is not None and ImageOps is not None:
+            try:
+                content, media_type = _render_thumbnail_from_bytes(
+                    remote_bytes,
+                    width,
+                    height,
+                    quality,
+                    normalized_format,
+                )
+                return Response(
+                    content=content,
+                    media_type=media_type,
+                    headers={"Cache-Control": "public, max-age=86400, s-maxage=86400"},
+                )
+            except Exception:
+                logging.exception("No se pudo generar thumbnail remoto para %s", image_value)
+        return Response(
+            content=remote_bytes,
+            media_type=remote_media_type,
+            headers={"Cache-Control": "public, max-age=86400, s-maxage=86400"},
+        )
 
     image_path = _as_existing_local_image_path(image_value)
     if image_path is None:
         raise HTTPException(status_code=404, detail="Imagen no encontrada")
 
-    width, height, quality, normalized_format = _normalize_thumbnail_params(w, h, q, format)
-    should_resize = bool(width or height)
     if should_resize and Image is not None and ImageOps is not None:
         try:
             stat = image_path.stat()
