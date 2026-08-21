@@ -25,6 +25,14 @@ type OverviewResponse = {
   summary: Summary;
 };
 
+type CachedOverview = {
+  summary: Summary;
+  savedAt: number;
+};
+
+const DASHBOARD_CACHE_KEY = 'usbshop_admin_dashboard_overview_v1';
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value || 0);
 
@@ -34,9 +42,64 @@ const formatDate = (value?: string | null) => {
   return value ? formatArgentinaDate(value) : 'Sin registros';
 };
 
+const isValidSummary = (value: unknown): value is Summary => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const summary = value as Partial<Summary>;
+  return (
+    typeof summary.products === 'number' &&
+    typeof summary.active_customers === 'number' &&
+    typeof summary.stock_units === 'number' &&
+    typeof summary.sales_count === 'number' &&
+    typeof summary.sales_total === 'number' &&
+    typeof summary.expenses_total === 'number' &&
+    typeof summary.cc_open_balance === 'number'
+  );
+};
+
+const readCachedSummary = (): Summary | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as CachedOverview | null;
+    if (!parsed || typeof parsed.savedAt !== 'number' || !isValidSummary(parsed.summary)) {
+      return null;
+    }
+    if (Date.now() - parsed.savedAt > DASHBOARD_CACHE_TTL_MS) {
+      return null;
+    }
+    return parsed.summary;
+  } catch {
+    return null;
+  }
+};
+
+const persistCachedSummary = (summary: Summary) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      DASHBOARD_CACHE_KEY,
+      JSON.stringify({
+        summary,
+        savedAt: Date.now(),
+      } satisfies CachedOverview)
+    );
+  } catch {
+    return;
+  }
+};
+
 export default function AdminDashboard() {
   const { user } = useAdminSession();
-  const [summary, setSummary] = useState<Summary | null>(null);
+  const [summary, setSummary] = useState<Summary | null>(() => readCachedSummary());
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -49,6 +112,7 @@ export default function AdminDashboard() {
         if (!res.ok) throw new Error('No se pudo cargar el escritorio');
         const data: OverviewResponse = await res.json();
         setSummary(data.summary);
+        persistCachedSummary(data.summary);
       } catch (err) {
         setError(getFriendlyApiError(err, 'Error cargando el escritorio'));
       }

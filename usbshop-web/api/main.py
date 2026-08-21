@@ -671,6 +671,9 @@ _COLUMN_EXISTS_CACHE: dict[tuple[bool, str, str], bool] = {}
 _ADMIN_OVERVIEW_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_ADMIN_OVERVIEW_CACHE_TTL", "30") or "30"))
 _ADMIN_OVERVIEW_CACHE_LOCK = threading.Lock()
 _ADMIN_OVERVIEW_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_AUTH_USERS_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_AUTH_USERS_CACHE_TTL", "60") or "60"))
+_AUTH_USERS_CACHE_LOCK = threading.Lock()
+_AUTH_USERS_CACHE: Optional[tuple[float, list[dict[str, str]]]] = None
 _RUNTIME_SCHEMA_READY = False
 _RUNTIME_SCHEMA_LOCK = threading.Lock()
 
@@ -819,6 +822,16 @@ def _set_admin_cached_payload(key: str, payload: dict[str, Any]) -> dict[str, An
     return payload
 
 
+def _clear_admin_cached_payload(prefix: Optional[str] = None) -> None:
+    with _ADMIN_OVERVIEW_CACHE_LOCK:
+        if prefix is None:
+            _ADMIN_OVERVIEW_CACHE.clear()
+            return
+        for key in list(_ADMIN_OVERVIEW_CACHE.keys()):
+            if key.startswith(prefix):
+                _ADMIN_OVERVIEW_CACHE.pop(key, None)
+
+
 def _get_admin_overview_cache(role: str) -> Optional[dict[str, Any]]:
     return _get_admin_cached_payload(f"overview:{role}")
 
@@ -827,12 +840,43 @@ def _set_admin_overview_cache(role: str, payload: dict[str, Any]) -> dict[str, A
     return _set_admin_cached_payload(f"overview:{role}", payload)
 
 
+def _clear_admin_overview_cache() -> None:
+    _clear_admin_cached_payload("overview:")
+
+
 def _get_admin_cc_overview_cache(role: str) -> Optional[dict[str, Any]]:
     return _get_admin_cached_payload(f"cc-overview:{role}")
 
 
 def _set_admin_cc_overview_cache(role: str, payload: dict[str, Any]) -> dict[str, Any]:
     return _set_admin_cached_payload(f"cc-overview:{role}", payload)
+
+
+def _get_auth_users_cache() -> Optional[list[dict[str, str]]]:
+    now = time.time()
+    with _AUTH_USERS_CACHE_LOCK:
+        global _AUTH_USERS_CACHE
+        if not _AUTH_USERS_CACHE:
+            return None
+        expires_at, payload = _AUTH_USERS_CACHE
+        if expires_at <= now:
+            _AUTH_USERS_CACHE = None
+            return None
+        return [dict(item) for item in payload]
+
+
+def _set_auth_users_cache(payload: list[dict[str, str]]) -> list[dict[str, str]]:
+    cached_payload = [dict(item) for item in payload]
+    with _AUTH_USERS_CACHE_LOCK:
+        global _AUTH_USERS_CACHE
+        _AUTH_USERS_CACHE = (time.time() + _AUTH_USERS_CACHE_TTL_SECONDS, cached_payload)
+    return payload
+
+
+def _clear_auth_users_cache() -> None:
+    with _AUTH_USERS_CACHE_LOCK:
+        global _AUTH_USERS_CACHE
+        _AUTH_USERS_CACHE = None
 
 
 def _get_admin_daily_report_cache(role: str, start_date: str, end_date: str) -> Optional[dict[str, Any]]:
@@ -5004,6 +5048,7 @@ def set_featured(
 
 @app.post("/auth/login")
 def auth_login(request: Request, response: Response, payload: dict = Body(...)) -> dict:
+    _ensure_runtime_schema()
     username = _normalize_username(payload.get("username"))
     username_key = username.lower()
     password = str(payload.get("password") or "")
@@ -5011,8 +5056,6 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
         raise HTTPException(status_code=400, detail="Credenciales incompletas")
     conn = _connect()
     try:
-        _ensure_users_table(conn)
-        _ensure_bootstrap_admin(conn)
         rows = conn.execute(
             """
             SELECT id, username, password_hash, role, active
@@ -5059,10 +5102,12 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
 
 @app.get("/auth/users")
 def auth_users() -> list[dict[str, str]]:
+    _ensure_runtime_schema()
+    cached_payload = _get_auth_users_cache()
+    if cached_payload is not None:
+        return cached_payload
     conn = _connect()
     try:
-        _ensure_users_table(conn)
-        _ensure_bootstrap_admin(conn)
         rows = conn.execute(
             """
             SELECT username, role
@@ -5087,16 +5132,15 @@ def auth_users() -> list[dict[str, str]]:
                 "role": str(row["role"] or "").strip(),
             }
         )
-    return payload
+    return _set_auth_users_cache(payload)
 
 
 @app.get("/admin/users")
 def admin_users(session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> list[dict[str, Any]]:
     _require_full_admin(session_token)
+    _ensure_runtime_schema()
     conn = _connect()
     try:
-        _ensure_users_table(conn)
-        _ensure_bootstrap_admin(conn)
         rows = conn.execute(
             """
             SELECT id, username, role, active, created_at
@@ -5115,6 +5159,7 @@ def admin_create_user(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict[str, Any]:
     _require_full_admin(session_token)
+    _ensure_runtime_schema()
     username = _normalize_username(payload.username)
     password = _normalize_password(payload.password, required=True)
     role = _normalize_user_role(payload.role)
@@ -5143,6 +5188,7 @@ def admin_create_user(
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=500, detail="No se pudo crear el usuario")
+        _clear_auth_users_cache()
         return _serialize_admin_user(row)
     finally:
         conn.close()
@@ -5155,6 +5201,7 @@ def admin_update_user(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict[str, Any]:
     session_payload = _require_full_admin(session_token)
+    _ensure_runtime_schema()
     current_user_id = session_payload.get("id")
     current_username = str(session_payload.get("username") or "").strip()
     conn = _connect()
@@ -5215,6 +5262,7 @@ def admin_update_user(
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=500, detail="No se pudo actualizar el usuario")
+        _clear_auth_users_cache()
         return _serialize_admin_user(row)
     finally:
         conn.close()
@@ -5226,6 +5274,7 @@ def admin_delete_user(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict[str, Any]:
     session_payload = _require_full_admin(session_token)
+    _ensure_runtime_schema()
     current_user_id = session_payload.get("id")
     current_username = str(session_payload.get("username") or "").strip()
     conn = _connect()
@@ -5252,6 +5301,7 @@ def admin_delete_user(
 
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
+        _clear_auth_users_cache()
         return {"status": "ok"}
     finally:
         conn.close()
@@ -9070,12 +9120,9 @@ def admin_reports_overview(
     cached_response = _get_admin_overview_cache(session_role)
     if cached_response is not None:
         return cached_response
+    _ensure_runtime_schema()
     conn = _connect()
     try:
-        _ensure_syncable_tables(conn)
-        _ensure_reporting_indexes(conn)
-        _ensure_invoice_special_discount_column(conn)
-        _ensure_invoice_items_cost_snapshot_column(conn)
         products = conn.execute(
             """
             SELECT id, name, stock, price, cost, reorder_point, category_id

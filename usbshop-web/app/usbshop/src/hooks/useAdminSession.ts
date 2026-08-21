@@ -18,6 +18,7 @@ type SessionSnapshot = {
 };
 
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
+const LEGACY_SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 const SESSION_REQUEST_TIMEOUT_MS = 15000;
 const LOGIN_REQUEST_TIMEOUT_MS = 20000;
 const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
@@ -25,6 +26,17 @@ const SESSION_REQUEST_ATTEMPTS = 2;
 const SESSION_RETRY_DELAY_MS = 700;
 
 const isBrowser = typeof window !== 'undefined';
+
+const readStoredSession = () => {
+  if (!isBrowser) {
+    return null;
+  }
+  const localValue = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (localValue) {
+    return localValue;
+  }
+  return window.sessionStorage.getItem(LEGACY_SESSION_STORAGE_KEY);
+};
 
 const restoreSnapshot = (): SessionSnapshot => {
   if (!isBrowser) {
@@ -36,7 +48,7 @@ const restoreSnapshot = (): SessionSnapshot => {
     };
   }
   try {
-    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = readStoredSession();
     if (!raw) {
       return {
         user: null,
@@ -169,15 +181,17 @@ const persistSnapshot = (snapshot: SessionSnapshot) => {
   }
   try {
     if (!snapshot.user) {
-      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      window.sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
       return;
     }
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       SESSION_STORAGE_KEY,
       JSON.stringify({
         user: snapshot.user,
       })
     );
+    window.sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
   } catch {
     return;
   }
