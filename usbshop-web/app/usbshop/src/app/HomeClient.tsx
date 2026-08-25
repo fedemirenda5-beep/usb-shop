@@ -71,8 +71,17 @@ const fallbackCategories = [
   "Oficina",
   "Vapers",
 ];
-const PRODUCTS_PAGE_SIZE = 60;
+const PRODUCTS_PAGE_SIZE = 24;
 const CATALOG_PAGE_SIZE = 12;
+const getCardImagePriority = (index: number): "high" | "auto" | "low" => {
+  if (index === 0) {
+    return "high";
+  }
+  if (index < 4) {
+    return "auto";
+  }
+  return "low";
+};
 const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v10";
@@ -1600,7 +1609,7 @@ export default function HomeClient({
                 <ProductCard
                   product={{ ...applyBadge(product, "offer"), badge: "Relampago" }}
                   imageRefreshKey={imageRefreshKey}
-                  imagePriority={index === 0 ? "high" : "auto"}
+                  imagePriority={getCardImagePriority(index)}
                   inCart={cart[product.id]?.qty ?? 0}
                   onAdd={() => addItem(product)}
                   onView={() => handleOpenQuickView(product)}
@@ -1637,7 +1646,7 @@ export default function HomeClient({
                 key={`new-${product.id}`}
                 product={applyBadge(product, "catalog")}
                 imageRefreshKey={imageRefreshKey}
-                imagePriority={index < 2 ? "high" : "auto"}
+                imagePriority={getCardImagePriority(index)}
                 inCart={cart[product.id]?.qty ?? 0}
                 onAdd={() => addItem(product)}
                 onView={() => handleOpenQuickView(product)}
@@ -1678,7 +1687,7 @@ export default function HomeClient({
                     badge: product.flashOffer ? "Relampago" : "Bajo de precio",
                   }}
                   imageRefreshKey={imageRefreshKey}
-                  imagePriority={index < 2 ? "high" : "auto"}
+                  imagePriority={getCardImagePriority(index)}
                   inCart={cart[product.id]?.qty ?? 0}
                   onAdd={() => addItem(product)}
                   onView={() => handleOpenQuickView(product)}
@@ -1714,7 +1723,7 @@ export default function HomeClient({
                 key={`offer-${product.id}`}
                 product={applyBadge(product, "offer")}
                 imageRefreshKey={imageRefreshKey}
-                imagePriority={index < 2 ? "high" : "auto"}
+                imagePriority={getCardImagePriority(index)}
                 inCart={cart[product.id]?.qty ?? 0}
                 onAdd={() => addItem(product)}
                 onView={() => handleOpenQuickView(product)}
@@ -1791,7 +1800,7 @@ export default function HomeClient({
                       key={`search-${product.id}`}
                       product={applyBadge(product, "catalog")}
                       imageRefreshKey={imageRefreshKey}
-                      imagePriority={index < 2 ? "high" : "auto"}
+                      imagePriority={getCardImagePriority(index)}
                       inCart={cart[product.id]?.qty ?? 0}
                       onAdd={() => addItem(product)}
                       onView={() => handleOpenQuickView(product)}
@@ -1814,7 +1823,7 @@ export default function HomeClient({
                       key={`category-${product.id}`}
                       product={applyBadge(product, "catalog")}
                       imageRefreshKey={imageRefreshKey}
-                      imagePriority={index < 2 ? "high" : "auto"}
+                      imagePriority={getCardImagePriority(index)}
                       inCart={cart[product.id]?.qty ?? 0}
                       onAdd={() => addItem(product)}
                       onView={() => handleOpenQuickView(product)}
@@ -1840,7 +1849,7 @@ export default function HomeClient({
                     <ProductCard
                       product={applyBadge(product, "featured")}
                       imageRefreshKey={imageRefreshKey}
-                      imagePriority={index < 2 ? "high" : "auto"}
+                      imagePriority={getCardImagePriority(index)}
                       inCart={cart[product.id]?.qty ?? 0}
                       onAdd={() => addItem(product)}
                       onView={() => handleOpenQuickView(product)}
@@ -2033,7 +2042,7 @@ export default function HomeClient({
                 key={product.id}
                 product={applyBadge(product, "catalog")}
                 imageRefreshKey={imageRefreshKey}
-                imagePriority={index < 2 ? "high" : "auto"}
+                imagePriority={getCardImagePriority(index)}
                 inCart={cart[product.id]?.qty ?? 0}
                 onAdd={() => addItem(product)}
                 onView={() => handleOpenQuickView(product)}

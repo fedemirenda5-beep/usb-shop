@@ -171,6 +171,7 @@ function ProductCard({
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
   const [isCarouselPaused, setIsCarouselPaused] = React.useState(false);
+  const [allowCarouselAutoplay, setAllowCarouselAutoplay] = React.useState(false);
   const optimizedImgSrc = React.useMemo(() => {
     if (!imgSrc) {
       return null;
@@ -212,11 +213,27 @@ function ProductCard({
           observer.disconnect();
         }
       },
-      { rootMargin: "720px 0px" }
+      { rootMargin: "240px 0px" }
     );
     observer.observe(node);
     return () => observer.disconnect();
   }, [imagePriority, shouldLoadImage]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      setAllowCarouselAutoplay(false);
+      return;
+    }
+    const mediaQuery = window.matchMedia("(pointer: fine)");
+    const updateAutoplay = () => setAllowCarouselAutoplay(mediaQuery.matches);
+    updateAutoplay();
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updateAutoplay);
+      return () => mediaQuery.removeEventListener("change", updateAutoplay);
+    }
+    mediaQuery.addListener(updateAutoplay);
+    return () => mediaQuery.removeListener(updateAutoplay);
+  }, []);
 
   React.useEffect(() => {
     setImageIndex(0);
@@ -237,14 +254,14 @@ function ProductCard({
   }, [imageIndex, images, imageRefreshKey]);
 
   React.useEffect(() => {
-    if (!hasMultipleImages || !shouldLoadImage || isCarouselPaused) {
+    if (!allowCarouselAutoplay || !hasMultipleImages || !shouldLoadImage || isCarouselPaused) {
       return;
     }
     const timer = window.setInterval(() => {
       setImageIndex((prev) => (prev + 1) % images.length);
     }, 4200);
     return () => window.clearInterval(timer);
-  }, [hasMultipleImages, images.length, isCarouselPaused, shouldLoadImage]);
+  }, [allowCarouselAutoplay, hasMultipleImages, images.length, isCarouselPaused, shouldLoadImage]);
 
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
