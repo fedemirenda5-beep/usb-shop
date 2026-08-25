@@ -1180,6 +1180,9 @@ def _product_image_candidates(conn: DBConn, product_id: int, primary_image: Opti
         normalized = str(value).strip()
         if not normalized or normalized in seen:
             return
+        if not (normalized.startswith("http://") or normalized.startswith("https://")):
+            if _as_existing_local_image_path(normalized) is None:
+                return
         seen.add(normalized)
         candidates.append(normalized)
 
@@ -3183,7 +3186,12 @@ def _build_product_image_fields(
         raw = str(raw_value or "").strip()
         if not raw:
             return
-        normalized = _public_image_url(raw, product_id) if _as_existing_local_image_path(raw) is not None else raw
+        if raw.startswith("http://") or raw.startswith("https://"):
+            normalized = raw
+        else:
+            if _as_existing_local_image_path(raw) is None:
+                return
+            normalized = _public_image_url(raw, product_id)
         if not normalized or normalized in seen:
             return
         seen.add(normalized)
