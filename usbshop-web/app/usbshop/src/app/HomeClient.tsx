@@ -1173,6 +1173,13 @@ export default function HomeClient({
     };
   }, [debouncedSearchQuery]);
 
+  useEffect(() => {
+    if (!debouncedSearchQuery || !hasMoreProducts || isFetchingMore) {
+      return;
+    }
+    void fetchAllProducts();
+  }, [debouncedSearchQuery, hasMoreProducts, isFetchingMore]);
+
   const matchesSearch = (product: Product) => {
     if (searchTokens.length === 0) {
       return true;
@@ -1203,7 +1210,19 @@ export default function HomeClient({
       .sort(compareByNewest);
   }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
   const filteredProducts = useMemo(() => {
-    const source = searchResults ?? products;
+    const sourceMap = new Map<number, Product>();
+    for (const product of products) {
+      sourceMap.set(product.id, product);
+    }
+    for (const product of featuredSource) {
+      if (!sourceMap.has(product.id)) {
+        sourceMap.set(product.id, product);
+      }
+    }
+    for (const product of searchResults ?? []) {
+      sourceMap.set(product.id, product);
+    }
+    const source = Array.from(sourceMap.values());
     return [...source]
       .filter((product) => {
       if (!matchesSelectedCategory(product)) {
@@ -1212,7 +1231,7 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(compareByCategoryThenName);
-  }, [products, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
+  }, [products, featuredSource, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
 
   const catalogSource = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;

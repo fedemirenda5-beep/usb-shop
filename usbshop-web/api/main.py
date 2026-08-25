@@ -4517,9 +4517,27 @@ def list_products(
             query += f" AND p.id IN ({placeholders})" if conditions else f" WHERE p.id IN ({placeholders})"
             params.extend(parsed_ids)
         if q:
-            query += " AND (p.name LIKE ? OR p.sku LIKE ?)" if conditions else " WHERE (p.name LIKE ? OR p.sku LIKE ?)"
-            like = f"%{q}%"
-            params.extend([like, like])
+            tokens = [token.strip().lower() for token in str(q).split() if token.strip()]
+            if not tokens:
+                normalized_query = str(q).strip().lower()
+                if normalized_query:
+                    tokens = [normalized_query]
+            search_fields = [
+                "LOWER(COALESCE(p.name, ''))",
+                "LOWER(COALESCE(p.sku, ''))",
+                "LOWER(COALESCE(c.name, ''))",
+            ]
+            if has_description:
+                search_fields.append("LOWER(COALESCE(p.description, ''))")
+            search_clauses: list[str] = []
+            for token in tokens:
+                like = f"%{token}%"
+                token_clauses = [f"{field} LIKE ?" for field in search_fields]
+                search_clauses.append(f"({' OR '.join(token_clauses)})")
+                params.extend([like] * len(search_fields))
+            if search_clauses:
+                joined_search = " AND ".join(search_clauses)
+                query += f" AND {joined_search}" if conditions else f" WHERE {joined_search}"
         sort_key = str(sort or "").strip().lower()
         if sort_key in {"", "newest"}:
             if has_created_at and has_updated_at:
