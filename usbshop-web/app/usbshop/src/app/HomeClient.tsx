@@ -49,7 +49,9 @@ type CartItem = {
 type HomeClientProps = {
   initialProducts?: Product[];
   initialFeatured?: Product[];
+  initialCategories?: Category[];
   initialApiBase?: string;
+  initialHasMoreProducts?: boolean;
 };
 
 const fallbackFeatured: Product[] = [];
@@ -337,7 +339,9 @@ const FlashOfferTimer = memo(function FlashOfferTimer({ product }: { product: Pr
 export default function HomeClient({
   initialProducts,
   initialFeatured,
+  initialCategories,
   initialApiBase,
+  initialHasMoreProducts,
 }: HomeClientProps) {
   const initialBase = initialApiBase || getApiBaseUrl();
   const [productsApiBase, setProductsApiBase] = useState(initialBase);
@@ -349,12 +353,18 @@ export default function HomeClient({
   const [products, setProducts] = useState<Product[]>(() =>
     (initialProducts ?? []).map((item) => normalizeProductWithBase(item, initialBase))
   );
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [categories, setCategories] = useState<Category[]>(() =>
+    Array.isArray(initialCategories) ? initialCategories : []
+  );
+  const [categoriesLoaded, setCategoriesLoaded] = useState(
+    Array.isArray(initialCategories)
+  );
   const [imageRefreshKey, setImageRefreshKey] = useState(0);
   const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE_SIZE);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const [hasMoreProducts, setHasMoreProducts] = useState(true);
+  const [hasMoreProducts, setHasMoreProducts] = useState(
+    typeof initialHasMoreProducts === "boolean" ? initialHasMoreProducts : true
+  );
   const [cart, setCart] = useState<Record<number, CartItem>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -717,6 +727,13 @@ export default function HomeClient({
 
   useEffect(() => {
     let active = true;
+    if (Array.isArray(initialCategories)) {
+      setCategories(initialCategories);
+      setCategoriesLoaded(true);
+      return () => {
+        active = false;
+      };
+    }
     const loadCategories = async () => {
       try {
         const result = await fetchWithRetry<Category[]>("/categories");
@@ -738,21 +755,24 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, []);
+  }, [initialCategories]);
 
   useEffect(() => {
     let active = true;
     const requestId = featuredRequestRef.current + 1;
     featuredRequestRef.current = requestId;
+    let refreshTimer: number | null = null;
     const loadFeatured = async () => {
       try {
-        const cached = loadCachedList<Product[]>(FEATURED_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
-        if (cached && active) {
-          setProductsApiBase(cached.baseUrl);
-          setFeatured(cached.data.map((item) => normalizeProduct(item, cached.baseUrl)));
-          setIsLoadingFeatured(false);
-        } else {
-          setIsLoadingFeatured(true);
+        if (!Array.isArray(initialFeatured)) {
+          const cached = loadCachedList<Product[]>(FEATURED_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
+          if (cached && active) {
+            setProductsApiBase(cached.baseUrl);
+            setFeatured(cached.data.map((item) => normalizeProduct(item, cached.baseUrl)));
+            setIsLoadingFeatured(false);
+          } else {
+            setIsLoadingFeatured(true);
+          }
         }
         const result = await fetchWithRetry<Product[]>("/featured?limit=6");
         if (!active || featuredRequestRef.current !== requestId || !Array.isArray(result.data) || result.data.length === 0) {
@@ -775,15 +795,24 @@ export default function HomeClient({
         }
       }
     };
-    void loadFeatured();
+    if (Array.isArray(initialFeatured)) {
+      refreshTimer = window.setTimeout(() => {
+        void loadFeatured();
+      }, 1200);
+    } else {
+      void loadFeatured();
+    }
     return () => {
       active = false;
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
       if (featuredRetryTimer.current) {
         window.clearTimeout(featuredRetryTimer.current);
         featuredRetryTimer.current = null;
       }
     };
-  }, []);
+  }, [initialFeatured]);
 
   useEffect(() => {
     const source = featured.length > 0 ? featured : products;
@@ -800,16 +829,19 @@ export default function HomeClient({
     let active = true;
     const requestId = productsRequestRef.current + 1;
     productsRequestRef.current = requestId;
+    let refreshTimer: number | null = null;
     const loadProducts = async () => {
       try {
-        const cached = loadCachedList<Product[]>(PRODUCTS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
-        if (cached && active) {
-          setProductsApiBase(cached.baseUrl);
-          setProducts(cached.data.map((item) => normalizeProduct(item, cached.baseUrl)));
-          setHasMoreProducts(cached.data.length >= PRODUCTS_PAGE_SIZE);
-          setIsLoadingProducts(false);
-        } else {
-          setIsLoadingProducts(true);
+        if (!Array.isArray(initialProducts)) {
+          const cached = loadCachedList<Product[]>(PRODUCTS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
+          if (cached && active) {
+            setProductsApiBase(cached.baseUrl);
+            setProducts(cached.data.map((item) => normalizeProduct(item, cached.baseUrl)));
+            setHasMoreProducts(cached.data.length >= PRODUCTS_PAGE_SIZE);
+            setIsLoadingProducts(false);
+          } else {
+            setIsLoadingProducts(true);
+          }
         }
         const result = await fetchProductsPage(0);
         if (!active || productsRequestRef.current !== requestId || !Array.isArray(result.data) || result.data.length === 0) {
@@ -834,15 +866,24 @@ export default function HomeClient({
         }
       }
     };
-    void loadProducts();
+    if (Array.isArray(initialProducts)) {
+      refreshTimer = window.setTimeout(() => {
+        void loadProducts();
+      }, 1600);
+    } else {
+      void loadProducts();
+    }
     return () => {
       active = false;
+      if (refreshTimer) {
+        window.clearTimeout(refreshTimer);
+      }
       if (productsRetryTimer.current) {
         window.clearTimeout(productsRetryTimer.current);
         productsRetryTimer.current = null;
       }
     };
-  }, []);
+  }, [initialProducts]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
