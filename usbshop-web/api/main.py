@@ -3218,7 +3218,7 @@ def _build_product_image_fields(
         if not raw:
             return
         if raw.startswith("http://") or raw.startswith("https://"):
-            normalized = raw
+            normalized = _normalize_remote_product_image_url(raw)
         else:
             if _as_existing_local_image_path(raw) is None:
                 return
@@ -3233,6 +3233,15 @@ def _build_product_image_fields(
         add_candidate(image_value)
         if len(merged) >= MAX_PRODUCT_IMAGES:
             break
+
+    if product_id and merged:
+        proxied = []
+        for index, _ in enumerate(merged):
+            proxied.append(f"/products/{product_id}/image" if index == 0 else f"/products/{product_id}/image?i={index}")
+        return {
+            "imageUrl": proxied[0],
+            "imageUrls": proxied,
+        }
 
     return {
         "imageUrl": merged[0] if merged else None,
