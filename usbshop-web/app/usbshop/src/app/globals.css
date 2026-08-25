@@ -2838,6 +2838,49 @@ input.button {
   color: #0b1220;
 }
 
+.cart-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.cart-drawer {
+  width: min(92vw, 420px);
+  height: 100%;
+  background: #f8fafc;
+  box-shadow: -18px 0 48px rgba(15, 23, 42, 0.22);
+  display: flex;
+  flex-direction: column;
+}
+
+.cart-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.cart-drawer__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.cart-panel--drawer {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

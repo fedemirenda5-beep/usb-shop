@@ -3,6 +3,8 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductCard from "@/components/ProductCard";
+import CartDrawer from "@/components/CartDrawer";
+import StorefrontCartPanel from "@/components/StorefrontCartPanel";
 import {
   fetchJson,
   getOrderSecret,
@@ -77,6 +79,7 @@ const PRODUCTS_PAGE_SIZE = 24;
 const CATALOG_PAGE_SIZE = 12;
 const SEARCH_PAGE_SIZE = 48;
 const SEARCH_DEBOUNCE_MS = 250;
+const HOME_SECTION_CARD_LIMIT = 4;
 const getCardImagePriority = (index: number): "high" | "auto" | "low" => {
   if (index === 0) {
     return "high";
@@ -373,6 +376,7 @@ export default function HomeClient({
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
   const [isLoadingSearch, setIsLoadingSearch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showCatalogSection, setShowCatalogSection] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [orderStatus, setOrderStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
@@ -479,6 +483,7 @@ export default function HomeClient({
   const handleCategorySelect = (category: string | null) => {
     setSelectedCategory(category);
     setSearchQuery("");
+    setShowCatalogSection(Boolean(category));
     setCatalogLimit(category ? Number.MAX_SAFE_INTEGER : CATALOG_PAGE_SIZE);
     if (category && hasMoreProducts && !isFetchingMore) {
       void fetchAllProducts();
@@ -498,6 +503,7 @@ export default function HomeClient({
   const handleReturnHome = () => {
     setSelectedCategory(null);
     setSearchQuery("");
+    setShowCatalogSection(false);
     setCatalogLimit(CATALOG_PAGE_SIZE);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -512,6 +518,9 @@ export default function HomeClient({
 
   const handleOpenCart = () => {
     setIsCartOpen(true);
+    if (isMobileLayout) {
+      return;
+    }
     const cartSection = document.getElementById("carrito");
     if (cartSection) {
       cartSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -580,6 +589,7 @@ export default function HomeClient({
   }, [quickView]);
 
   const handleViewFullCatalog = () => {
+    setShowCatalogSection(true);
     setCatalogLimit(Number.MAX_SAFE_INTEGER);
     if (hasMoreProducts && !isFetchingMore) {
       void fetchAllProducts();
@@ -591,6 +601,7 @@ export default function HomeClient({
   };
 
   const handleLoadMoreCatalog = () => {
+    setShowCatalogSection(true);
     setCatalogLimit((value) => value + CATALOG_PAGE_SIZE);
     if (hasMoreProducts && !isFetchingMore) {
       void loadMoreProducts();
@@ -1263,12 +1274,12 @@ export default function HomeClient({
         return compareByNewest(a, b);
       });
     if (!selectedCategory) {
-      return available.slice(0, 8);
+      return available.slice(0, HOME_SECTION_CARD_LIMIT);
     }
     const normalizedCategory = normalizeLabel(selectedCategory);
     return available
       .filter((product) => normalizeLabel(product.category) === normalizedCategory)
-      .slice(0, 8);
+      .slice(0, HOME_SECTION_CARD_LIMIT);
   }, [products, featuredSource, selectedCategory]);
 
   const weeklyOffers = useMemo(() => {
@@ -1293,12 +1304,12 @@ export default function HomeClient({
         return compareByNewest(a, b);
       });
     if (offers.length > 0) {
-      return offers.slice(0, 8);
+      return offers.slice(0, HOME_SECTION_CARD_LIMIT);
     }
     return [...source]
       .filter((product) => (product.stock ?? 0) > 0)
       .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
-      .slice(0, 4);
+      .slice(0, HOME_SECTION_CARD_LIMIT);
   }, [products, featuredSource]);
 
   const discountedProducts = useMemo(() => {
@@ -1313,7 +1324,7 @@ export default function HomeClient({
         }
         return compareByNewest(a, b);
       })
-      .slice(0, 8);
+      .slice(0, HOME_SECTION_CARD_LIMIT);
   }, [products, featuredSource]);
 
   const flashOfferProducts = useMemo(() => {
@@ -1975,199 +1986,112 @@ export default function HomeClient({
             ) : null}
           </div>
 
-          <aside className="cart-panel" id="carrito">
-            <div className="cart-header">
-              <span>Tu pedido</span>
-              <span className="cart-count">{totalItems}</span>
-            </div>
-
-            {cartItems.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-illustration" aria-hidden="true">
-                  <svg viewBox="0 0 120 90" role="presentation">
-                    <path
-                      d="M12 14h12l8 44h56l10-30H40"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="44" cy="76" r="6" fill="currentColor" />
-                    <circle cx="78" cy="76" r="6" fill="currentColor" />
-                    <path
-                      d="M48 22h42"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M32 14l-6-8"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="6"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </div>
-                <div className="empty-title">Carrito listo para empezar</div>
-                <div className="empty-text">
-                  Todavia no agregaste productos. Elegi un destacado para empezar.
-                </div>
-              </div>
-            ) : (
-              <div className="cart-summary">
-                <div className="empty-title">Revisa tu pedido</div>
-                <div className="empty-text">
-                  Ajusta cantidades y completa tus datos para enviarlo sin vueltas.
-                </div>
-              </div>
-            )}
-
-            {orderMessage ? (
-              <div
-                className={`cart-notice ${
-                  orderStatus === "error" ? "cart-notice--error" : "cart-notice--success"
-                }`}
-              >
-                {orderMessage}
-              </div>
-            ) : null}
-
-            {cartItems.length > 0 ? (
-              <>
-                <div className="cart-list">
-                  {cartItems.map((item) => (
-                    <div key={item.product.id} className="cart-item">
-                      <div className="cart-row">
-                        <span>{item.product.name}</span>
-                        <strong>${item.product.price.toLocaleString("es-AR")}</strong>
-                      </div>
-                      <div className="cart-row">
-                        <span>Cantidad: {item.qty}</span>
-                        <div className="cart-actions">
-                          <button type="button" onClick={() => updateQty(item.product.id, -1)}>
-                            -
-                          </button>
-                          <button type="button" onClick={() => updateQty(item.product.id, 1)}>
-                            +
-                          </button>
-                          <button type="button" onClick={() => removeItem(item.product.id)}>
-                            Quitar
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {stockNotice ? <div className="cart-notice">{stockNotice}</div> : null}
-                {cartNotice ? (
-                  <div className="cart-notice cart-notice--success">{cartNotice}</div>
-                ) : null}
-
-                <div className="cart-form">
-                  <input
-                    type="text"
-                    placeholder="Nombre y apellido"
-                    value={orderName}
-                    onChange={(event) => setOrderName(event.target.value)}
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Telefono"
-                    value={orderPhone}
-                    onChange={(event) => setOrderPhone(event.target.value)}
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email (opcional)"
-                    value={orderEmail}
-                    onChange={(event) => setOrderEmail(event.target.value)}
-                  />
-                  <textarea
-                    placeholder="Notas (opcional)"
-                    value={orderNotes}
-                    onChange={(event) => setOrderNotes(event.target.value)}
-                    rows={2}
-                  />
-                </div>
-
-                <div className="cart-total">
-                  <span>Total</span>
-                  <span>${total.toLocaleString("es-AR")}</span>
-                </div>
-                <div className="cart-shipping-hint">
-                  {remainingForFreeShipping === 0
-                    ? "Envio gratis desbloqueado."
-                    : `Te faltan $${remainingForFreeShipping.toLocaleString(
-                        "es-AR"
-                      )} para envio gratis.`}
-                </div>
-                <button
-                  className="button button--lime"
-                  onClick={handleCheckout}
-                  disabled={orderStatus === "submitting"}
-                >
-                  {orderStatus === "submitting" ? "Enviando..." : "Enviar pedido"}
-                </button>
-              </>
-            ) : null}
-          </aside>
+          {!isMobileLayout ? (
+            <aside className="cart-panel" id="carrito">
+              <StorefrontCartPanel
+                cartItems={cartItems}
+                totalItems={totalItems}
+                total={total}
+                remainingForFreeShipping={remainingForFreeShipping}
+                orderName={orderName}
+                orderPhone={orderPhone}
+                orderEmail={orderEmail}
+                orderNotes={orderNotes}
+                orderStatus={orderStatus}
+                orderMessage={orderMessage}
+                stockNotice={stockNotice}
+                cartNotice={cartNotice}
+                onOrderNameChange={setOrderName}
+                onOrderPhoneChange={setOrderPhone}
+                onOrderEmailChange={setOrderEmail}
+                onOrderNotesChange={setOrderNotes}
+                onUpdateQty={updateQty}
+                onRemoveItem={removeItem}
+                onCheckout={handleCheckout}
+              />
+            </aside>
+          ) : null}
         </div>
         </section>
 
-      {!isSearching && !selectedCategory && (
+      {!isSearching && !selectedCategory && showCatalogSection ? (
         <section className="section" id="catalogo">
-        <div className="section-header">
-          <div>
-            <p className="section-kicker">Catalogo</p>
-            <h2 className="section-title">Mas productos</h2>
-            {selectedCategory ? (
-              <p className="hero-text">Filtrando por: {selectedCategory}</p>
-            ) : null}
-          </div>
-        </div>
-        <div className="product-grid stagger" id="catalogo-grid">
-          {visibleCatalog.length > 0 ? (
-            visibleCatalog.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={applyBadge(product, "catalog")}
-                imageRefreshKey={imageRefreshKey}
-                imagePriority={getCardImagePriority(index)}
-                inCart={cart[product.id]?.qty ?? 0}
-                onAdd={() => addItem(product)}
-                onView={() => handleOpenQuickView(product)}
-                onToggleFeatured={editMode ? () => toggleFeatured(product) : undefined}
-                style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-              />
-            ))
-          ) : isLoadingProducts ? (
-            skeletonCards.map((card) => (
-              <div key={`catalog-skeleton-${card}`} className="product-card product-skeleton" />
-            ))
-          ) : (
-            <div className="empty-state empty-state--wide">
-              No hay destacados u ofertas con esos filtros.
+          <div className="section-header">
+            <div>
+              <p className="section-kicker">Catalogo</p>
+              <h2 className="section-title">Mas productos</h2>
+              {selectedCategory ? (
+                <p className="hero-text">Filtrando por: {selectedCategory}</p>
+              ) : null}
             </div>
-          )}
-        </div>
-        {filteredCatalog.length > visibleCatalog.length || hasMoreProducts ? (
-          <div className="section-actions">
-            <button
-              type="button"
-              className="button button--ghost"
-              onClick={handleLoadMoreCatalog}
-              disabled={isFetchingMore}
-            >
-              {isFetchingMore ? "Cargando mas..." : "Mostrar mas"}
-            </button>
           </div>
-        ) : null}
-      </section>
-      )}
+          <div className="product-grid stagger" id="catalogo-grid">
+            {visibleCatalog.length > 0 ? (
+              visibleCatalog.map((product, index) => (
+                <ProductCard
+                  key={product.id}
+                  product={applyBadge(product, "catalog")}
+                  imageRefreshKey={imageRefreshKey}
+                  imagePriority={getCardImagePriority(index)}
+                  inCart={cart[product.id]?.qty ?? 0}
+                  onAdd={() => addItem(product)}
+                  onView={() => handleOpenQuickView(product)}
+                  onToggleFeatured={editMode ? () => toggleFeatured(product) : undefined}
+                  style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+                />
+              ))
+            ) : isLoadingProducts ? (
+              skeletonCards.map((card) => (
+                <div key={`catalog-skeleton-${card}`} className="product-card product-skeleton" />
+              ))
+            ) : (
+              <div className="empty-state empty-state--wide">
+                No hay destacados u ofertas con esos filtros.
+              </div>
+            )}
+          </div>
+          {filteredCatalog.length > visibleCatalog.length || hasMoreProducts ? (
+            <div className="section-actions">
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleLoadMoreCatalog}
+                disabled={isFetchingMore}
+              >
+                {isFetchingMore ? "Cargando mas..." : "Mostrar mas"}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {isMobileLayout ? (
+        <CartDrawer open={isCartOpen} onClose={() => setIsCartOpen(false)}>
+          <div className="cart-panel cart-panel--drawer">
+            <StorefrontCartPanel
+              cartItems={cartItems}
+              totalItems={totalItems}
+              total={total}
+              remainingForFreeShipping={remainingForFreeShipping}
+              orderName={orderName}
+              orderPhone={orderPhone}
+              orderEmail={orderEmail}
+              orderNotes={orderNotes}
+              orderStatus={orderStatus}
+              orderMessage={orderMessage}
+              stockNotice={stockNotice}
+              cartNotice={cartNotice}
+              onOrderNameChange={setOrderName}
+              onOrderPhoneChange={setOrderPhone}
+              onOrderEmailChange={setOrderEmail}
+              onOrderNotesChange={setOrderNotes}
+              onUpdateQty={updateQty}
+              onRemoveItem={removeItem}
+              onCheckout={handleCheckout}
+            />
+          </div>
+        </CartDrawer>
+      ) : null}
 
       {cartItems.length > 0 ? (
         <div className="cart-bar" role="region" aria-label="Resumen de carrito">
