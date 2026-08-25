@@ -272,8 +272,8 @@ function ProductCard({
     setImgAttempt(0);
     setImgFailed(false);
     setUseRawImage(false);
-    if (preferProxyImage && product.id && isAbsoluteImageUrl(images[imageIndex])) {
-      setProxySrc(buildProxyImageSrc(product.id, imageIndex));
+    if (product.id && (!images[imageIndex] || (preferProxyImage && isAbsoluteImageUrl(images[imageIndex])))) {
+      setProxySrc(buildProxyImageSrc(product.id, images[imageIndex] ? imageIndex : undefined));
       setHasTriedProxy(true);
     } else {
       setProxySrc(null);
@@ -309,6 +309,14 @@ function ProductCard({
     }
     if (!proxySrc && !hasTriedProxy && preferProxyImage && product.id) {
       setProxySrc(buildProxyImageSrc(product.id, imageIndex));
+      setHasTriedProxy(true);
+      setImgAttempt(0);
+      setImgFailed(false);
+      setUseRawImage(false);
+      return;
+    }
+    if (!proxySrc && !hasTriedProxy && product.id) {
+      setProxySrc(buildProxyImageSrc(product.id, Number.isInteger(imageIndex) ? imageIndex : undefined));
       setHasTriedProxy(true);
       setImgAttempt(0);
       setImgFailed(false);
