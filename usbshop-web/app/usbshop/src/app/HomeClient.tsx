@@ -76,10 +76,15 @@ const fallbackCategories = [
   "Vapers",
 ];
 const PRODUCTS_PAGE_SIZE = 24;
+const BULK_PRODUCTS_PAGE_SIZE = 240;
 const CATALOG_PAGE_SIZE = 12;
 const SEARCH_PAGE_SIZE = 48;
 const SEARCH_DEBOUNCE_MS = 250;
 const HOME_SECTION_CARD_LIMIT = 4;
+const STOREFRONT_FETCH_TIMEOUT_MS = 4_500;
+const STOREFRONT_FETCH_ATTEMPTS = 1;
+const STOREFRONT_BASE_ATTEMPTS = 2;
+const STOREFRONT_RETRY_DELAY_MS = 250;
 const getCardImagePriority = (index: number): "high" | "auto" | "low" => {
   if (index === 0) {
     return "high";
@@ -643,7 +648,7 @@ export default function HomeClient({
       let more = true;
       let baseUrl = productsApiBase;
       while (more) {
-        const result = await fetchProductsPage(offset);
+        const result = await fetchProductsPage(offset, "", BULK_PRODUCTS_PAGE_SIZE);
         baseUrl = result.baseUrl;
         if (result.normalized.length === 0) {
           more = false;
@@ -651,7 +656,7 @@ export default function HomeClient({
         }
         combined = [...combined, ...result.normalized];
         offset += result.normalized.length;
-        if (result.data.length < PRODUCTS_PAGE_SIZE) {
+        if (result.data.length < BULK_PRODUCTS_PAGE_SIZE) {
           more = false;
         }
       }
@@ -669,31 +674,28 @@ export default function HomeClient({
 
   const fetchWithRetry = async <T,>(
     path: string,
-    attempts = 5,
-    delayMs = 600
+    attempts = STOREFRONT_BASE_ATTEMPTS,
+    delayMs = STOREFRONT_RETRY_DELAY_MS
   ): Promise<{ data: T; baseUrl: string }> => {
     let lastError: unknown;
     await loadRuntimeConfig();
     const host = typeof window !== "undefined" ? window.location.hostname : "";
     const fallbackBase =
       host === "localhost" || host === "127.0.0.1" ? `http://${host}:8000` : null;
-    const defaultBase = getApiBaseUrl();
-    const bases = [defaultBase];
-    if (fallbackBase && fallbackBase !== defaultBase) {
-      bases.push(fallbackBase);
-    }
+    const primaryBase = (productsApiBase || getApiBaseUrl()).trim();
+    const bases = Array.from(
+      new Set(
+        [primaryBase, getApiBaseUrl(), fallbackBase]
+          .map((value) => (value || "").trim())
+          .filter(Boolean)
+      )
+    );
     const fetchFromBase = async (baseUrl: string) => {
-      if (baseUrl === defaultBase) {
-        return fetchJson<T>(path);
-      }
-      const response = await fetch(`${baseUrl}${path}`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
+      return fetchJson<T>(path, undefined, {
+        attempts: STOREFRONT_FETCH_ATTEMPTS,
+        baseUrl,
+        timeoutMs: STOREFRONT_FETCH_TIMEOUT_MS,
       });
-      if (!response.ok) {
-        throw new Error("API request failed");
-      }
-      return (await response.json()) as T;
     };
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       for (const baseUrl of bases) {

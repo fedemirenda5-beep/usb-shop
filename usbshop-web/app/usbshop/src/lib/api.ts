@@ -354,7 +354,17 @@ export async function fetchApiResponse(path: string, init?: RequestInit, timeout
   );
 }
 
-export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
+type FetchJsonOptions = {
+  attempts?: number;
+  baseUrl?: string;
+  timeoutMs?: number;
+};
+
+export async function fetchJson<T>(
+  path: string,
+  init?: RequestInit,
+  options?: FetchJsonOptions
+): Promise<T> {
   await ensureApiBaseUrl();
   const headers = new Headers(init?.headers || {});
   const hasBody = init?.body !== undefined && init.body !== null;
@@ -363,13 +373,16 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
   if (hasBody && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const url = `${getApiBaseUrl()}${path}`;
+  const baseUrl = options?.baseUrl?.trim() || getApiBaseUrl();
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
+  const attempts = options?.attempts ?? DEFAULT_API_RETRY_ATTEMPTS;
+  const url = `${baseUrl}${path}`;
   try {
     const response = await fetchWithRetry(url, {
       ...init,
       credentials: "include",
       headers,
-    }, DEFAULT_API_TIMEOUT_MS);
+    }, timeoutMs, attempts);
     if (!response.ok) {
       throw new Error(`API request failed (${response.status} ${response.statusText}) ${url}`);
     }
