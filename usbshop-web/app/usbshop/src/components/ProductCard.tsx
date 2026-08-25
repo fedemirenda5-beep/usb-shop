@@ -173,13 +173,22 @@ function ProductCard({
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
   const [isCarouselPaused, setIsCarouselPaused] = React.useState(false);
+  const optimizedImgSrc = React.useMemo(() => {
+    if (!imgSrc) {
+      return null;
+    }
+    return buildCardImageSrc(imgSrc);
+  }, [imgSrc]);
   const displaySrc = React.useMemo(() => {
     if (!shouldLoadImage || (!imgSrc && !proxySrc)) {
       return null;
     }
-    const base = proxySrc ?? (useRawImage ? imgSrc : buildCardImageSrc(imgSrc));
+    const base = proxySrc ?? (useRawImage ? imgSrc : optimizedImgSrc);
+    if (!base) {
+      return null;
+    }
     return appendRefreshKey(base, imageRefreshKey);
-  }, [imageRefreshKey, imgSrc, proxySrc, shouldLoadImage, useRawImage]);
+  }, [imageRefreshKey, optimizedImgSrc, imgSrc, proxySrc, shouldLoadImage, useRawImage]);
   const [imgAttempt, setImgAttempt] = React.useState(0);
   const [imgFailed, setImgFailed] = React.useState(false);
 
@@ -241,30 +250,31 @@ function ProductCard({
 
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
-    if (!activeSrc || imgAttempt >= 1) {
+    if (!activeSrc) {
       setImgFailed(true);
       return;
     }
-    if (!proxySrc && !useRawImage && buildCardImageSrc(activeSrc) !== activeSrc) {
-      setUseRawImage(true);
-      setImgAttempt(0);
-      return;
-    }
-    if (!proxySrc && product.id) {
-      setProxySrc(buildProxyImageSrc(product.id, imageIndex));
+    if (proxySrc) {
+      setProxySrc(null);
       setImgAttempt(0);
       setImgFailed(false);
       setUseRawImage(false);
       return;
     }
+    if (!useRawImage && optimizedImgSrc && optimizedImgSrc !== imgSrc) {
+      setUseRawImage(true);
+      setImgAttempt(0);
+      setImgFailed(false);
+      return;
+    }
+    if (imgAttempt >= 1) {
+      setImgFailed(true);
+      return;
+    }
     const nextAttempt = imgAttempt + 1;
     setImgAttempt(nextAttempt);
     window.setTimeout(() => {
-      if (proxySrc) {
-        setProxySrc(appendCacheBuster(activeSrc, nextAttempt));
-      } else {
-        setImgSrc(appendCacheBuster(activeSrc, nextAttempt));
-      }
+      setImgSrc(appendCacheBuster(activeSrc, nextAttempt));
     }, 250 * nextAttempt);
   };
 
