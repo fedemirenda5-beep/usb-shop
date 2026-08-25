@@ -120,6 +120,23 @@ const buildProxyImageSrc = (productId: number, index?: number) => {
   return baseUrl.endsWith("/") ? `${baseUrl.slice(0, -1)}${path}` : `${baseUrl}${path}`;
 };
 
+const findNextImageIndex = (
+  currentIndex: number,
+  total: number,
+  failedIndexes: Set<number>
+) => {
+  if (total <= 1) {
+    return null;
+  }
+  for (let step = 1; step < total; step += 1) {
+    const nextIndex = (currentIndex + step) % total;
+    if (!failedIndexes.has(nextIndex)) {
+      return nextIndex;
+    }
+  }
+  return null;
+};
+
 const getFallbackLabel = (value?: string | null) => {
   const words = (value ?? "")
     .split(/\s+/)
@@ -171,6 +188,7 @@ function ProductCard({
   const [useRawImage, setUseRawImage] = React.useState(false);
   const [proxySrc, setProxySrc] = React.useState<string | null>(null);
   const [hasTriedProxy, setHasTriedProxy] = React.useState(false);
+  const [failedImageIndexes, setFailedImageIndexes] = React.useState<Set<number>>(() => new Set());
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
@@ -264,6 +282,10 @@ function ProductCard({
   }, [imageIndex, images, imageRefreshKey]);
 
   React.useEffect(() => {
+    setFailedImageIndexes(new Set());
+  }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
+
+  React.useEffect(() => {
     if (!allowCarouselAutoplay || !hasMultipleImages || !shouldLoadImage || isCarouselPaused) {
       return;
     }
@@ -294,6 +316,14 @@ function ProductCard({
       return;
     }
     if (imgAttempt >= 1) {
+      const nextFailedIndexes = new Set(failedImageIndexes);
+      nextFailedIndexes.add(imageIndex);
+      const nextImageIndex = findNextImageIndex(imageIndex, images.length, nextFailedIndexes);
+      if (nextImageIndex !== null) {
+        setFailedImageIndexes(nextFailedIndexes);
+        setImageIndex(nextImageIndex);
+        return;
+      }
       setImgFailed(true);
       return;
     }
