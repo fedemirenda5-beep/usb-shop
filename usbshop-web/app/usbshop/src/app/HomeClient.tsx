@@ -75,6 +75,8 @@ const fallbackCategories = [
 ];
 const PRODUCTS_PAGE_SIZE = 24;
 const CATALOG_PAGE_SIZE = 12;
+const SEARCH_PAGE_SIZE = 48;
+const SEARCH_DEBOUNCE_MS = 250;
 const getCardImagePriority = (index: number): "high" | "auto" | "low" => {
   if (index === 0) {
     return "high";
@@ -367,6 +369,9 @@ export default function HomeClient({
   );
   const [cart, setCart] = useState<Record<number, CartItem>>({});
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Product[] | null>(null);
+  const [isLoadingSearch, setIsLoadingSearch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [featuredIndex, setFeaturedIndex] = useState(0);
@@ -384,6 +389,7 @@ export default function HomeClient({
   const productsRetryTimer = useRef<number | null>(null);
   const featuredRequestRef = useRef(0);
   const productsRequestRef = useRef(0);
+  const searchRequestRef = useRef(0);
   const isFetchingMoreRef = useRef(false);
   const hasMoreProductsRef = useRef(true);
   const quickViewHistoryActiveRef = useRef(false);
@@ -452,6 +458,13 @@ export default function HomeClient({
     setSearchQuery("");
     setCatalogLimit(Number.MAX_SAFE_INTEGER);
   }, [categories, products]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
   const wait = (ms: number) =>
     new Promise((resolve) => {
@@ -708,10 +721,20 @@ export default function HomeClient({
     setImageRefreshKey((value) => value + 1);
   };
 
-  const fetchProductsPage = async (offset: number) => {
-    const result = await fetchWithRetry<Product[]>(
-      `/products?sort=newest&limit=${PRODUCTS_PAGE_SIZE}&offset=${offset}`
-    );
+  const fetchProductsPage = async (
+    offset: number,
+    query = "",
+    limit = PRODUCTS_PAGE_SIZE
+  ) => {
+    const params = new URLSearchParams({
+      sort: "newest",
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (query.trim()) {
+      params.set("q", query.trim());
+    }
+    const result = await fetchWithRetry<Product[]>(`/products?${params.toString()}`);
     const normalized = result.data.map((item) => normalizeProduct(item, result.baseUrl));
     return { ...result, normalized };
   };
@@ -1062,8 +1085,8 @@ export default function HomeClient({
   }, [featured, products]);
 
   const searchTokens = useMemo(() => {
-    return searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  }, [searchQuery]);
+    return debouncedSearchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  }, [debouncedSearchQuery]);
   const isSearching = searchTokens.length > 0;
   const skeletonCards = useMemo(() => Array.from({ length: 8 }, (_, idx) => idx), []);
   const allIndexedProducts = useMemo(() => {
@@ -1097,16 +1120,45 @@ export default function HomeClient({
   }, [allIndexedProducts]);
 
   useEffect(() => {
-    if (isSearching && hasMoreProducts && !isFetchingMore) {
-      void fetchAllProducts();
-    }
-  }, [isSearching, hasMoreProducts, isFetchingMore]);
-
-  useEffect(() => {
     if (selectedCategory && hasMoreProducts && !isFetchingMore) {
       void fetchAllProducts();
     }
   }, [selectedCategory, hasMoreProducts, isFetchingMore]);
+
+  useEffect(() => {
+    if (!debouncedSearchQuery) {
+      setSearchResults(null);
+      setIsLoadingSearch(false);
+      return;
+    }
+    let active = true;
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
+    setIsLoadingSearch(true);
+    const runSearch = async () => {
+      try {
+        const result = await fetchProductsPage(0, debouncedSearchQuery, SEARCH_PAGE_SIZE);
+        if (!active || searchRequestRef.current !== requestId) {
+          return;
+        }
+        setProductsApiBase(result.baseUrl);
+        setSearchResults(result.normalized);
+      } catch {
+        if (!active || searchRequestRef.current !== requestId) {
+          return;
+        }
+        setSearchResults([]);
+      } finally {
+        if (active && searchRequestRef.current === requestId) {
+          setIsLoadingSearch(false);
+        }
+      }
+    };
+    void runSearch();
+    return () => {
+      active = false;
+    };
+  }, [debouncedSearchQuery]);
 
   const matchesSearch = (product: Product) => {
     if (searchTokens.length === 0) {
@@ -1138,7 +1190,8 @@ export default function HomeClient({
       .sort(compareByNewest);
   }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
   const filteredProducts = useMemo(() => {
-    return [...products]
+    const source = searchResults ?? products;
+    return [...source]
       .filter((product) => {
       if (!matchesSelectedCategory(product)) {
         return false;
@@ -1146,7 +1199,7 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(compareByCategoryThenName);
-  }, [products, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
+  }, [products, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
 
   const catalogSource = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
