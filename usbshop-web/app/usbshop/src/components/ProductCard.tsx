@@ -75,6 +75,9 @@ const normalizeImageSrc = (value?: string | null) => {
   }
 };
 
+const isAbsoluteImageUrl = (value?: string | null) =>
+  Boolean(value && /^https?:\/\//i.test(value));
+
 const buildCardImageSrc = (value: string) => {
   if (!/\/products\/\d+\/image\b/.test(value)) {
     return value;
@@ -167,6 +170,7 @@ function ProductCard({
   const [imgSrc, setImgSrc] = React.useState<string | null>(() => images[0] ?? null);
   const [useRawImage, setUseRawImage] = React.useState(false);
   const [proxySrc, setProxySrc] = React.useState<string | null>(null);
+  const [hasTriedProxy, setHasTriedProxy] = React.useState(false);
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
@@ -250,7 +254,13 @@ function ProductCard({
     setImgAttempt(0);
     setImgFailed(false);
     setUseRawImage(false);
-    setProxySrc(null);
+    if (preferProxyImage && product.id && isAbsoluteImageUrl(images[imageIndex])) {
+      setProxySrc(buildProxyImageSrc(product.id, imageIndex));
+      setHasTriedProxy(true);
+    } else {
+      setProxySrc(null);
+      setHasTriedProxy(false);
+    }
   }, [imageIndex, images, imageRefreshKey]);
 
   React.useEffect(() => {
@@ -275,8 +285,9 @@ function ProductCard({
       setImgFailed(false);
       return;
     }
-    if (!proxySrc && preferProxyImage && product.id) {
+    if (!proxySrc && !hasTriedProxy && preferProxyImage && product.id) {
       setProxySrc(buildProxyImageSrc(product.id, imageIndex));
+      setHasTriedProxy(true);
       setImgAttempt(0);
       setImgFailed(false);
       setUseRawImage(false);

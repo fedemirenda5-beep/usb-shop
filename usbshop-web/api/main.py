@@ -677,6 +677,11 @@ _AUTH_USERS_CACHE: Optional[tuple[float, list[dict[str, str]]]] = None
 _REMOTE_IMAGE_CACHE_TTL_SECONDS = max(300, int(os.getenv("USB_REMOTE_IMAGE_CACHE_TTL", "21600") or "21600"))
 _REMOTE_IMAGE_CACHE_LOCK = threading.Lock()
 _REMOTE_IMAGE_CACHE: dict[str, tuple[float, bytes, str]] = {}
+_REMOTE_THUMBNAIL_CACHE_TTL_SECONDS = max(
+    300, int(os.getenv("USB_REMOTE_THUMBNAIL_CACHE_TTL", "21600") or "21600")
+)
+_REMOTE_THUMBNAIL_CACHE_LOCK = threading.Lock()
+_REMOTE_THUMBNAIL_CACHE: dict[str, tuple[float, bytes, str]] = {}
 _RUNTIME_SCHEMA_READY = False
 _RUNTIME_SCHEMA_LOCK = threading.Lock()
 
@@ -1334,6 +1339,39 @@ def _fetch_remote_image_bytes(url: str) -> tuple[bytes, str]:
     if len(content) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Imagen remota demasiado grande")
     return _set_remote_image_cache(url, content, media_type)
+
+
+def _remote_thumbnail_cache_key(
+    url: str,
+    width: Optional[int],
+    height: Optional[int],
+    quality: int,
+    fmt: str,
+) -> str:
+    return f"{url}|{width or 0}|{height or 0}|{quality}|{fmt}"
+
+
+def _get_remote_thumbnail_cache(cache_key: str) -> Optional[tuple[bytes, str]]:
+    now = time.time()
+    with _REMOTE_THUMBNAIL_CACHE_LOCK:
+        cached = _REMOTE_THUMBNAIL_CACHE.get(cache_key)
+        if not cached:
+            return None
+        expires_at, content, media_type = cached
+        if expires_at <= now:
+            _REMOTE_THUMBNAIL_CACHE.pop(cache_key, None)
+            return None
+        return content, media_type
+
+
+def _set_remote_thumbnail_cache(cache_key: str, content: bytes, media_type: str) -> tuple[bytes, str]:
+    with _REMOTE_THUMBNAIL_CACHE_LOCK:
+        _REMOTE_THUMBNAIL_CACHE[cache_key] = (
+            time.time() + _REMOTE_THUMBNAIL_CACHE_TTL_SECONDS,
+            content,
+            media_type,
+        )
+    return content, media_type
 
 
 def _has_column(conn: DBConn, table: str, column: str) -> bool:
@@ -5459,13 +5497,25 @@ def product_image(
         remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
         if should_resize and Image is not None and ImageOps is not None:
             try:
-                content, media_type = _render_thumbnail_from_bytes(
-                    remote_bytes,
+                cache_key = _remote_thumbnail_cache_key(
+                    image_value,
                     width,
                     height,
                     quality,
                     normalized_format,
                 )
+                cached_thumbnail = _get_remote_thumbnail_cache(cache_key)
+                if cached_thumbnail is not None:
+                    content, media_type = cached_thumbnail
+                else:
+                    content, media_type = _render_thumbnail_from_bytes(
+                        remote_bytes,
+                        width,
+                        height,
+                        quality,
+                        normalized_format,
+                    )
+                    _set_remote_thumbnail_cache(cache_key, content, media_type)
                 return Response(
                     content=content,
                     media_type=media_type,
