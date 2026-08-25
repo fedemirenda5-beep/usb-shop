@@ -166,9 +166,7 @@ function ProductCard({
   const [imageIndex, setImageIndex] = React.useState(0);
   const [imgSrc, setImgSrc] = React.useState<string | null>(() => images[0] ?? null);
   const [useRawImage, setUseRawImage] = React.useState(false);
-  const [proxySrc, setProxySrc] = React.useState<string | null>(() =>
-    preferProxyImage && product.id ? buildProxyImageSrc(product.id, 0) : null
-  );
+  const [proxySrc, setProxySrc] = React.useState<string | null>(null);
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
@@ -234,9 +232,9 @@ function ProductCard({
     setImgSrc(normalizeImageSrc(images[imageIndex]));
     setImgAttempt(0);
     setImgFailed(false);
-    setUseRawImage(!preferProxyImage);
-    setProxySrc(preferProxyImage && product.id ? buildProxyImageSrc(product.id, imageIndex) : null);
-  }, [imageIndex, images, imageRefreshKey, preferProxyImage, product.id]);
+    setUseRawImage(false);
+    setProxySrc(null);
+  }, [imageIndex, images, imageRefreshKey]);
 
   React.useEffect(() => {
     if (!hasMultipleImages || !shouldLoadImage || isCarouselPaused) {
@@ -254,17 +252,17 @@ function ProductCard({
       setImgFailed(true);
       return;
     }
-    if (proxySrc) {
-      setProxySrc(null);
-      setImgAttempt(0);
-      setImgFailed(false);
-      setUseRawImage(false);
-      return;
-    }
-    if (!useRawImage && optimizedImgSrc && optimizedImgSrc !== imgSrc) {
+    if (!proxySrc && !useRawImage && optimizedImgSrc && optimizedImgSrc !== imgSrc) {
       setUseRawImage(true);
       setImgAttempt(0);
       setImgFailed(false);
+      return;
+    }
+    if (!proxySrc && preferProxyImage && product.id) {
+      setProxySrc(buildProxyImageSrc(product.id, imageIndex));
+      setImgAttempt(0);
+      setImgFailed(false);
+      setUseRawImage(false);
       return;
     }
     if (imgAttempt >= 1) {
@@ -274,7 +272,11 @@ function ProductCard({
     const nextAttempt = imgAttempt + 1;
     setImgAttempt(nextAttempt);
     window.setTimeout(() => {
-      setImgSrc(appendCacheBuster(activeSrc, nextAttempt));
+      if (proxySrc) {
+        setProxySrc(appendCacheBuster(activeSrc, nextAttempt));
+      } else {
+        setImgSrc(appendCacheBuster(activeSrc, nextAttempt));
+      }
     }, 250 * nextAttempt);
   };
 
