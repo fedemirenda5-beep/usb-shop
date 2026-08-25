@@ -147,6 +147,7 @@ const httpPattern = /^https?:\/\//i;
 const missingColonPattern = /^(https?)(\/\/.+)$/i;
 const windowsPathPattern = /^[A-Za-z]:[\\/]/;
 const storagePublicMarker = "/storage/v1/object/public/";
+const defaultStorageBucket = "usbshop-catalogo";
 const localHttpPattern = /^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i;
 
 const extractBasename = (value: string) => {
@@ -155,9 +156,6 @@ const extractBasename = (value: string) => {
 };
 
 const normalizeStorageUrl = (value: string) => {
-  if (!value.includes("%5C")) {
-    return value;
-  }
   try {
     const parsed = new URL(value);
     const markerIndex = parsed.pathname.indexOf(storagePublicMarker);
@@ -165,20 +163,16 @@ const normalizeStorageUrl = (value: string) => {
       return value;
     }
     const afterMarker = parsed.pathname.slice(markerIndex + storagePublicMarker.length);
-    const slashIndex = afterMarker.indexOf("/");
-    if (slashIndex === -1) {
+    const cleanedRemainder = afterMarker.replace(/%5C/gi, "/").replace(/\\/g, "/").replace(/^\/+/, "");
+    if (!cleanedRemainder) {
       return value;
     }
-    const bucket = afterMarker.slice(0, slashIndex);
-    const rest = afterMarker.slice(slashIndex + 1);
-    if (!rest.includes("%5C")) {
+    const parts = cleanedRemainder.split("/").filter(Boolean);
+    if (parts.length === 0) {
       return value;
     }
-    const filename = rest.split("%5C").pop();
-    if (!filename) {
-      return value;
-    }
-    parsed.pathname = `${storagePublicMarker}${bucket}/${filename}`;
+    const normalizedParts = parts[0] === defaultStorageBucket ? parts : [defaultStorageBucket, ...parts];
+    parsed.pathname = `${storagePublicMarker}${normalizedParts.map(encodeURIComponent).join("/")}`;
     return parsed.toString();
   } catch {
     return value;

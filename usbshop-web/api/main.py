@@ -1118,10 +1118,39 @@ def _public_image_url(image_path: Optional[str], product_id: Optional[int] = Non
         return None
     raw = str(image_path).strip()
     if raw.startswith("http://") or raw.startswith("https://"):
-        return raw
+        return _normalize_remote_product_image_url(raw)
     if product_id is None:
         return None
     return f"/products/{product_id}/image"
+
+
+def _normalize_remote_product_image_url(image_url: str) -> str:
+    raw = str(image_url or "").strip()
+    if not raw:
+        return raw
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return raw
+    marker = "/storage/v1/object/public/"
+    marker_index = parsed.path.find(marker)
+    if marker_index == -1:
+        return raw
+    remainder = parsed.path[marker_index + len(marker):].lstrip("/")
+    if not remainder:
+        return raw
+    remainder = remainder.replace("\\", "/")
+    default_bucket = (os.getenv("SUPABASE_BUCKET") or "usbshop-catalogo").strip().strip("/")
+    if not default_bucket:
+        return raw
+    path_parts = [part for part in remainder.split("/") if part]
+    if not path_parts:
+        return raw
+    if path_parts[0] != default_bucket:
+        normalized_remainder = "/".join([default_bucket, *path_parts])
+    else:
+        normalized_remainder = "/".join(path_parts)
+    normalized_path = f"{marker}{quote(normalized_remainder, safe='/._-()')}"
+    return parsed._replace(path=normalized_path).geturl()
 
 
 def _as_existing_local_image_path(image_value: Optional[str]) -> Optional[Path]:
@@ -1180,7 +1209,9 @@ def _product_image_candidates(conn: DBConn, product_id: int, primary_image: Opti
         normalized = str(value).strip()
         if not normalized or normalized in seen:
             return
-        if not (normalized.startswith("http://") or normalized.startswith("https://")):
+        if normalized.startswith("http://") or normalized.startswith("https://"):
+            normalized = _normalize_remote_product_image_url(normalized)
+        else:
             if _as_existing_local_image_path(normalized) is None:
                 return
         seen.add(normalized)
