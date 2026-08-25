@@ -39,6 +39,7 @@ interface Product {
   flash_offer_active?: boolean;
   image_path?: string | null;
   image_urls?: string[];
+  imageUrls?: string[] | null;
 }
 
 interface Category {
@@ -174,10 +175,52 @@ const downloadTextFile = (content: string, fileName: string, mimeType: string) =
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+const getProductImageCandidates = (product: Product, baseUrl: string) => {
+  const candidates = [
+    product.imageUrl,
+    ...(Array.isArray(product.imageUrls) ? product.imageUrls : []),
+    product.image_path,
+    ...(Array.isArray(product.image_urls) ? product.image_urls : []),
+  ]
+    .map((value) => resolveImageUrl(value, baseUrl))
+    .filter((value): value is string => Boolean(value));
+
+  if (candidates.length === 0 && (product.image_path || product.imageUrl || product.imageUrls?.length || product.image_urls?.length)) {
+    const proxyPath = `/products/${product.id}/image`;
+    candidates.push(resolveImageUrl(proxyPath, baseUrl) || proxyPath);
+  }
+
+  return Array.from(new Set(candidates));
+};
+
 const getProductPrimaryImageUrl = (product: Product, baseUrl: string) =>
-  resolveImageUrl(product.imageUrl, baseUrl) ||
-  resolveImageUrl(product.image_path, baseUrl) ||
-  resolveImageUrl(Array.isArray(product.image_urls) ? product.image_urls[0] : null, baseUrl);
+  getProductImageCandidates(product, baseUrl)[0] || null;
+
+function ProductThumbnail({ product, baseUrl }: { product: Product; baseUrl: string }) {
+  const candidates = useMemo(() => getProductImageCandidates(product, baseUrl), [product, baseUrl]);
+  const [candidateIndex, setCandidateIndex] = useState(0);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+  }, [candidates]);
+
+  const currentSrc = candidates[candidateIndex] || null;
+
+  if (!currentSrc) {
+    return <span className={styles.noImage}>Sin imagen</span>;
+  }
+
+  return (
+    <img
+      src={currentSrc}
+      alt={product.name}
+      className={styles.productThumb}
+      onError={() => {
+        setCandidateIndex((current) => (current + 1 < candidates.length ? current + 1 : current));
+      }}
+    />
+  );
+}
 
 const getStorefrontPrice = (product: Product) => {
   if (Number(product.flash_offer_price || 0) > 0 && product.flash_offer_active) {
@@ -1011,7 +1054,6 @@ export default function ProductosPage() {
               </div>
             ) : (
               products.map((product) => {
-                const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const storefrontPrice = getStorefrontPrice(product);
                 return (
                   <button
@@ -1021,11 +1063,7 @@ export default function ProductosPage() {
                     onClick={() => openProductDetail(product.id)}
                   >
                     <div className={styles.mobileCardTop}>
-                      {productImageUrl ? (
-                        <img src={productImageUrl} alt={product.name} className={styles.productThumb} />
-                      ) : (
-                        <span className={styles.noImage}>Sin imagen</span>
-                      )}
+                      <ProductThumbnail product={product} baseUrl={baseUrl} />
                       <div className={styles.mobileCardCopy}>
                         <strong>{product.name}</strong>
                         <span>SKU {product.sku || '-'}</span>
@@ -1082,7 +1120,6 @@ export default function ProductosPage() {
             </thead>
             <tbody>
               {products.map((product) => {
-                const productImageUrl = getProductPrimaryImageUrl(product, baseUrl);
                 const margin = calculateMargin(product.cost, product.price);
                 const storefrontPrice = getStorefrontPrice(product);
                 const storefrontPriceLabel = getStorefrontPriceLabel(product);
@@ -1094,13 +1131,7 @@ export default function ProductosPage() {
                     title="Doble click para editar"
                   >
                     <td>{product.id}</td>
-                    <td>
-                      {productImageUrl ? (
-                        <img src={productImageUrl} alt={product.name} className={styles.productThumb} />
-                      ) : (
-                        <span className={styles.noImage}>Sin imagen</span>
-                      )}
-                    </td>
+                    <td><ProductThumbnail product={product} baseUrl={baseUrl} /></td>
                     <td className={styles.name}>{product.name}</td>
                     <td className={styles.skuCell} title={product.sku}>{product.sku}</td>
                     <td>{product.category || categoryMap.get(product.category_id || 0) || 'Sin rubro'}</td>
