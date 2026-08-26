@@ -58,11 +58,20 @@ python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local -
 - `supabase` requiere `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_BUCKET` para subir a almacenamiento estable y actualizar la base con URLs publicas.
 - Antes de aplicar cambios se crea un backup `controlStock.before-image-migration-YYYYMMDDHHMMSS.db`.
 
+## Estrategia recomendada para imagenes
+
+- `catalog_assets/productos/...` es el origen local estable para la web.
+- Las imagenes migradas ahi se sirven por `/catalog-assets/...` con cache de 7 dias.
+- `/products/{id}/image` queda para compatibilidad y referencias legacy.
+- No guardar nuevas referencias a rutas absolutas de Windows ni a `dist\...`.
+- Ver [IMAGE_STRATEGY.md](./IMAGE_STRATEGY.md).
+
 ## Endpoints
 - `GET /health`
 - `GET /products?limit=50&q=`
 - `GET /featured?limit=6`
 - `GET /products/{id}/image`
+- `GET /catalog-assets/{asset_path}`
 - `POST /sync` (copia la base desde `CONTROLSTOCK_SOURCE_DB` a `CONTROLSTOCK_DB`)
 - `POST /sync/remote` (requiere `USB_SYNC_TOKEN` o `USB_SYNC_SECRET`)
 - `POST /orders` (si `USB_ORDER_SECRET` esta definido, requiere header `X-USB-ORDER-SECRET`)

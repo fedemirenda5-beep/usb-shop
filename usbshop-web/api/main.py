@@ -1119,6 +1119,9 @@ def _public_image_url(image_path: Optional[str], product_id: Optional[int] = Non
     raw = str(image_path).strip()
     if raw.startswith("http://") or raw.startswith("https://"):
         return _normalize_remote_product_image_url(raw)
+    direct_catalog_url = _catalog_asset_public_url(raw)
+    if direct_catalog_url:
+        return direct_catalog_url
     if product_id is None:
         return None
     return f"/products/{product_id}/image"
@@ -1178,6 +1181,17 @@ def _as_existing_local_image_path(image_value: Optional[str]) -> Optional[Path]:
         except OSError:
             continue
     return None
+
+
+def _catalog_asset_public_url(image_value: Optional[str]) -> Optional[str]:
+    image_path = _as_existing_local_image_path(image_value)
+    if image_path is None:
+        return None
+    try:
+        relative_path = image_path.resolve().relative_to(CATALOG_ASSETS_DIR.resolve())
+    except Exception:
+        return None
+    return f"/catalog-assets/{quote(relative_path.as_posix(), safe='/')}"
 
 
 def _first_product_image_candidate(conn: DBConn, product_id: int) -> Optional[str]:
@@ -3234,15 +3248,6 @@ def _build_product_image_fields(
         add_candidate(image_value)
         if len(merged) >= MAX_PRODUCT_IMAGES:
             break
-
-    if product_id and merged:
-        proxied = []
-        for index, _ in enumerate(merged):
-            proxied.append(f"/products/{product_id}/image" if index == 0 else f"/products/{product_id}/image?i={index}")
-        return {
-            "imageUrl": proxied[0],
-            "imageUrls": proxied,
-        }
 
     return {
         "imageUrl": merged[0] if merged else None,
@@ -5620,6 +5625,21 @@ def product_image(
             logging.exception("No se pudo generar thumbnail para %s", image_path)
 
     return FileResponse(image_path)
+
+
+@app.get("/catalog-assets/{asset_path:path}")
+def catalog_asset_file(asset_path: str):
+    requested_path = (CATALOG_ASSETS_DIR / str(asset_path or "")).resolve()
+    try:
+        requested_path.relative_to(CATALOG_ASSETS_DIR.resolve())
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada") from exc
+    if not requested_path.exists() or not requested_path.is_file():
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+    return FileResponse(
+        requested_path,
+        headers={"Cache-Control": "public, max-age=604800, s-maxage=604800"},
+    )
 
 
 # ============================================================================
