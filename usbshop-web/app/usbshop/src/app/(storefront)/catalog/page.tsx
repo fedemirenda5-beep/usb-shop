@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ProductCard from "@/components/ProductCard";
 import { fetchJson, getApiBaseUrl, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
+import { matchesSearchQuery, normalizeSearchText } from "@/lib/search";
 
 type Product = {
   id: number;
@@ -42,7 +43,7 @@ const fallbackCategories = [
 ];
 
 const normalizeLabel = (value: string | null | undefined) =>
-  (value || "").trim().toLowerCase();
+  normalizeSearchText(value);
 const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
   const seen = new Set<string>();
   const next: string[] = [];
@@ -272,7 +273,7 @@ export default function CatalogPage() {
   }, [debouncedQuery]);
 
   const filtered = useMemo(() => {
-    const value = query.trim().toLowerCase();
+    const value = normalizeSearchText(query);
     const sourceCategories = Array.from(
       new Set(
         products
@@ -302,7 +303,7 @@ export default function CatalogPage() {
     };
     const source = value
       ? products.filter((product) => {
-          return product.name.toLowerCase().includes(value) || product.category.toLowerCase().includes(value);
+          return matchesSearchQuery(value, product.name, product.category, product.description || "");
         })
       : products;
     return [...source].sort(compareByCategoryThenNewest);

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
+import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText } from '@/lib/search';
 import { formatArgentinaDateTime } from '@/lib/datetime';
 import { canViewProfitMetrics } from '../adminPermissions';
 import { ProductForm } from './components/ProductForm';
@@ -123,12 +124,7 @@ const currencyFormatter = new Intl.NumberFormat('es-AR', {
 });
 type ExportValueMode = 'price' | 'cost';
 
-const normalizeSearchValue = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
+const normalizeSearchValue = (value: string) => normalizeSearchText(value);
 
 const escapeHtml = (value: string) =>
   value
@@ -420,10 +416,10 @@ export default function ProductosPage() {
     }
     return products
       .filter((product) => {
-        const haystack = normalizeSearchValue(
-          [product.name, product.sku, product.barcode || '', product.category || ''].join(' ')
+        return matchesSearchQuery(
+          normalized,
+          buildSearchHaystack(product.name, product.sku, product.barcode || '', product.category || '')
         );
-        return haystack.includes(normalized);
       })
       .slice(0, 12);
   }, [products, trackingSearch]);

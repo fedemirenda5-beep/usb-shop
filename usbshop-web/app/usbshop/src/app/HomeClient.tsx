@@ -13,6 +13,7 @@ import {
   resolveImageUrl,
   resolveImageUrls,
 } from "@/lib/api";
+import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText, searchTokensFromQuery } from "@/lib/search";
 
 type Product = {
   id: number;
@@ -104,7 +105,7 @@ const NEW_ARRIVAL_PIN_WINDOW_MS = NEW_ARRIVAL_PIN_WINDOW_DAYS * 24 * 60 * 60 * 1
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
   `${Math.min(index * step, max)}s`;
 const normalizeLabel = (value: string | null | undefined) =>
-  (value || "").trim().toLowerCase();
+  normalizeSearchText(value);
 const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
   const seen = new Set<string>();
   const next: string[] = [];
@@ -1098,7 +1099,7 @@ export default function HomeClient({
   }, [featured, products]);
 
   const searchTokens = useMemo(() => {
-    return debouncedSearchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    return searchTokensFromQuery(debouncedSearchQuery);
   }, [debouncedSearchQuery]);
   const isSearching = searchTokens.length > 0;
   const skeletonCards = useMemo(() => Array.from({ length: 8 }, (_, idx) => idx), []);
@@ -1119,7 +1120,7 @@ export default function HomeClient({
     for (const product of allIndexedProducts) {
       map.set(
         product.id,
-        [product.name, product.category, product.badge].filter(Boolean).join(" ").toLowerCase()
+        buildSearchHaystack(product.name, product.category, product.badge)
       );
     }
     return map;
@@ -1186,8 +1187,8 @@ export default function HomeClient({
     }
     const haystack =
       productSearchIndex.get(product.id) ||
-      [product.name, product.category, product.badge].filter(Boolean).join(" ").toLowerCase();
-    return searchTokens.every((token) => haystack.includes(token));
+      buildSearchHaystack(product.name, product.category, product.badge);
+    return matchesSearchQuery(searchTokens.join(" "), haystack);
   };
   const matchesSelectedCategory = (product: Product) => {
     if (!selectedCategory) {

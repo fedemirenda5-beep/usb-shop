@@ -161,6 +161,46 @@ def _normalize_search_text(value: Any) -> str:
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
 
 
+def _search_tokens(value: Any) -> list[str]:
+    normalized = _normalize_search_text(value)
+    if not normalized:
+        return []
+    return [token for token in re.split(r"[\s,;|/\\-]+", normalized) if token]
+
+
+def _search_haystack(*values: Any) -> str:
+    parts = [_normalize_search_text(value) for value in values]
+    return " ".join(part for part in parts if part)
+
+
+def _search_match_score(query: Any, *values: Any) -> int:
+    normalized_query = _normalize_search_text(query)
+    if not normalized_query:
+        return 0
+    haystack = _search_haystack(*values)
+    if not haystack:
+        return 0
+    tokens = _search_tokens(normalized_query)
+    if not tokens:
+        tokens = [normalized_query]
+    score = 0
+    for token in tokens:
+        if token == haystack:
+            score += 200
+            continue
+        if haystack.startswith(token):
+            score += 80
+        if f" {token}" in f" {haystack}":
+            score += 50
+        elif token in haystack:
+            score += 20
+        else:
+            return 0
+    if normalized_query in haystack:
+        score += 30
+    return score
+
+
 def _product_document_stock_effect(document_type: Any) -> int:
     normalized = str(document_type or "").strip().upper()
     if normalized in {"FACTURA", "FACTURA_C"}:
@@ -4562,28 +4602,6 @@ def list_products(
             placeholders = ", ".join(["?"] * len(parsed_ids))
             query += f" AND p.id IN ({placeholders})" if conditions else f" WHERE p.id IN ({placeholders})"
             params.extend(parsed_ids)
-        if q:
-            tokens = [token.strip().lower() for token in str(q).split() if token.strip()]
-            if not tokens:
-                normalized_query = str(q).strip().lower()
-                if normalized_query:
-                    tokens = [normalized_query]
-            search_fields = [
-                "LOWER(COALESCE(p.name, ''))",
-                "LOWER(COALESCE(p.sku, ''))",
-                "LOWER(COALESCE(c.name, ''))",
-            ]
-            if has_description:
-                search_fields.append("LOWER(COALESCE(p.description, ''))")
-            search_clauses: list[str] = []
-            for token in tokens:
-                like = f"%{token}%"
-                token_clauses = [f"{field} LIKE ?" for field in search_fields]
-                search_clauses.append(f"({' OR '.join(token_clauses)})")
-                params.extend([like] * len(search_fields))
-            if search_clauses:
-                joined_search = " AND ".join(search_clauses)
-                query += f" AND {joined_search}" if conditions else f" WHERE {joined_search}"
         sort_key = str(sort or "").strip().lower()
         if sort_key in {"", "newest"}:
             if has_created_at and has_updated_at:
@@ -4596,9 +4614,34 @@ def list_products(
                 order_by = "p.id DESC"
         else:
             order_by = "LOWER(p.name) ASC, p.id ASC"
-        query += f" ORDER BY {order_by} LIMIT ? OFFSET ?"
-        params.extend([max(1, int(limit)), max(0, int(offset))])
+        query += f" ORDER BY {order_by}"
         rows = conn.execute(query, params).fetchall()
+        if q:
+            scored_rows: list[tuple[int, Any]] = []
+            for row in rows:
+                score = _search_match_score(
+                    q,
+                    row["name"],
+                    row["sku"],
+                    row["category"],
+                    row["description"] if has_description else "",
+                )
+                if score > 0:
+                    scored_rows.append((score, row))
+            if sort_key in {"", "newest"}:
+                scored_rows.sort(key=lambda item: (-item[0], -int(item[1]["id"])))
+            else:
+                scored_rows.sort(
+                    key=lambda item: (
+                        -item[0],
+                        _normalize_search_text(item[1]["name"]),
+                        int(item[1]["id"]),
+                    )
+                )
+            rows = [row for _, row in scored_rows]
+        offset_value = max(0, int(offset))
+        limit_value = max(1, int(limit))
+        rows = rows[offset_value : offset_value + limit_value]
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
         bundle_items_map = _fetch_bundle_items_map(
@@ -5676,19 +5719,6 @@ def admin_list_products(
         if has_is_active:
             conditions.append("is_active = 1")
         
-        if q:
-            query_text = str(q).strip()
-            like = f"%{query_text.lower()}%"
-            conditions.append(
-                "("
-                "LOWER(COALESCE(name, '')) LIKE ? OR "
-                "LOWER(COALESCE(sku, '')) LIKE ? OR "
-                "LOWER(COALESCE(barcode, '')) LIKE ? OR "
-                "CAST(id AS TEXT) = ?"
-                ")"
-            )
-            params.extend([like, like, like, query_text])
-        
         if category:
             conditions.append("category_id = (SELECT id FROM categories WHERE name = ?)")
             params.append(category)
@@ -5722,10 +5752,32 @@ def admin_list_products(
             FROM products
             {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
-            LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
+            params,
         ).fetchall()
+        if q:
+            scored_rows: list[tuple[int, Any]] = []
+            for row in rows:
+                score = _search_match_score(
+                    q,
+                    row["name"],
+                    row["sku"],
+                    row["barcode"],
+                    str(row["id"]),
+                )
+                if score > 0:
+                    scored_rows.append((score, row))
+            scored_rows.sort(
+                key=lambda item: (
+                    -item[0],
+                    _normalize_search_text(item[1]["name"]),
+                    int(item[1]["id"]),
+                )
+            )
+            rows = [row for _, row in scored_rows]
+        offset_value = max(0, int(offset))
+        limit_value = max(1, int(limit))
+        rows = rows[offset_value : offset_value + limit_value]
 
         if summary:
             return [
