@@ -23,7 +23,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional, List, Any
 from urllib.error import HTTPError
-from urllib.parse import urlencode, quote, urlparse
+from urllib.parse import urlencode, quote, unquote, urlparse
 from urllib.request import Request as UrlRequest, urlopen
 from zoneinfo import ZoneInfo
 
@@ -1139,17 +1139,18 @@ def _normalize_remote_product_image_url(image_url: str) -> str:
     if not remainder:
         return raw
     remainder = remainder.replace("\\", "/")
-    default_bucket = (os.getenv("SUPABASE_BUCKET") or "usbshop-catalogo").strip().strip("/")
-    if not default_bucket:
+    raw_parts = [part for part in remainder.split("/") if part]
+    if len(raw_parts) < 2:
         return raw
-    path_parts = [part for part in remainder.split("/") if part]
-    if not path_parts:
-        return raw
-    if path_parts[0] != default_bucket:
-        normalized_remainder = "/".join([default_bucket, *path_parts])
-    else:
-        normalized_remainder = "/".join(path_parts)
-    normalized_path = f"{marker}{quote(normalized_remainder, safe='/._-()')}"
+    normalized_parts: list[str] = []
+    for part in raw_parts:
+        try:
+            decoded_part = unquote(part)
+        except Exception:
+            decoded_part = part
+        normalized_parts.append(quote(decoded_part, safe="._-() "))
+    normalized_remainder = "/".join(normalized_parts).replace(" ", "%20")
+    normalized_path = f"{marker}{normalized_remainder}"
     return parsed._replace(path=normalized_path).geturl()
 
 

@@ -147,12 +147,19 @@ const httpPattern = /^https?:\/\//i;
 const missingColonPattern = /^(https?)(\/\/.+)$/i;
 const windowsPathPattern = /^[A-Za-z]:[\\/]/;
 const storagePublicMarker = "/storage/v1/object/public/";
-const defaultStorageBucket = "usbshop-catalogo";
 const localHttpPattern = /^http:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i;
 
 const extractBasename = (value: string) => {
   const parts = value.split(/[\\/]/);
   return parts.length > 0 ? parts[parts.length - 1] : value;
+};
+
+const safeDecodeURIComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 };
 
 const normalizeStorageUrl = (value: string) => {
@@ -168,11 +175,12 @@ const normalizeStorageUrl = (value: string) => {
       return value;
     }
     const parts = cleanedRemainder.split("/").filter(Boolean);
-    if (parts.length === 0) {
+    if (parts.length < 2) {
       return value;
     }
-    const normalizedParts = parts[0] === defaultStorageBucket ? parts : [defaultStorageBucket, ...parts];
-    parsed.pathname = `${storagePublicMarker}${normalizedParts.map(encodeURIComponent).join("/")}`;
+    parsed.pathname = `${storagePublicMarker}${parts
+      .map((part) => encodeURIComponent(safeDecodeURIComponent(part)))
+      .join("/")}`;
     return parsed.toString();
   } catch {
     return value;

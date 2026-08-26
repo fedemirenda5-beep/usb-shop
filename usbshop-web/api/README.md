@@ -47,6 +47,17 @@ python usbshop-web\api\scripts\sync_backoffice_to_api.py
 
 Esto empuja `categories`, `products`, `product_images`, `product_bundle_items`, `customers`, `invoices`, `invoice_items` y `account_movements` desde la base local actual hacia la API remota para que el panel admin use el mismo catalogo y stock real que ControlStock.
 
+## Auditar o migrar imagenes locales de productos
+```powershell
+python usbshop-web\api\scripts\migrate_product_images.py --strategy audit --report image-audit.json
+python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local --apply --report image-copy.json
+```
+
+- `audit` no toca la base y solo informa que referencias locales se pueden resolver.
+- `copy-local` copia las imagenes encontradas a `usbshop-web\api\catalog_assets\productos\...` y actualiza la base en una transaccion.
+- `supabase` requiere `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `SUPABASE_BUCKET` para subir a almacenamiento estable y actualizar la base con URLs publicas.
+- Antes de aplicar cambios se crea un backup `controlStock.before-image-migration-YYYYMMDDHHMMSS.db`.
+
 ## Endpoints
 - `GET /health`
 - `GET /products?limit=50&q=`
