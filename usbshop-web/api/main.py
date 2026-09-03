@@ -2081,9 +2081,11 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
 
 
 def _ensure_product_bundle_support(conn: DBConn) -> None:
+    schema_changed = False
     if not _has_column(conn, "products", "is_bundle"):
         conn.execute("ALTER TABLE products ADD COLUMN is_bundle INTEGER DEFAULT 0")
         _invalidate_table_cache("products")
+        schema_changed = True
     if not _has_table(conn, "product_bundle_items"):
         definitions = ", ".join(
             f"{name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
@@ -2091,7 +2093,9 @@ def _ensure_product_bundle_support(conn: DBConn) -> None:
         )
         conn.execute(f"CREATE TABLE IF NOT EXISTS product_bundle_items ({definitions})")
         _invalidate_table_cache("product_bundle_items")
-    conn.commit()
+        schema_changed = True
+    if schema_changed:
+        conn.commit()
 
 
 def _normalize_bundle_items(raw_items: Any) -> list[dict[str, int]]:
@@ -4089,6 +4093,14 @@ def _ensure_reporting_indexes(conn: DBConn) -> None:
         statements.append(
             "CREATE INDEX IF NOT EXISTS idx_product_images_product_sort ON product_images(product_id, sort_order, id)"
         )
+    if _has_table(conn, "web_orders"):
+        statements.append("CREATE INDEX IF NOT EXISTS idx_web_orders_status ON web_orders(status)")
+    if _has_table(conn, "web_order_items"):
+        statements.append("CREATE INDEX IF NOT EXISTS idx_web_order_items_product_id ON web_order_items(product_id)")
+    if _has_table(conn, "product_bundle_items"):
+        statements.append(
+            "CREATE INDEX IF NOT EXISTS idx_product_bundle_items_product_id ON product_bundle_items(product_id)"
+        )
     for statement in statements:
         try:
             conn.execute(statement)
@@ -4532,7 +4544,6 @@ def list_products(
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
-        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -4623,6 +4634,11 @@ def list_products(
         else:
             order_by = "LOWER(p.name) ASC, p.id ASC"
         query += f" ORDER BY {order_by}"
+        offset_value = max(0, int(offset))
+        limit_value = min(100, max(1, int(limit)))
+        if not q:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit_value, offset_value])
         rows = conn.execute(query, params).fetchall()
         if q:
             scored_rows: list[tuple[int, Any]] = []
@@ -4647,15 +4663,15 @@ def list_products(
                     )
                 )
             rows = [row for _, row in scored_rows]
-        offset_value = max(0, int(offset))
-        limit_value = max(1, int(limit))
-        rows = rows[offset_value : offset_value + limit_value]
+        if q:
+            rows = rows[offset_value : offset_value + limit_value]
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
         bundle_items_map = _fetch_bundle_items_map(
             conn,
             [int(row["id"]) for row in rows if bool(row["is_bundle"])],
         )
+        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
     finally:
         conn.close()
 

@@ -46,6 +46,7 @@ const DEFAULT_API_TIMEOUT_MS = 18_000;
 const RUNTIME_CONFIG_TIMEOUT_MS = 3_000;
 const DEFAULT_API_RETRY_ATTEMPTS = 2;
 const DEFAULT_API_RETRY_DELAY_MS = 700;
+const RETRYABLE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const inFlightGetRequests = new Map<string, Promise<Response>>();
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
@@ -300,6 +301,9 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
+      if (init.signal?.aborted) {
+        throw error;
+      }
       throw new Error("La API demoro demasiado en responder");
     }
     throw error;
@@ -328,12 +332,18 @@ const fetchWithRetry = async (
   attempts = DEFAULT_API_RETRY_ATTEMPTS
 ): Promise<Response> => {
   let lastError: unknown;
+  const method = (init.method || "GET").toUpperCase();
+  const canRetry = RETRYABLE_HTTP_METHODS.has(method);
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await fetchWithTimeout(url, init, timeoutMs);
+      const response = await fetchWithTimeout(url, init, timeoutMs);
+      if (response.status < 500 || !canRetry || attempt >= attempts) {
+        return response;
+      }
+      await wait(DEFAULT_API_RETRY_DELAY_MS * attempt);
     } catch (error) {
       lastError = error;
-      if (attempt >= attempts || !isRetryableApiError(error)) {
+      if (attempt >= attempts || !canRetry || !isRetryableApiError(error)) {
         throw error;
       }
       await wait(DEFAULT_API_RETRY_DELAY_MS * attempt);

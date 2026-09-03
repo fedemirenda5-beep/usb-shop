@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAdminSession } from '@/hooks/useAdminSession';
-import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { canViewProfitMetrics } from '../../adminPermissions';
 import { ADMIN_LIMITS } from '../../adminConfig';
 import { ProductForm } from '../components/ProductForm';
@@ -38,13 +38,9 @@ export default function NuevaProductoPage() {
 
   useEffect(() => {
     const loadReferences = async () => {
-      await loadRuntimeConfig();
       const [categoriesRes, productsRes] = await Promise.all([
-        fetch(`${getApiBaseUrl()}/admin/categories`, { credentials: 'include' }),
-        fetch(
-          `${getApiBaseUrl()}/admin/products?limit=${ADMIN_LIMITS.productsLargeList}&summary=true`,
-          { credentials: 'include' }
-        ),
+        fetchApiResponse('/admin/categories'),
+        fetchApiResponse(`/admin/products?limit=${ADMIN_LIMITS.productsLargeList}&summary=true`),
       ]);
       if (categoriesRes.ok) {
         const categoriesData = await categoriesRes.json().catch(() => []);

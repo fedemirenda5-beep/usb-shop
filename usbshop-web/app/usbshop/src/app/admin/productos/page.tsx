@@ -334,9 +334,7 @@ export default function ProductosPage() {
       setCategoriesLoading(true);
       setCategoryError('');
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/categories`, {
-        credentials: 'include',
-      });
+      const res = await fetchApiResponse('/admin/categories');
       if (!res.ok) throw new Error('No se pudieron cargar los rubros');
       const data = await res.json();
       setCategories(Array.isArray(data) ? data : []);
@@ -440,9 +438,7 @@ export default function ProductosPage() {
       setTrackingLoading(true);
       setTrackingError('');
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/products/${productId}/tracking`, {
-        credentials: 'include',
-      });
+      const res = await fetchApiResponse(`/admin/products/${productId}/tracking`);
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error((data && typeof data === 'object' && 'detail' in data && data.detail) || 'No se pudo cargar el seguimiento');
@@ -491,9 +487,7 @@ export default function ProductosPage() {
       q: rawValue.trim(),
       limit: '25',
     });
-    const res = await fetch(`${getApiBaseUrl()}/admin/products?${params.toString()}`, {
-      credentials: 'include',
-    });
+    const res = await fetchApiResponse(`/admin/products?${params.toString()}`);
     if (!res.ok) throw new Error('No se pudieron cargar los productos para el lector');
     const data = await res.json();
     const remoteProducts = Array.isArray(data) ? (data as Product[]) : [];

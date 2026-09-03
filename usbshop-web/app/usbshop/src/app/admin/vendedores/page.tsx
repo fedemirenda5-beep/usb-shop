@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse, getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -337,9 +337,7 @@ export default function VendedoresPage() {
       const params = new URLSearchParams({ limit: '150' });
       if (query.trim()) params.set('q', query.trim());
       await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/sellers?${params.toString()}`, {
-        credentials: 'include',
-      });
+      const res = await fetchApiResponse(`/admin/sellers?${params.toString()}`);
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.detail || 'No se pudieron cargar los vendedores');
@@ -369,10 +367,7 @@ export default function VendedoresPage() {
       if (monthlyPeriod) {
         params.set('period', monthlyPeriod);
       }
-      const res = await fetch(`${getApiBaseUrl()}/admin/sellers/monthly-summary?${params.toString()}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
+      const res = await fetchApiResponse(`/admin/sellers/monthly-summary?${params.toString()}`, { cache: 'no-store' });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.detail || 'No se pudo cargar el resumen mensual');
@@ -396,10 +391,7 @@ export default function VendedoresPage() {
       }
       await loadRuntimeConfig();
       const params = new URLSearchParams({ reference_date: referenceDate });
-      const res = await fetch(`${getApiBaseUrl()}/admin/sellers/performance-summary?${params.toString()}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
+      const res = await fetchApiResponse(`/admin/sellers/performance-summary?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.detail || 'No se pudo cargar el rendimiento de vendedores');
@@ -473,10 +465,10 @@ export default function VendedoresPage() {
           if (monthlyPeriod) {
             detailParams.set('period', monthlyPeriod);
           }
-          const res = await fetch(`${getApiBaseUrl()}/admin/sellers/${detailSellerId}/monthly-detail?${detailParams.toString()}`, {
-            credentials: 'include',
-            cache: 'no-store',
-          });
+          const res = await fetchApiResponse(
+            `/admin/sellers/${detailSellerId}/monthly-detail?${detailParams.toString()}`,
+            { cache: 'no-store' }
+          );
           const data = await res.json().catch(() => null);
           if (!res.ok) {
             throw new Error(data?.detail || 'No se pudo cargar el detalle mensual del vendedor');
