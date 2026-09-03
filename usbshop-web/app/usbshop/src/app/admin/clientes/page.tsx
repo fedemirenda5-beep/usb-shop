@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
@@ -132,11 +133,13 @@ const getMonthBucket = (value?: string | null) => {
 
 export default function ClientesPage() {
   const { user } = useAdminSession();
+  const queryClient = useQueryClient();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const detailRequestRef = useRef(0);
   const skipNextDetailLoadRef = useRef<number | null>(null);
   const detailSectionRef = useRef<HTMLElement | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerZones, setCustomerZones] = useState<string[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerDetail | null>(null);
@@ -190,13 +193,22 @@ export default function ClientesPage() {
       setLoading(true);
       const params = new URLSearchParams({ limit: '300' });
       if (query.trim()) params.set('q', query.trim());
-      const res = await fetchApiResponse(`/admin/backoffice-customers?${params.toString()}`, { signal });
-      if (!res.ok) throw new Error('No se pudieron cargar los clientes');
-      const data = await res.json();
-      setCustomers(data);
-      if (!selectedCustomerId && data.length > 0) setSelectedCustomerId(data[0].id);
-      if (selectedCustomerId && !data.some((item: Customer) => item.id === selectedCustomerId)) {
-        setSelectedCustomerId(data[0]?.id ?? null);
+      if (sellerFilter !== 'all') params.set('seller_id', sellerFilter);
+      if (zoneFilter !== 'all') params.set('zone', zoneFilter);
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'customers', 'list', params.toString()],
+        queryFn: async () => {
+          const res = await fetchApiResponse(`/admin/backoffice-customers?${params.toString()}`, { signal });
+          if (!res.ok) throw new Error('No se pudieron cargar los clientes');
+          return res.json();
+        },
+      });
+      if (signal?.aborted) return;
+      const items = Array.isArray(data) ? (data as Customer[]) : [];
+      setCustomers(items);
+      if (!selectedCustomerId && items.length > 0) setSelectedCustomerId(items[0].id);
+      if (selectedCustomerId && !items.some((item) => item.id === selectedCustomerId)) {
+        setSelectedCustomerId(items[0]?.id ?? null);
       }
     } catch (err) {
       if (signal?.aborted) return;
@@ -208,13 +220,34 @@ export default function ClientesPage() {
     }
   };
 
+  const loadCustomerZones = async () => {
+    try {
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'customers', 'zones'],
+        queryFn: async () => {
+          const res = await fetchApiResponse('/admin/backoffice-customer-zones');
+          if (!res.ok) throw new Error('No se pudieron cargar las zonas');
+          return res.json();
+        },
+      });
+      setCustomerZones(Array.isArray(data) ? data.filter((zone): zone is string => typeof zone === 'string') : []);
+    } catch (err) {
+      setError(getFriendlyApiError(err, 'Error cargando zonas'));
+    }
+  };
+
   const loadCustomerDetail = async (customerId: number, signal?: AbortSignal) => {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
     try {
-      const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}`, { signal });
-      if (!res.ok) throw new Error('No se pudo cargar el cliente');
-      const customerData = await res.json();
+      const customerData = await queryClient.fetchQuery({
+        queryKey: ['admin', 'customers', 'detail', customerId],
+        queryFn: async () => {
+          const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}`, { signal });
+          if (!res.ok) throw new Error('No se pudo cargar el cliente');
+          return res.json();
+        },
+      });
       if (signal?.aborted || requestId !== detailRequestRef.current) return;
       setSelectedCustomer(customerData);
       setCustomerForm({
@@ -243,9 +276,15 @@ export default function ClientesPage() {
 
   const loadSellers = async (signal?: AbortSignal) => {
     try {
-      const res = await fetchApiResponse(`/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { signal });
-      if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
-      const data = await res.json();
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'sellers', 'list', String(ADMIN_LIMITS.sellersList)],
+        queryFn: async () => {
+          const res = await fetchApiResponse(`/admin/sellers?limit=${ADMIN_LIMITS.sellersList}`, { signal });
+          if (!res.ok) throw new Error('No se pudieron cargar los vendedores');
+          return res.json();
+        },
+      });
+      if (signal?.aborted) return;
       setSellers(Array.isArray(data) ? data.filter((item: Seller) => item.is_active) : []);
     } catch (err) {
       if (signal?.aborted) return;
@@ -256,6 +295,7 @@ export default function ClientesPage() {
   useEffect(() => {
     const controller = new AbortController();
     void loadSellers(controller.signal);
+    void loadCustomerZones();
     return () => controller.abort();
   }, []);
 
@@ -268,7 +308,7 @@ export default function ClientesPage() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [search]);
+  }, [search, sellerFilter, zoneFilter]);
 
   useEffect(() => {
     if (selectedCustomerId) {
@@ -387,12 +427,12 @@ export default function ClientesPage() {
   const availableZones = useMemo(() => {
     return Array.from(
       new Set(
-        customers
+        [...customerZones, ...customers
           .map((customer) => (customer.zone || '').trim())
-          .filter((zone) => zone.length > 0)
+          .filter((zone) => zone.length > 0)]
       )
     ).sort((a, b) => a.localeCompare(b, 'es'));
-  }, [customers]);
+  }, [customerZones, customers]);
 
   const customerGrowth = useMemo(() => {
     const countsByYear = new Map<number, number[]>();
@@ -463,13 +503,17 @@ export default function ClientesPage() {
       setError('Selecciona un vendedor en el filtro para imprimir solo sus clientes.');
       return;
     }
-    const printableCustomers =
-      printScope === 'seller'
-        ? filteredCustomers
-            .filter((item) => item.seller_id === targetSellerId)
-            .sort((a, b) => a.name.localeCompare(b.name, 'es'))
-        : filteredCustomers.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
     try {
+      const params = new URLSearchParams({ limit: '300' });
+      if (search.trim()) params.set('q', search.trim());
+      if (targetSellerId) params.set('seller_id', String(targetSellerId));
+      if (zoneFilter !== 'all') params.set('zone', zoneFilter);
+      const res = await fetchApiResponse(`/admin/backoffice-customers?${params.toString()}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudieron cargar los clientes para imprimir');
+      const data = await res.json();
+      const printableCustomers = Array.isArray(data)
+        ? (data as Customer[]).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+        : [];
       await openAdminSellerCustomersPrint({
         sellerName:
           printScope === 'seller' && targetSellerId
@@ -546,7 +590,8 @@ export default function ClientesPage() {
       }
       const data = await res.json();
       const nextId = selectedCustomerId || data.id;
-      await loadCustomers(search);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'customers'] });
+      await Promise.all([loadCustomers(search), loadCustomerZones()]);
       if (nextId) setSelectedCustomerId(nextId);
       setShowCustomerForm(false);
     } catch (err) {
@@ -587,7 +632,8 @@ export default function ClientesPage() {
       const data = await res.json().catch(() => null);
       throw new Error(data?.detail || 'No se pudo actualizar el cliente');
     }
-    await Promise.all([loadCustomers(search), loadCustomerDetail(selectedCustomerId)]);
+    await queryClient.invalidateQueries({ queryKey: ['admin', 'customers'] });
+    await Promise.all([loadCustomers(search), loadCustomerDetail(selectedCustomerId), loadCustomerZones()]);
     if (!options?.keepFormOpen) {
       setShowCustomerForm(false);
     }
@@ -644,7 +690,8 @@ export default function ClientesPage() {
         setCustomerForm(emptyCustomerForm());
         setQuickSellerId('');
       }
-      await loadCustomers(search);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'customers'] });
+      await Promise.all([loadCustomers(search), loadCustomerZones()]);
     } catch (err) {
       setError(getFriendlyApiError(err, 'Error eliminando cliente'));
     } finally {
@@ -663,7 +710,8 @@ export default function ClientesPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.detail || 'No se pudieron actualizar los clientes');
       }
-      await loadCustomers(search);
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'customers'] });
+      await Promise.all([loadCustomers(search), loadCustomerZones()]);
       if (selectedCustomerId) {
         await loadCustomerDetail(selectedCustomerId);
       }

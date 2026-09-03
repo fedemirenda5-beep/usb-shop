@@ -6534,6 +6534,8 @@ def admin_backoffice_customers(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     q: Optional[str] = None,
     ids: Optional[str] = None,
+    seller_id: Optional[int] = None,
+    zone: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
     summary: bool = False,
@@ -6560,6 +6562,13 @@ def admin_backoffice_customers(
             placeholders = ", ".join(["?"] * len(parsed_ids))
             conditions.append(f"id IN ({placeholders})")
             params.extend(parsed_ids)
+        if seller_id is not None and seller_id > 0:
+            conditions.append("seller_id = ?")
+            params.append(seller_id)
+        normalized_zone = str(zone or "").strip()
+        if normalized_zone:
+            conditions.append("TRIM(COALESCE(zone, '')) = ?")
+            params.append(normalized_zone)
         query_text = str(q or "").strip()
         if query_text:
             query_tokens = [token.strip().lower() for token in query_text.split() if token.strip()]
@@ -6597,7 +6606,7 @@ def admin_backoffice_customers(
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
             LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
+            params + [min(300, max(1, limit)), max(0, offset)],
         ).fetchall()
         if summary:
             return [
@@ -6673,6 +6682,28 @@ def admin_backoffice_customers(
             }
             for row in rows
         ]
+    finally:
+        conn.close()
+
+
+@app.get("/admin/backoffice-customer-zones")
+def admin_backoffice_customer_zones(
+    request: Request,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> list[str]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        rows = conn.execute(
+            """
+            SELECT DISTINCT TRIM(COALESCE(zone, '')) AS zone
+            FROM customers
+            WHERE deleted_at IS NULL AND TRIM(COALESCE(zone, '')) <> ''
+            ORDER BY LOWER(TRIM(zone)) ASC
+            """
+        ).fetchall()
+        return [str(row["zone"]) for row in rows]
     finally:
         conn.close()
 
