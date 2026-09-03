@@ -607,12 +607,17 @@ export default function GenerarComprobantePage() {
     }
     return 'La factura descuenta stock y, si la operación es por cuenta corriente, genera deuda del cliente.';
   }, [form.document_type]);
+  const productRequiresImei = (product?: ProductOption | null) => {
+    if (!product?.category_id || !celularesCategoryIds.has(product.category_id)) return false;
+    return !isNokia106ExceptionProduct(product.name);
+  };
+
   const pendingOrderCellphoneImeiItems = useMemo(() => {
     if (form.document_type !== 'FACTURA') return [];
     return form.items
       .map((item, index) => {
         const product = productMap.get(Number(item.product_id));
-        if (!product?.category_id || !celularesCategoryIds.has(product.category_id)) return null;
+        if (!productRequiresImei(product)) return null;
         const quantity = Math.max(0, Number(item.quantity || 0));
         const imeiCount = item.imeis.length;
         const missingCount = Math.max(0, quantity - imeiCount);
@@ -626,9 +631,9 @@ export default function GenerarComprobantePage() {
     () =>
       form.items.some((item) => {
         const product = productMap.get(Number(item.product_id));
-        return Boolean(product?.category_id && celularesCategoryIds.has(product.category_id));
+        return productRequiresImei(product);
       }),
-    [celularesCategoryIds, form.items, productMap]
+    [form.items, productMap, celularesCategoryIds]
   );
   const shouldAppendWarrantyNote = form.document_type === 'FACTURA' && hasCellphoneItems;
 
@@ -668,7 +673,7 @@ export default function GenerarComprobantePage() {
     const pendingCellphoneIndexes = form.items
       .map((item, index) => {
         const product = productMap.get(Number(item.product_id));
-        if (!product?.category_id || !celularesCategoryIds.has(product.category_id)) {
+        if (!productRequiresImei(product)) {
           return null;
         }
         return {
@@ -740,7 +745,7 @@ export default function GenerarComprobantePage() {
   const addProductToInvoice = (product: ProductOption, quantityOverride?: number, scannedImei?: string) => {
     const inlineQuantity = searchQuantities[product.id];
     const normalizedQuantity = Math.max(1, Number(quantityOverride || inlineQuantity || 1));
-    const requiresImei = Boolean(product.category_id && celularesCategoryIds.has(product.category_id));
+    const requiresImei = productRequiresImei(product);
     let wasAdded = true;
     setForm((current) => {
       const existingIndex = current.items.findIndex((item) => Number(item.product_id) === product.id);
@@ -1114,7 +1119,7 @@ export default function GenerarComprobantePage() {
       setError('');
       return;
     }
-    if (selectedProduct.category_id && celularesCategoryIds.has(selectedProduct.category_id) && isValidImeiCandidate(scannedValue)) {
+    if (productRequiresImei(selectedProduct) && isValidImeiCandidate(scannedValue)) {
       const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
       if (!wasAdded) {
         setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
@@ -1544,7 +1549,7 @@ export default function GenerarComprobantePage() {
                                 ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
                                 : 'Producto no encontrado'}
                             </div>
-                            {selectedProduct?.category_id && celularesCategoryIds.has(selectedProduct.category_id) && form.document_type === 'FACTURA' ? (
+                            {productRequiresImei(selectedProduct) && form.document_type === 'FACTURA' ? (
                               <>
                                 <div className={styles.itemMeta}>
                                   IMEIs cargados: {item.imeis.length}/{Math.max(0, Number(item.quantity || 0))}

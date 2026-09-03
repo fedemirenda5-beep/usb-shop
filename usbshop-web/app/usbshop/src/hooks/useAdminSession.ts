@@ -150,6 +150,20 @@ const isRetryableSessionError = (error: unknown) => {
   );
 };
 
+const isConnectivitySessionError = (error: unknown) => {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.trim().toLowerCase();
+  return (
+    message.includes('tardo demasiado') ||
+    message.includes('timed out') ||
+    message === 'failed to fetch' ||
+    message.includes('networkerror') ||
+    message.includes('no se pudo conectar con la api')
+  );
+};
+
 const fetchWithRetry = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
   let lastError: unknown;
   for (let attempt = 1; attempt <= SESSION_REQUEST_ATTEMPTS; attempt += 1) {
@@ -248,9 +262,14 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
       return user;
     } catch (err) {
       lastSessionCheckAt = Date.now();
-      const message = getFriendlySessionError(err, 'Error verificando sesion');
       const fallbackUser = sessionSnapshot.user;
-      updateSnapshot({ user: fallbackUser, isLoading: false, error: message, isVerified: true });
+      const shouldKeepExistingSessionSilently = Boolean(fallbackUser) && isConnectivitySessionError(err);
+      updateSnapshot({
+        user: fallbackUser,
+        isLoading: false,
+        error: shouldKeepExistingSessionSilently ? null : getFriendlySessionError(err, 'Error verificando sesion'),
+        isVerified: true,
+      });
       return fallbackUser;
     } finally {
       sessionRequest = null;

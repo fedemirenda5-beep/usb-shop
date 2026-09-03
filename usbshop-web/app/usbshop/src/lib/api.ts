@@ -46,6 +46,7 @@ const DEFAULT_API_TIMEOUT_MS = 18_000;
 const RUNTIME_CONFIG_TIMEOUT_MS = 3_000;
 const DEFAULT_API_RETRY_ATTEMPTS = 2;
 const DEFAULT_API_RETRY_DELAY_MS = 700;
+const inFlightGetRequests = new Map<string, Promise<Response>>();
 let runtimeApiBaseUrl = DEFAULT_API_BASE_URL;
 let runtimeOrderSecret = DEFAULT_ORDER_SECRET;
 let runtimeConfigLoaded = false;
@@ -266,13 +267,36 @@ const wait = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
-const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+const createAbortSignal = (timeoutMs: number, externalSignal?: AbortSignal) => {
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+  const timeoutHandle = setTimeout(() => controller.abort(new DOMException("Request timeout", "AbortError")), timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort(externalSignal.reason);
+    } else {
+      externalSignal.addEventListener("abort", abortFromExternalSignal, { once: true });
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timeoutHandle);
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", abortFromExternalSignal);
+      }
+    },
+  };
+};
+
+const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+  const { signal, cleanup } = createAbortSignal(timeoutMs, init.signal);
   try {
     return await fetch(url, {
       ...init,
-      signal: controller.signal,
+      signal,
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
@@ -280,7 +304,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
     }
     throw error;
   } finally {
-    clearTimeout(timeoutHandle);
+    cleanup();
   }
 };
 
@@ -346,14 +370,45 @@ export async function ensureApiBaseUrl(timeoutMs = 5000): Promise<void> {
 export async function fetchApiResponse(path: string, init?: RequestInit, timeoutMs = DEFAULT_API_TIMEOUT_MS): Promise<Response> {
   await ensureApiBaseUrl();
   const url = `${getApiBaseUrl()}${path}`;
-  return fetchWithRetry(
+  const method = (init?.method || "GET").toUpperCase();
+  const requestInit: RequestInit = {
+    ...init,
+    credentials: "include",
+  };
+
+  // A caller-owned signal must remain isolated, otherwise one cancellation aborts all consumers.
+  if (method !== "GET" || requestInit.signal) {
+    return fetchWithRetry(
+      url,
+      requestInit,
+      timeoutMs
+    );
+  }
+
+  const requestKey = JSON.stringify({
     url,
-    {
-      ...init,
-      credentials: "include",
-    },
+    credentials: requestInit.credentials || "include",
+    cache: requestInit.cache || "",
+  });
+  const existingRequest = inFlightGetRequests.get(requestKey);
+  if (existingRequest) {
+    const response = await existingRequest;
+    return response.clone();
+  }
+
+  const requestPromise = fetchWithRetry(
+    url,
+    requestInit,
     timeoutMs
   );
+  inFlightGetRequests.set(requestKey, requestPromise);
+
+  try {
+    const response = await requestPromise;
+    return response.clone();
+  } finally {
+    inFlightGetRequests.delete(requestKey);
+  }
 }
 
 type FetchJsonOptions = {

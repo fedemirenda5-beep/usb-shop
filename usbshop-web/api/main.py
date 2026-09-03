@@ -1748,6 +1748,14 @@ def _category_requires_imei(conn: DBConn, category_id: Any) -> bool:
     return _is_celulares_category_name(category_name)
 
 
+def _product_requires_imei(conn: DBConn, category_id: Any, product_name: Any = None) -> bool:
+    if not _category_requires_imei(conn, category_id):
+        return False
+    if product_name is not None and _is_nokia_106_exception_product_name(product_name):
+        return False
+    return True
+
+
 def _normalize_imei_value(value: Any) -> str:
     digits = "".join(char for char in str(value or "") if char.isdigit())
     return digits.strip()
@@ -5890,7 +5898,7 @@ def admin_create_product(
             _assert_bundle_components_valid(conn, 0, bundle_items)
             stock = 0
             imeis = []
-        requires_imei = _category_requires_imei(conn, category_id)
+        requires_imei = _product_requires_imei(conn, category_id, name)
         if requires_imei and stock > 0 and not imeis:
             raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
         if requires_imei and len(imeis) < stock:
@@ -6243,7 +6251,7 @@ def admin_update_product(
         _ensure_products_flash_offer_columns(conn)
         _ensure_product_imeis_table(conn)
         row = conn.execute(
-            "SELECT id, category_id, COALESCE(is_bundle, 0) AS is_bundle FROM products WHERE id = ? AND deleted_at IS NULL",
+            "SELECT id, name, category_id, COALESCE(is_bundle, 0) AS is_bundle FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
         ).fetchone()
         
@@ -6316,10 +6324,11 @@ def admin_update_product(
             updates.append("flash_offer_ends_at = ?")
             params.append(raw_ends_at or None)
 
+        next_name = str(payload["name"]).strip() if "name" in payload else str(row["name"] if isinstance(row, dict) else row[1] or "").strip()
         next_category_id = (
             int(payload.get("category_id") or 0)
             if "category_id" in payload and payload.get("category_id") not in (None, "", 0, "0")
-            else int(row["category_id"] if isinstance(row, dict) else row[1] or 0)
+            else int(row["category_id"] if isinstance(row, dict) else row[2] or 0)
         )
         next_stock = int(payload.get("stock") or 0) if "stock" in payload else 0
         if "stock" not in payload:
@@ -6340,7 +6349,7 @@ def admin_update_product(
         if next_is_bundle:
             _assert_bundle_components_valid(conn, product_id, bundle_items)
             next_imeis = []
-        if _category_requires_imei(conn, next_category_id):
+        if _product_requires_imei(conn, next_category_id, next_name):
             if next_stock > 0 and not next_imeis:
                 raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
             if len(next_imeis) < next_stock:
@@ -6536,16 +6545,22 @@ def admin_backoffice_customers(
                 }
                 for row in rows
             ]
+        customer_ids = [int(row["id"]) for row in rows]
+        if not customer_ids:
+            return []
+        customer_placeholders = ", ".join(["?"] * len(customer_ids))
         movements = conn.execute(
             """
             SELECT customer_id, amount, movement_type
             FROM account_movements
-            WHERE customer_id IS NOT NULL
-            """
+            WHERE customer_id IN ("""
+            + customer_placeholders
+            + ")"
             + _active_account_movements_clause(conn)
             + """
             ORDER BY created_at ASC, id ASC
-            """
+            """,
+            customer_ids,
         ).fetchall()
         balances: dict[int, float] = {}
         for row in movements:
@@ -6561,8 +6576,12 @@ def admin_backoffice_customers(
                 """
                 SELECT customer_id, COUNT(*) AS qty
                 FROM invoices
-                GROUP BY customer_id
-                """
+                WHERE customer_id IN ("""
+                + customer_placeholders
+                + ") "
+                + """GROUP BY customer_id
+                """,
+                customer_ids,
             ).fetchall()
             if row["customer_id"] is not None
         }
@@ -8396,7 +8415,7 @@ def admin_create_invoice(
                 current_stock = int(product["stock"] or 0)
                 if document_type == "FACTURA" and current_stock < quantity:
                     raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
-                requires_imei = _category_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7])
+                requires_imei = _product_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7], product["name"] if isinstance(product, dict) else product[1])
                 if len(item_imeis) > quantity:
                     raise HTTPException(
                         status_code=400,
@@ -8421,7 +8440,7 @@ def admin_create_invoice(
                 )
 
         includes_cellphones = any(
-            _category_requires_imei(conn, item.get("category_id"))
+            _product_requires_imei(conn, item.get("category_id"), item.get("product_name") or item.get("name"))
             for item in normalized_items
         )
         notes = _append_cellphone_warranty_note(

@@ -276,6 +276,10 @@ export default function ProductosPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const scannerAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannerLastAutoSubmittedRef = useRef('');
+  const selectedCategoryName = useMemo(
+    () => categories.find((item) => String(item.id) === categoryFilter)?.name || '',
+    [categories, categoryFilter]
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -300,11 +304,8 @@ export default function ProductosPage() {
       if (searchValue) {
         params.append('q', searchValue);
       }
-      if (categoryFilter) {
-        const categoryName = categories.find((item) => String(item.id) === categoryFilter)?.name;
-        if (categoryName) {
-          params.append('category', categoryName);
-        }
+      if (selectedCategoryName) {
+        params.append('category', selectedCategoryName);
       }
       if (onlyOutOfStock) {
         params.append('out_of_stock_only', 'true');
@@ -352,7 +353,7 @@ export default function ProductosPage() {
 
   useEffect(() => {
     void loadProducts(page);
-  }, [page, deferredSearch, categoryFilter, onlyOutOfStock, categories]);
+  }, [page, deferredSearch, selectedCategoryName, onlyOutOfStock]);
 
   useEffect(() => {
     if (!editId) {
