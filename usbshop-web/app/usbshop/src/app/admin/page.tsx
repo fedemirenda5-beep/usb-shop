@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { formatArgentinaDate } from '@/lib/datetime';
@@ -99,26 +100,25 @@ const persistCachedSummary = (summary: Summary) => {
 
 export default function AdminDashboard() {
   const { user } = useAdminSession();
-  const [summary, setSummary] = useState<Summary | null>(() => readCachedSummary());
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setError('');
-        const res = await fetchApiResponse('/admin/reports/overview', {
-          cache: 'no-store',
-        });
-        if (!res.ok) throw new Error('No se pudo cargar el escritorio');
-        const data: OverviewResponse = await res.json();
-        setSummary(data.summary);
-        persistCachedSummary(data.summary);
-      } catch (err) {
-        setError(getFriendlyApiError(err, 'Error cargando el escritorio'));
-      }
-    };
-    load();
-  }, []);
+  const overviewQuery = useQuery({
+    queryKey: ['admin', 'reports', 'overview'],
+    enabled: Boolean(user),
+    placeholderData: () => {
+      const summary = readCachedSummary();
+      return summary ? { summary } : undefined;
+    },
+    queryFn: async (): Promise<OverviewResponse> => {
+      const res = await fetchApiResponse('/admin/reports/overview', { cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudo cargar el escritorio');
+      const data = (await res.json()) as OverviewResponse;
+      persistCachedSummary(data.summary);
+      return data;
+    },
+  });
+  const summary = overviewQuery.data?.summary ?? null;
+  const error = overviewQuery.error
+    ? getFriendlyApiError(overviewQuery.error, 'Error cargando el escritorio')
+    : '';
 
   const sections = useMemo(
     () =>

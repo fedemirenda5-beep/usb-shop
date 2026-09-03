@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { QueryProvider } from "@/components/QueryProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,7 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es">
       <body className="body">
-        <div className="page-shell">{children}</div>
+        <QueryProvider>
+          <div className="page-shell">{children}</div>
+        </QueryProvider>
       </body>
     </html>
   );

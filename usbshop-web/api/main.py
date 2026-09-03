@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextvars import ContextVar
 import hashlib
 import hmac
 import html
@@ -17,6 +18,7 @@ import time
 import smtplib
 import threading
 import unicodedata
+import uuid
 from email.message import EmailMessage
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -100,6 +102,9 @@ PUBLIC_STORE_BASE_URL = (
     or "https://usbshop.com.ar"
 ).strip().rstrip("/")
 PREFER_SOURCE_DB_READS = os.getenv("USB_PREFER_SOURCE_DB", "0").strip() == "1"
+SLOW_REQUEST_THRESHOLD_MS = max(1, int(os.getenv("USB_SLOW_REQUEST_MS", "700") or "700"))
+SLOW_QUERY_THRESHOLD_MS = max(1, int(os.getenv("USB_SLOW_QUERY_MS", "250") or "250"))
+_REQUEST_DB_TIMING: ContextVar[Optional[dict[str, Any]]] = ContextVar("request_db_timing", default=None)
 
 
 def _configure_sqlite_connection(conn: sqlite3.Connection) -> None:
@@ -130,13 +135,28 @@ class DBConn:
 
     def execute(self, query: str, params: Optional[list | tuple] = None):
         sql = _adapt_query(query)
-        if self.is_postgres:
-            if psycopg2 is None or RealDictCursor is None:
-                raise RuntimeError("psycopg2 no disponible para Postgres")
-            cur = self._conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute(sql, params or ())
-            return cur
-        return self._conn.execute(sql, params or ())
+        started_at = time.perf_counter()
+        try:
+            if self.is_postgres:
+                if psycopg2 is None or RealDictCursor is None:
+                    raise RuntimeError("psycopg2 no disponible para Postgres")
+                cur = self._conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute(sql, params or ())
+                return cur
+            return self._conn.execute(sql, params or ())
+        finally:
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            timing = _REQUEST_DB_TIMING.get()
+            if timing is not None:
+                timing["query_count"] += 1
+                timing["query_time_ms"] += elapsed_ms
+                if elapsed_ms >= SLOW_QUERY_THRESHOLD_MS:
+                    LOGGER.warning(
+                        "Slow query request_id=%s duration_ms=%.1f sql=%s",
+                        timing["request_id"],
+                        elapsed_ms,
+                        " ".join(query.split())[:240],
+                    )
 
     def commit(self) -> None:
         self._conn.commit()
@@ -734,7 +754,38 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Server-Timing", "X-Request-ID"],
 )
+
+
+@app.middleware("http")
+async def request_timing_middleware(request: Request, call_next):
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    timing = {"request_id": request_id, "query_count": 0, "query_time_ms": 0.0}
+    context_token = _REQUEST_DB_TIMING.set(timing)
+    response: Optional[Response] = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        query_time_ms = float(timing["query_time_ms"])
+        if response is not None:
+            response.headers["X-Request-ID"] = request_id
+            response.headers["Server-Timing"] = f'app;dur={elapsed_ms:.1f}, db;dur={query_time_ms:.1f}'
+        if elapsed_ms >= SLOW_REQUEST_THRESHOLD_MS:
+            LOGGER.warning(
+                "Slow request request_id=%s method=%s path=%s status=%s duration_ms=%.1f db_ms=%.1f queries=%s",
+                request_id,
+                request.method,
+                request.url.path,
+                response.status_code if response is not None else 500,
+                elapsed_ms,
+                query_time_ms,
+                timing["query_count"],
+            )
+        _REQUEST_DB_TIMING.reset(context_token)
 
 
 @app.on_event("startup")

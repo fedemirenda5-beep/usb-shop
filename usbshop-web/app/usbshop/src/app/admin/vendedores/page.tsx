@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { fetchApiResponse, getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
@@ -193,6 +194,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 export default function VendedoresPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const { user } = useAdminSession();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const canViewCommissionBreakdown = canViewSellerCommissionBreakdown(user?.role);
@@ -336,13 +338,18 @@ export default function VendedoresPage() {
       setError('');
       const params = new URLSearchParams({ limit: '150' });
       if (query.trim()) params.set('q', query.trim());
-      await loadRuntimeConfig();
-      const res = await fetchApiResponse(`/admin/sellers?${params.toString()}`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.detail || 'No se pudieron cargar los vendedores');
-      }
-      const data = await res.json();
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'sellers', 'list', params.toString()],
+        queryFn: async () => {
+          await loadRuntimeConfig();
+          const res = await fetchApiResponse(`/admin/sellers?${params.toString()}`);
+          if (!res.ok) {
+            const payload = await res.json().catch(() => null);
+            throw new Error(payload?.detail || 'No se pudieron cargar los vendedores');
+          }
+          return res.json();
+        },
+      });
       const nextSellers = Array.isArray(data) ? data : [];
       setSellers(nextSellers);
       setSelectedSellerId((currentId: number | null) => {
@@ -362,17 +369,22 @@ export default function VendedoresPage() {
       if (!silent) {
         setSummaryLoading(true);
       }
-      await loadRuntimeConfig();
       const params = new URLSearchParams();
       if (monthlyPeriod) {
         params.set('period', monthlyPeriod);
       }
-      const res = await fetchApiResponse(`/admin/sellers/monthly-summary?${params.toString()}`, { cache: 'no-store' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.detail || 'No se pudo cargar el resumen mensual');
-      }
-      const data = await res.json();
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'sellers', 'monthly-summary', params.toString()],
+        queryFn: async () => {
+          await loadRuntimeConfig();
+          const res = await fetchApiResponse(`/admin/sellers/monthly-summary?${params.toString()}`, { cache: 'no-store' });
+          if (!res.ok) {
+            const payload = await res.json().catch(() => null);
+            throw new Error(payload?.detail || 'No se pudo cargar el resumen mensual');
+          }
+          return res.json();
+        },
+      });
       setMonthlySummary(Array.isArray(data.items) ? data.items : []);
       setMonthlyPeriod(typeof data.period === 'string' ? data.period : '');
     } catch (err) {
@@ -389,13 +401,19 @@ export default function VendedoresPage() {
       if (!silent) {
         setSummaryLoading(true);
       }
-      await loadRuntimeConfig();
       const params = new URLSearchParams({ reference_date: referenceDate });
-      const res = await fetchApiResponse(`/admin/sellers/performance-summary?${params.toString()}`, { cache: 'no-store' });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(data?.detail || 'No se pudo cargar el rendimiento de vendedores');
-      }
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'sellers', 'performance-summary', params.toString()],
+        queryFn: async () => {
+          await loadRuntimeConfig();
+          const res = await fetchApiResponse(`/admin/sellers/performance-summary?${params.toString()}`, { cache: 'no-store' });
+          const payload = await res.json().catch(() => null);
+          if (!res.ok) {
+            throw new Error(payload?.detail || 'No se pudo cargar el rendimiento de vendedores');
+          }
+          return payload;
+        },
+      });
       setRangeSummary(Array.isArray(data?.items) ? (data.items as SellerRangeSummary[]) : []);
     } catch (err) {
       setError(getErrorMessage(err, 'Error cargando resumen por periodo'));
@@ -459,20 +477,26 @@ export default function VendedoresPage() {
       try {
         setDetailLoading(true);
         setError('');
-        await loadRuntimeConfig();
         try {
           const detailParams = new URLSearchParams();
           if (monthlyPeriod) {
             detailParams.set('period', monthlyPeriod);
           }
-          const res = await fetchApiResponse(
-            `/admin/sellers/${detailSellerId}/monthly-detail?${detailParams.toString()}`,
-            { cache: 'no-store' }
-          );
-          const data = await res.json().catch(() => null);
-          if (!res.ok) {
-            throw new Error(data?.detail || 'No se pudo cargar el detalle mensual del vendedor');
-          }
+          const data = await queryClient.fetchQuery({
+            queryKey: ['admin', 'sellers', 'monthly-detail', detailSellerId, detailParams.toString()],
+            queryFn: async () => {
+              await loadRuntimeConfig();
+              const res = await fetchApiResponse(
+                `/admin/sellers/${detailSellerId}/monthly-detail?${detailParams.toString()}`,
+                { cache: 'no-store' }
+              );
+              const payload = await res.json().catch(() => null);
+              if (!res.ok) {
+                throw new Error(payload?.detail || 'No se pudo cargar el detalle mensual del vendedor');
+              }
+              return payload;
+            },
+          });
           setSellerDetail(data);
         } catch (detailErr) {
           throw detailErr;
@@ -582,6 +606,7 @@ export default function VendedoresPage() {
         throw new Error(data?.detail || 'No se pudo guardar el vendedor');
       }
       const data = await res.json();
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'sellers'] });
       await loadSellers(search);
       setSelectedSellerId(data.id);
       setShowSellerForm(false);

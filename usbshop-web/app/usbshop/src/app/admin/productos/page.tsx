@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEv
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText } from '@/lib/search';
@@ -242,6 +243,7 @@ const getStorefrontPriceLabel = (product: Product) => {
 
 export default function ProductosPage() {
   const { user } = useAdminSession();
+  const queryClient = useQueryClient();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -333,10 +335,15 @@ export default function ProductosPage() {
     try {
       setCategoriesLoading(true);
       setCategoryError('');
-      await loadRuntimeConfig();
-      const res = await fetchApiResponse('/admin/categories');
-      if (!res.ok) throw new Error('No se pudieron cargar los rubros');
-      const data = await res.json();
+      const data = await queryClient.fetchQuery({
+        queryKey: ['admin', 'categories'],
+        queryFn: async () => {
+          await loadRuntimeConfig();
+          const res = await fetchApiResponse('/admin/categories');
+          if (!res.ok) throw new Error('No se pudieron cargar los rubros');
+          return res.json();
+        },
+      });
       setCategories(Array.isArray(data) ? data : []);
     } catch (err) {
       setCategoryError(err instanceof Error ? err.message : 'Error cargando rubros');
@@ -724,6 +731,7 @@ export default function ProductosPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo guardar el rubro');
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'categories'] });
       await loadCategories();
       resetCategoryEditor();
     } catch (err) {
@@ -754,6 +762,7 @@ export default function ProductosPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo eliminar el rubro');
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'categories'] });
       if (categoryFilter === String(category.id)) {
         setCategoryFilter('');
       }
