@@ -375,7 +375,7 @@ export default function HomeClient({
   const [categoriesLoaded, setCategoriesLoaded] = useState(
     Array.isArray(initialCategories)
   );
-  const [imageRefreshKey, setImageRefreshKey] = useState(0);
+  const imageRefreshKey = 0;
   const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE_SIZE);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMoreProducts, setHasMoreProducts] = useState(
@@ -738,7 +738,6 @@ export default function HomeClient({
     const normalized = result.data.map((item) => normalizeProduct(item, result.baseUrl));
     setFeatured(normalized);
     saveCachedList(FEATURED_CACHE_KEY, result.data, result.baseUrl);
-    setImageRefreshKey((value) => value + 1);
   };
 
   const applyProductsResult = (result: { data: Product[]; baseUrl: string; normalized: Product[] }) => {
@@ -746,7 +745,6 @@ export default function HomeClient({
     setProducts(result.normalized);
     setHasMoreProducts(result.data.length >= PRODUCTS_PAGE_SIZE);
     saveCachedList(PRODUCTS_CACHE_KEY, result.data, result.baseUrl);
-    setImageRefreshKey((value) => value + 1);
   };
 
   const fetchProductsPage = async (

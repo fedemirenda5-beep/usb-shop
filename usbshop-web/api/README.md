@@ -19,6 +19,8 @@ API local para leer stock y precios desde la base de datos de ControlStock.
 - Default: `1`
 - Variable obligatoria en produccion `USB_AUTH_SECRET` para firmar sesiones. Configurarla en el panel de Render, nunca en Git.
 - Variable temporal `USB_LEGACY_AUTH_SECRET` para validar hashes anteriores durante una rotacion. Debe conservar el secreto viejo hasta que todos los usuarios hayan iniciado sesion al menos una vez.
+- Limite de accesos fallidos: `USB_AUTH_LOGIN_MAX_FAILURES` y `USB_AUTH_LOGIN_LOCKOUT_SECONDS`.
+- Defaults: 8 intentos durante 15 minutos por usuario.
 - Variables opcionales `USB_ADMIN_USERNAME` y `USB_ADMIN_PASSWORD` para crear o actualizar un admin bootstrap al iniciar login.
 - Variable opcional `USB_ORDER_SECRET` para proteger `POST /orders` con el header `X-USB-ORDER-SECRET`.
 - Variable opcional `USB_SYNC_TOKEN` o `USB_SYNC_SECRET` para habilitar sincronizaciones remotas administrativas.

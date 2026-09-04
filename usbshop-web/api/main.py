@@ -738,6 +738,10 @@ _ADMIN_OVERVIEW_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _AUTH_USERS_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_AUTH_USERS_CACHE_TTL", "60") or "60"))
 _AUTH_USERS_CACHE_LOCK = threading.Lock()
 _AUTH_USERS_CACHE: Optional[tuple[float, list[dict[str, str]]]] = None
+_AUTH_LOGIN_MAX_FAILURES = max(3, int(os.getenv("USB_AUTH_LOGIN_MAX_FAILURES", "8") or "8"))
+_AUTH_LOGIN_LOCKOUT_SECONDS = max(60, int(os.getenv("USB_AUTH_LOGIN_LOCKOUT_SECONDS", "900") or "900"))
+_AUTH_LOGIN_FAILURES_LOCK = threading.Lock()
+_AUTH_LOGIN_FAILURES: dict[str, tuple[int, float]] = {}
 _REMOTE_IMAGE_CACHE_TTL_SECONDS = max(300, int(os.getenv("USB_REMOTE_IMAGE_CACHE_TTL", "21600") or "21600"))
 _REMOTE_IMAGE_CACHE_MAX_ENTRIES = max(1, int(os.getenv("USB_REMOTE_IMAGE_CACHE_MAX_ENTRIES", "24") or "24"))
 _REMOTE_IMAGE_CACHE_LOCK = threading.Lock()
@@ -939,6 +943,42 @@ def _require_admin(session_token: Optional[str]) -> dict:
 
 def _require_full_admin(session_token: Optional[str]) -> dict:
     return _require_roles(session_token, {ROLE_ADMIN})
+
+
+def _assert_login_not_locked(username_key: str) -> None:
+    now = time.time()
+    with _AUTH_LOGIN_FAILURES_LOCK:
+        failure = _AUTH_LOGIN_FAILURES.get(username_key)
+        if failure is None:
+            return
+        count, expires_at = failure
+        if expires_at <= now:
+            _AUTH_LOGIN_FAILURES.pop(username_key, None)
+            return
+        if count < _AUTH_LOGIN_MAX_FAILURES:
+            return
+        retry_after = max(1, int(math.ceil(expires_at - now)))
+    raise HTTPException(
+        status_code=429,
+        detail=f"Demasiados intentos. Intenta nuevamente en {retry_after // 60 + 1} minutos",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def _record_login_failure(username_key: str) -> None:
+    now = time.time()
+    with _AUTH_LOGIN_FAILURES_LOCK:
+        count, expires_at = _AUTH_LOGIN_FAILURES.get(username_key, (0, now))
+        if expires_at <= now:
+            count = 0
+            expires_at = now + _AUTH_LOGIN_LOCKOUT_SECONDS
+        count += 1
+        _AUTH_LOGIN_FAILURES[username_key] = (count, expires_at)
+
+
+def _clear_login_failures(username_key: str) -> None:
+    with _AUTH_LOGIN_FAILURES_LOCK:
+        _AUTH_LOGIN_FAILURES.pop(username_key, None)
 
 
 def _get_admin_cached_payload(key: str) -> Optional[dict[str, Any]]:
@@ -5458,6 +5498,7 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     password = str(payload.get("password") or "")
     if not username or not password:
         raise HTTPException(status_code=400, detail="Credenciales incompletas")
+    _assert_login_not_locked(username_key)
     conn = _connect()
     try:
         rows = conn.execute(
@@ -5488,7 +5529,9 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
     finally:
         conn.close()
     if row is None:
+        _record_login_failure(username_key)
         raise HTTPException(status_code=401, detail="Credenciales invalidas")
+    _clear_login_failures(username_key)
     payload_data = {
         "id": int(row["id"]),
         "username": row["username"],
