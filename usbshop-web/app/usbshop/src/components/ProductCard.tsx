@@ -201,7 +201,9 @@ function ProductCard({
     return buildCardImageSrc(imgSrc);
   }, [imgSrc]);
   const displaySrc = React.useMemo(() => {
-    if (!shouldLoadImage || (!imgSrc && !proxySrc)) {
+    // The browser's native lazy loading defers off-screen requests. Rendering
+    // the known source immediately avoids flashing the generic package art.
+    if (!imgSrc && !proxySrc) {
       return null;
     }
     const base = proxySrc ?? (useRawImage ? imgSrc : optimizedImgSrc);
@@ -209,7 +211,7 @@ function ProductCard({
       return null;
     }
     return appendRefreshKey(base, imageRefreshKey);
-  }, [imageRefreshKey, optimizedImgSrc, imgSrc, proxySrc, shouldLoadImage, useRawImage]);
+  }, [imageRefreshKey, optimizedImgSrc, imgSrc, proxySrc, useRawImage]);
   const [imgAttempt, setImgAttempt] = React.useState(0);
   const [imgFailed, setImgFailed] = React.useState(false);
 
