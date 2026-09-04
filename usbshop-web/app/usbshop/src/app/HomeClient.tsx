@@ -643,11 +643,16 @@ export default function HomeClient({
     if (isFetchingMoreRef.current || !hasMoreProductsRef.current) {
       return;
     }
+    // Ignore an in-flight homepage refresh: it only contains the first page and
+    // must not replace the complete list requested by a category.
+    productsRequestRef.current += 1;
     isFetchingMoreRef.current = true;
     setIsFetchingMore(true);
     try {
-      let offset = products.length;
-      let combined = [...products];
+      // Start from the first page so a recently added product is not skipped
+      // when the server-rendered or browser-cached first page is stale.
+      let offset = 0;
+      const productsById = new Map<number, Product>();
       let more = true;
       let baseUrl = productsApiBase;
       while (more) {
@@ -657,14 +662,16 @@ export default function HomeClient({
           more = false;
           break;
         }
-        combined = [...combined, ...result.normalized];
+        for (const product of result.normalized) {
+          productsById.set(product.id, product);
+        }
         offset += result.normalized.length;
         if (result.data.length < BULK_PRODUCTS_PAGE_SIZE) {
           more = false;
         }
       }
       setProductsApiBase(baseUrl);
-      setProducts(combined);
+      setProducts(Array.from(productsById.values()));
       setHasMoreProducts(false);
     } catch {
       setHasMoreProducts(false);
