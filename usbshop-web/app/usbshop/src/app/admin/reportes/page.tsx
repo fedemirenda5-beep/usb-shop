@@ -6,6 +6,7 @@ import { getArgentinaNowDateInput } from '@/lib/datetime';
 import styles from './reportes.module.css';
 
 const REPORTS_AUTO_REFRESH_MS = 5 * 60 * 1000;
+type ReportView = 'operation' | 'business' | 'planning';
 
 type Summary = {
   products: number;
@@ -127,6 +128,7 @@ export default function ReportesPage() {
   const [error, setError] = useState('');
   const [loadingDaily, setLoadingDaily] = useState(true);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [activeView, setActiveView] = useState<ReportView>('operation');
 
   useEffect(() => {
     let active = true;
@@ -240,18 +242,29 @@ export default function ReportesPage() {
       <section className={styles.header}>
         <div>
           <h1>Reportes</h1>
-          <p>Analisis general, top productos, clientes frecuentes, rubros y alertas de stock.</p>
+          <p>Una vista a la vez para revisar la operacion, el negocio y las proximas decisiones.</p>
+        </div>
+        <div className={styles.viewTabs} aria-label="Secciones de reportes">
+          <button type="button" className={activeView === 'operation' ? styles.viewTabActive : styles.viewTab} onClick={() => setActiveView('operation')}>
+            Operacion
+          </button>
+          <button type="button" className={activeView === 'business' ? styles.viewTabActive : styles.viewTab} onClick={() => setActiveView('business')}>
+            Negocio
+          </button>
+          <button type="button" className={activeView === 'planning' ? styles.viewTabActive : styles.viewTab} onClick={() => setActiveView('planning')}>
+            Planificacion
+          </button>
         </div>
       </section>
 
       {error ? <div className={styles.error}>{error}</div> : null}
 
       <section className={styles.grid}>
-        <article className={`${styles.panel} ${styles.dailyPanel}`}>
+        {activeView === 'operation' ? <article className={`${styles.panel} ${styles.dailyPanel}`}>
           <div className={styles.panelHeader}>
             <div>
-              <h2>Reporte diario</h2>
-              <p>Venta y ganancia del dia con seleccion de fecha.</p>
+              <h2>Operacion del periodo</h2>
+              <p>Ventas, margen, comprobantes y comisiones para el corte que elijas.</p>
             </div>
             <div className={styles.dailyActions}>
               <div className={styles.dateStepper}>
@@ -330,20 +343,16 @@ export default function ReportesPage() {
             <>
               <div className={styles.dailyKpiGrid}>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}>
-                  <span>Venta del dia</span>
+                  <span>Ventas</span>
                   <strong>{money(dailyReport.summary.sales)}</strong>
                 </article>
                 <article className={`${styles.kpi} ${styles.dailyKpiLead}`}>
-                  <span>Margen del dia</span>
+                  <span>Margen</span>
                   <strong>{money(dailyReport.summary.margin)}</strong>
                 </article>
                 <article className={styles.kpi}>
                   <span>Comisiones</span>
                   <strong>{money(dailyReport.summary.commissions || 0)}</strong>
-                </article>
-                <article className={styles.kpi}>
-                  <span>Periodo</span>
-                  <strong>{dailyReport.label || dailyReport.date}</strong>
                 </article>
                 <article className={styles.kpi}>
                   <span>Comprobantes</span>
@@ -408,9 +417,9 @@ export default function ReportesPage() {
           ) : (
             <div className={styles.empty}>{loadingDaily ? 'Cargando reporte diario...' : 'No se pudo cargar el reporte diario.'}</div>
           )}
-        </article>
+        </article> : null}
 
-        {summary ? (
+        {activeView === 'business' && summary ? (
           <article className={`${styles.panel} ${styles.secondarySummaryPanel}`}>
             <div className={styles.panelHeader}>
               <div>
@@ -434,7 +443,7 @@ export default function ReportesPage() {
           </article>
         ) : null}
 
-        <article className={styles.panel}>
+        {activeView === 'business' ? <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Top productos</h2>
           </div>
@@ -455,9 +464,9 @@ export default function ReportesPage() {
               </div>
             ))}
           </div>
-        </article>
+        </article> : null}
 
-        <article className={styles.panel}>
+        {activeView === 'business' ? <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Clientes que mas compran</h2>
           </div>
@@ -478,9 +487,9 @@ export default function ReportesPage() {
               </div>
             ))}
           </div>
-        </article>
+        </article> : null}
 
-        <article className={styles.panel}>
+        {activeView === 'business' ? <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Ventas por rubro</h2>
           </div>
@@ -500,9 +509,9 @@ export default function ReportesPage() {
               </div>
             ))}
           </div>
-        </article>
+        </article> : null}
 
-        <article className={styles.panel}>
+        {activeView === 'planning' ? <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Proyeccion {yearProjection?.year || ''}</h2>
           </div>
@@ -527,9 +536,9 @@ export default function ReportesPage() {
           ) : (
             <div className={styles.empty}>Sin datos suficientes para proyectar el ano.</div>
           )}
-        </article>
+        </article> : null}
 
-        <article className={styles.panel}>
+        {activeView === 'planning' ? <article className={styles.panel}>
           <div className={styles.panelHeader}>
             <h2>Stock bajo</h2>
           </div>
@@ -548,7 +557,7 @@ export default function ReportesPage() {
               ))
             )}
           </div>
-        </article>
+        </article> : null}
       </section>
     </div>
   );

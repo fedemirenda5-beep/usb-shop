@@ -1,6 +1,12 @@
 .page { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1440px; margin: 0 auto; min-width: 0; }
+.header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
 .header h1 { margin: 0; color: var(--ink); }
 .header p { margin: 6px 0 0; color: var(--muted); }
+.viewTabs { display: inline-flex; flex-wrap: wrap; gap: 6px; padding: 5px; border: 1px solid var(--bg-soft); border-radius: 12px; background: rgba(248, 250, 252, .8); }
+.viewTab, .viewTabActive { min-height: 36px; padding: 0 13px; border: 0; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.viewTab { background: transparent; color: var(--muted); }
+.viewTab:hover { color: var(--ink); background: white; }
+.viewTabActive { background: var(--ink); color: white; box-shadow: 0 2px 6px var(--shadow); }
 .kpiGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
 .dailyKpiGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
 .kpiGridCompact { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
@@ -69,6 +75,9 @@
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {
   .page { gap: 16px; }
+  .header { align-items: flex-start; flex-direction: column; }
+  .viewTabs { width: 100%; }
+  .viewTab, .viewTabActive { flex: 1; padding: 0 8px; }
   .panel, .kpi { padding: 14px; }
   .kpiGrid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
   .dailyKpiGrid,
