@@ -226,32 +226,38 @@ export default function CuentasCorrientesPage() {
     const requestId = overviewRequestRef.current + 1;
     overviewRequestRef.current = requestId;
     setLoading(true);
-    await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(
-        typeof data?.detail === 'string' && data.detail.trim()
-          ? data.detail
-          : 'No se pudo cargar cuentas corrientes'
-      );
-    }
-    if (overviewRequestRef.current !== requestId) return;
-    setCustomers(Array.isArray(data?.customers) ? data.customers : []);
-    setSummary(
-      data?.summary || {
-        customers: 0,
-        debit: 0,
-        credit: 0,
-        balance: 0,
-        pending: 0,
-        overdue: 0,
-        collected: 0,
-        credit_notes: 0,
-        writeoffs: 0,
-        adjustments: 0,
+    try {
+      await loadRuntimeConfig();
+      const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.detail === 'string' && data.detail.trim()
+            ? data.detail
+            : 'No se pudo cargar cuentas corrientes'
+        );
       }
-    );
+      if (overviewRequestRef.current !== requestId) return;
+      setCustomers(Array.isArray(data?.customers) ? data.customers : []);
+      setSummary(
+        data?.summary || {
+          customers: 0,
+          debit: 0,
+          credit: 0,
+          balance: 0,
+          pending: 0,
+          overdue: 0,
+          collected: 0,
+          credit_notes: 0,
+          writeoffs: 0,
+          adjustments: 0,
+        }
+      );
+    } finally {
+      if (overviewRequestRef.current === requestId) {
+        setLoading(false);
+      }
+    }
   }
 
   async function loadDetail(customerId: number): Promise<CustomerDetail | null> {
@@ -301,8 +307,6 @@ export default function CuentasCorrientesPage() {
         await loadOverview();
       } catch (err) {
         setError(getErrorMessage(err, 'Error cargando cuentas corrientes'));
-      } finally {
-        setLoading(false);
       }
     };
     void load();
@@ -620,7 +624,13 @@ export default function CuentasCorrientesPage() {
   };
 
   const closeDetailOnly = () => {
+    detailRequestRef.current += 1;
+    invoicesRequestRef.current += 1;
     setDetailOnly(false);
+    setSelectedId(null);
+    setDetail(null);
+    setInvoices([]);
+    resetMovementForm();
     setOutputRange(null);
   };
 
