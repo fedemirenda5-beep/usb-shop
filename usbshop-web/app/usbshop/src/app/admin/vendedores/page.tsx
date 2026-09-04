@@ -270,11 +270,13 @@ export default function VendedoresPage() {
       sellers.map((seller) => {
         const monthSummary = monthlySummaryMap.get(seller.id) ?? null;
         const rangeSummaryItem = rangeSummaryMap.get(seller.id) ?? null;
-        const windowMetrics = getWindowMetrics(rangeSummaryItem, activeWindow);
         const monthProfit = monthSummary?.profit ?? rangeSummaryItem?.profit_month ?? null;
         const monthCommission = Number(monthSummary?.commission ?? rangeSummaryItem?.commission_month ?? 0);
         const monthSales = Number(monthSummary?.sales ?? rangeSummaryItem?.sales_month ?? 0);
         const monthInvoices = Number(monthSummary?.invoice_count ?? rangeSummaryItem?.invoice_count_month ?? 0);
+        const windowMetrics = activeWindow === 'month'
+          ? { sales: monthSales, profit: monthProfit, commission: monthCommission, invoices: monthInvoices }
+          : getWindowMetrics(rangeSummaryItem, activeWindow);
         const monthNet = monthProfit === null ? null : roundMoney(monthProfit - monthCommission);
         const windowNet = windowMetrics.profit === null ? null : roundMoney(windowMetrics.profit - windowMetrics.commission);
         const productivity = windowNet === null || windowMetrics.invoices <= 0 ? null : roundMoney(windowNet / windowMetrics.invoices);
@@ -765,11 +767,14 @@ export default function VendedoresPage() {
             </label>
           ) : null}
           <label className={styles.periodField}>
-            <span>Periodo</span>
+            <span>Mes a consultar</span>
             <input
               type="month"
               value={monthlyPeriod}
-              onChange={(e) => setMonthlyPeriod(e.target.value)}
+              onChange={(e) => {
+                setMonthlyPeriod(e.target.value);
+                setActiveWindow('month');
+              }}
             />
           </label>
           <button type="button" className={styles.primaryButton} onClick={resetForNewSeller}>
