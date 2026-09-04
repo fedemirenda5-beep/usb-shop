@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchApiResponse, getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
 import { ARGENTINA_TZ, formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
+import { openAdminSellerSettlementPrint } from '@/lib/adminSellerSettlementPrint';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
 import { canViewProfitMetrics, canViewSellerCommissionBreakdown } from '../adminPermissions';
@@ -88,6 +89,9 @@ type SellerMonthlyInvoice = {
 
 type SellerMonthlyDetail = {
   period: string;
+  scope: PerformanceWindow;
+  range_start: string;
+  range_end: string;
   seller: Seller;
   summary: {
     sales: number;
@@ -217,6 +221,12 @@ export default function VendedoresPage() {
   const [sellerForm, setSellerForm] = useState<SellerFormState>(emptySellerForm);
 
   const detailSellerId = Number(searchParams.get('seller') || 0) || null;
+  const detailScopeParam = searchParams.get('scope');
+  const detailScope: PerformanceWindow =
+    detailScopeParam === 'day' || detailScopeParam === 'week' || detailScopeParam === 'year' || detailScopeParam === 'month'
+      ? detailScopeParam
+      : 'month';
+  const detailReferenceDate = searchParams.get('date') || referenceDate;
   const selectedSeller = sellers.find((seller) => seller.id === selectedSellerId) ?? null;
   const monthlySummaryMap = useMemo(
     () => new Map(monthlySummary.map((item) => [item.seller_id, item])),
@@ -245,6 +255,13 @@ export default function VendedoresPage() {
       ? sellerDetail.period
       : parsed.toLocaleDateString('es-AR', { month: 'long', year: 'numeric', timeZone: ARGENTINA_TZ });
   }, [sellerDetail?.period]);
+  const formattedDetailRange = useMemo(() => {
+    if (!sellerDetail) return 'el periodo seleccionado';
+    if (sellerDetail.scope === 'day') return `Dia ${formatShortDate(sellerDetail.range_start)}`;
+    if (sellerDetail.scope === 'week') return `Semana ${formatShortDate(sellerDetail.range_start)} al ${formatShortDate(sellerDetail.range_end)}`;
+    if (sellerDetail.scope === 'year') return `Ano ${sellerDetail.range_start.slice(0, 4)}`;
+    return formattedDetailMonthlyPeriod;
+  }, [formattedDetailMonthlyPeriod, sellerDetail]);
   const selectedWindowLabel = useMemo(() => {
     if (activeWindow === 'day') return `Dia ${formatShortDate(referenceDate)}`;
     if (activeWindow === 'week') return `Semana ${formatShortDate(weekRange.start)} al ${formatShortDate(weekRange.end)}`;
@@ -481,9 +498,11 @@ export default function VendedoresPage() {
         setError('');
         try {
           const detailParams = new URLSearchParams();
-          if (monthlyPeriod) {
+          detailParams.set('scope', detailScope);
+          if (detailScope === 'month' && monthlyPeriod) {
             detailParams.set('period', monthlyPeriod);
           }
+          if (detailScope !== 'month') detailParams.set('reference_date', detailReferenceDate);
           const data = await queryClient.fetchQuery({
             queryKey: ['admin', 'sellers', 'monthly-detail', detailSellerId, detailParams.toString()],
             queryFn: async () => {
@@ -511,7 +530,7 @@ export default function VendedoresPage() {
       }
     };
     void loadSellerDetail();
-  }, [detailSellerId, monthlyPeriod]);
+  }, [detailReferenceDate, detailScope, detailSellerId, monthlyPeriod]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -621,11 +640,25 @@ export default function VendedoresPage() {
 
   const openSellerMonthlyDetail = (sellerId: number) => {
     const params = new URLSearchParams();
-    if (monthlyPeriod) {
+    params.set('scope', activeWindow);
+    if (activeWindow === 'month' && monthlyPeriod) {
       params.set('period', monthlyPeriod);
     }
+    if (activeWindow !== 'month') params.set('date', referenceDate);
     params.set('seller', String(sellerId));
     router.push(`/admin/vendedores?${params.toString()}`);
+  };
+
+  const printSellerSettlement = () => {
+    if (!sellerDetail) return;
+    openAdminSellerSettlementPrint({
+      sellerName: sellerDetail.seller.name,
+      rangeLabel: formattedDetailRange,
+      sales: sellerDetail.summary.sales,
+      commission: sellerDetail.summary.commission,
+      invoiceCount: sellerDetail.summary.invoice_count,
+      invoices: sortedSellerDetailItems,
+    });
   };
 
   const closeSellerMonthlyDetail = () => {
@@ -646,14 +679,16 @@ export default function VendedoresPage() {
             <p>Solo lo necesario para leer el periodo y revisar sus ventas.</p>
           </div>
           <div className={styles.headerActions}>
-            <label className={styles.periodField}>
-              <span>Periodo</span>
-              <input
-                type="month"
-                value={monthlyPeriod}
-                onChange={(e) => setMonthlyPeriod(e.target.value)}
-              />
-            </label>
+            {detailScope === 'month' ? (
+              <label className={styles.periodField}>
+                <span>Periodo</span>
+                <input
+                  type="month"
+                  value={monthlyPeriod}
+                  onChange={(e) => setMonthlyPeriod(e.target.value)}
+                />
+              </label>
+            ) : null}
             <button type="button" className={styles.secondaryButton} onClick={closeSellerMonthlyDetail}>
               Volver a vendedores
             </button>
@@ -672,8 +707,11 @@ export default function VendedoresPage() {
               <div className={styles.panelHeader}>
                 <div>
                   <h2>{sellerDetail.seller.name}</h2>
-                  <p>Periodo {formattedDetailMonthlyPeriod}.</p>
+                  <p>{formattedDetailRange}.</p>
                 </div>
+                <button type="button" className={styles.primaryButton} onClick={printSellerSettlement}>
+                  Imprimir liquidacion
+                </button>
               </div>
 
               <div className={styles.detailGrid}>
@@ -698,12 +736,12 @@ export default function VendedoresPage() {
               <div className={styles.panelHeader}>
                 <div>
                   <h3>Ventas del periodo</h3>
-                  <p>{formattedDetailMonthlyPeriod}.</p>
+                  <p>{formattedDetailRange}.</p>
                 </div>
               </div>
 
               {sortedSellerDetailItems.length === 0 ? (
-                <div className={styles.empty}>No hay ventas registradas para este vendedor en {formattedDetailMonthlyPeriod}.</div>
+                <div className={styles.empty}>No hay ventas registradas para este vendedor en {formattedDetailRange}.</div>
               ) : (
                 <div className={styles.saleTableWrap}>
                   <table className={styles.saleTable}>
@@ -1051,16 +1089,9 @@ export default function VendedoresPage() {
               </div>
             </div>
             <div className={styles.inlineActions}>
-              <Link
-                href={
-                  monthlyPeriod
-                    ? `/admin/vendedores?period=${encodeURIComponent(monthlyPeriod)}&seller=${selectedSeller.id}`
-                    : `/admin/vendedores?seller=${selectedSeller.id}`
-                }
-                className={styles.primaryButton}
-              >
-                Ver ventas del mes
-              </Link>
+              <button type="button" className={styles.primaryButton} onClick={() => openSellerMonthlyDetail(selectedSeller.id)}>
+                Ver ventas del periodo
+              </button>
             </div>
           </div>
         ) : (

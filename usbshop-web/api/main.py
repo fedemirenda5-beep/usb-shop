@@ -7230,6 +7230,8 @@ def admin_seller_monthly_detail(
     seller_id: int,
     request: Request,
     period: Optional[str] = None,
+    scope: Optional[str] = None,
+    reference_date: Optional[str] = None,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
 ) -> dict:
     session_payload = _require_admin(session_token)
@@ -7251,9 +7253,27 @@ def admin_seller_monthly_detail(
         if seller is None:
             raise HTTPException(status_code=404, detail="Vendedor no encontrado")
 
+        scope_key = (scope or "month").strip().lower()
+        if scope_key not in {"day", "week", "month", "year"}:
+            raise HTTPException(status_code=400, detail="Alcance invalido. Usa day, week, month o year")
         period_key = (period or _argentina_now().strftime("%Y-%m")).strip()
-        if not re.fullmatch(r"\d{4}-\d{2}", period_key):
+        if scope_key == "month" and not re.fullmatch(r"\d{4}-\d{2}", period_key):
             raise HTTPException(status_code=400, detail="Periodo invalido. Usa YYYY-MM")
+        base_date = _argentina_date_for_filter(reference_date) or _argentina_now().date()
+        if scope_key == "month":
+            base_date = datetime.strptime(period_key, "%Y-%m").date()
+        range_start = base_date
+        range_end = base_date
+        if scope_key == "week":
+            range_start = base_date - timedelta(days=base_date.weekday())
+            range_end = range_start + timedelta(days=6)
+        elif scope_key == "month":
+            range_start = base_date.replace(day=1)
+            next_month = (range_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            range_end = next_month - timedelta(days=1)
+        elif scope_key == "year":
+            range_start = base_date.replace(month=1, day=1)
+            range_end = base_date.replace(month=12, day=31)
 
         invoices = conn.execute(
             """
@@ -7280,8 +7300,8 @@ def admin_seller_monthly_detail(
         }
 
         for row in invoices:
-            created_bucket = _argentina_month_bucket(row["created_at"])
-            if created_bucket != period_key:
+            created_date = _argentina_date_for_filter(row["created_at"])
+            if created_date is None or not (range_start <= created_date <= range_end):
                 continue
             document_type = str(row["document_type"] or "").strip().upper()
             if document_type == "PRESUPUESTO":
@@ -7376,6 +7396,9 @@ def admin_seller_monthly_detail(
 
         return {
             "period": period_key,
+            "scope": scope_key,
+            "range_start": range_start.isoformat(),
+            "range_end": range_end.isoformat(),
             "seller": {
                 "id": int(seller["id"]),
                 "name": seller["name"],
