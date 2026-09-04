@@ -684,9 +684,7 @@ export default function GenerarComprobantePage() {
         };
       })
       .filter(Boolean) as Array<{ index: number; product: ProductOption; matchesAvailableList: boolean }>;
-    const target =
-      pendingCellphoneIndexes.find((item) => item.matchesAvailableList) ||
-      (pendingCellphoneIndexes.length === 1 ? pendingCellphoneIndexes[0] : null);
+    const target = pendingCellphoneIndexes.find((item) => item.matchesAvailableList) || null;
     if (!target) {
       return false;
     }
@@ -930,7 +928,7 @@ export default function GenerarComprobantePage() {
           return;
         }
         const fallbackProduct = await resolveScannerProduct(scannedValue);
-        if (!fallbackProduct) {
+        if (!fallbackProduct || productRequiresImei(fallbackProduct)) {
           setError(`El IMEI ${scannedValue} no esta registrado como propio`);
           return;
         }
@@ -1110,16 +1108,6 @@ export default function GenerarComprobantePage() {
     }
     const availableImeis = Array.isArray(selectedProduct.imeis) ? selectedProduct.imeis : [];
     if (availableImeis.includes(scannedValue)) {
-      const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
-      if (!wasAdded) {
-        setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
-        return;
-      }
-      setImeiDrafts((current) => ({ ...current, [index]: '' }));
-      setError('');
-      return;
-    }
-    if (productRequiresImei(selectedProduct) && isValidImeiCandidate(scannedValue)) {
       const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
       if (!wasAdded) {
         setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
