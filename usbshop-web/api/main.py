@@ -833,7 +833,14 @@ def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse
 
 @app.exception_handler(Exception)
 def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    LOGGER.exception("Unhandled error on %s %s", request.method, request.url.path)
+    # Exception handlers run outside the original except block, so
+    # LOGGER.exception() loses the traceback and logs "NoneType: None".
+    LOGGER.error(
+        "Unhandled error on %s %s",
+        request.method,
+        request.url.path,
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
     return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
 
 def _auth_secret() -> str:
