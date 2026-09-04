@@ -16,6 +16,7 @@ type Seller = {
   id: number;
   name: string;
   commission_percent: number;
+  customer_count?: number;
   is_active: boolean;
   created_at?: string | null;
   updated_at?: string | null;
@@ -116,6 +117,7 @@ const formatPercent = (value: number) =>
 
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
+const integer = (value: number) => new Intl.NumberFormat('es-AR').format(value || 0);
 
 const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
 const toDateInput = (value?: string | null) => {
@@ -936,7 +938,9 @@ export default function VendedoresPage() {
                       >
                         <td>
                           <strong>{row.seller.name}</strong>
-                          <span className={styles.metaLine}>{formatPercent(row.seller.commission_percent)} · actualizado {formatDate(row.seller.updated_at || row.seller.created_at)}</span>
+                          <span className={styles.metaLine}>
+                            {formatPercent(row.seller.commission_percent)} · {integer(row.seller.customer_count || 0)} clientes · actualizado {formatDate(row.seller.updated_at || row.seller.created_at)}
+                          </span>
                         </td>
                         <td>{money(row.windowMetrics.sales)}</td>
                         <td>{money(row.windowMetrics.commission)}</td>
@@ -1091,6 +1095,10 @@ export default function VendedoresPage() {
               <div className={styles.detailItem}>
                 <span>Periodo consultado</span>
                 <strong>{selectedWindowLabel}</strong>
+              </div>
+              <div className={styles.detailItem}>
+                <span>Clientes asignados</span>
+                <strong>{integer(selectedSeller.customer_count || 0)}</strong>
               </div>
             </div>
             <div className={styles.inlineActions}>

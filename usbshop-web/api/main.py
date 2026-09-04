@@ -6865,6 +6865,7 @@ def admin_sellers(
     _require_admin(session_token)
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         _ensure_sellers_table(conn)
         params: list[Any] = []
         where_parts = ["1 = 1"]
@@ -6882,11 +6883,24 @@ def admin_sellers(
             """,
             params + [limit, offset],
         ).fetchall()
+        customer_counts = {
+            int(row["seller_id"]): int(row["customer_count"] or 0)
+            for row in conn.execute(
+                """
+                SELECT seller_id, COUNT(*) AS customer_count
+                FROM customers
+                WHERE deleted_at IS NULL AND seller_id IS NOT NULL
+                GROUP BY seller_id
+                """
+            ).fetchall()
+            if row["seller_id"] is not None
+        }
         return [
             {
                 "id": int(row["id"]),
                 "name": row["name"],
                 "commission_percent": float(row["commission_percent"] or 0),
+                "customer_count": customer_counts.get(int(row["id"]), 0),
                 "is_active": bool(row["is_active"]),
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
