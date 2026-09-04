@@ -79,7 +79,9 @@ const fallbackCategories = [
   "Vapers",
 ];
 const PRODUCTS_PAGE_SIZE = 24;
-const BULK_PRODUCTS_PAGE_SIZE = 240;
+// The public API caps product pages at 100. Keeping this aligned makes the
+// full-category loader continue through every page instead of stopping early.
+const BULK_PRODUCTS_PAGE_SIZE = 100;
 const CATALOG_PAGE_SIZE = 12;
 const SEARCH_PAGE_SIZE = 48;
 const SEARCH_DEBOUNCE_MS = 250;
