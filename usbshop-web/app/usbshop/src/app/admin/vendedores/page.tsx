@@ -653,6 +653,7 @@ export default function VendedoresPage() {
     if (!sellerDetail) return;
     openAdminSellerSettlementPrint({
       sellerName: sellerDetail.seller.name,
+      commissionPercent: sellerDetail.seller.commission_percent,
       rangeLabel: formattedDetailRange,
       sales: sellerDetail.summary.sales,
       commission: sellerDetail.summary.commission,
@@ -722,6 +723,10 @@ export default function VendedoresPage() {
                 <div className={styles.detailItem}>
                   <span>Gana vendedor</span>
                   <strong>{money(sellerDetail.summary.commission)}</strong>
+                </div>
+                <div className={styles.detailItem}>
+                  <span>Comision asignada</span>
+                  <strong>{formatPercent(sellerDetail.seller.commission_percent)}</strong>
                 </div>
                 {canViewProfit && sellerDetail.summary.profit !== null ? (
                   <div className={styles.detailItem}>

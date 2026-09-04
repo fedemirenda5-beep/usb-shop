@@ -11,6 +11,7 @@ type SettlementInvoice = {
 
 type SellerSettlementPrintPayload = {
   sellerName: string;
+  commissionPercent: number;
   rangeLabel: string;
   sales: number;
   commission: number;
@@ -61,7 +62,7 @@ const buildPrintableHtml = (payload: SellerSettlementPrintPayload, logoUrl: stri
     .muted { margin-top: 4px; color: #475569; font-size: 12px; }
     .chip { padding: 8px 12px; background: #111827; color: #fff; border-radius: 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
     .panel { margin-top: 12px; }
-    .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; }
     .metric { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; }
     .metric span { display: block; color: #475569; font-size: 11px; text-transform: uppercase; }
     .metric strong { display: block; margin-top: 5px; font-size: 18px; }
@@ -91,6 +92,7 @@ const buildPrintableHtml = (payload: SellerSettlementPrintPayload, logoUrl: stri
     <section class="panel summary">
       <div class="metric"><span>Ventas incluidas</span><strong>${escapeHtml(money(payload.sales))}</strong></div>
       <div class="metric"><span>Comprobantes</span><strong>${escapeHtml(payload.invoiceCount)}</strong></div>
+      <div class="metric"><span>Comision asignada</span><strong>${escapeHtml(`${payload.commissionPercent}%`)}</strong></div>
       <div class="metric"><span>Total a pagar</span><strong>${escapeHtml(money(payload.commission))}</strong></div>
       <div class="metric"><span>Fecha de emision</span><strong>${escapeHtml(formatArgentinaDateTime(new Date().toISOString()))}</strong></div>
     </section>
