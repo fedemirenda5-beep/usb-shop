@@ -7547,50 +7547,6 @@ def admin_backoffice_customer_detail(
         ).fetchone()
         if customer is None:
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
-        invoices = conn.execute(
-            """
-            SELECT id, total, created_at, document_type, sale_mode, due_date, notes
-            FROM invoices
-            WHERE customer_id = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 20
-            """,
-            (customer_id,),
-        ).fetchall()
-        movements = conn.execute(
-            """
-            SELECT am.id, am.amount, am.movement_type, am.reference, am.invoice_id, am.created_at, am.payment_method,
-                   i.document_type, i.total, i.due_date
-            FROM account_movements am
-            LEFT JOIN invoices i ON i.id = am.invoice_id
-            WHERE am.customer_id = ?
-            ORDER BY am.created_at ASC, am.id ASC
-            """,
-            (customer_id,),
-        ).fetchall()
-        running_balance = 0.0
-        serialized_movements = []
-        for row in movements:
-            movement_type = str(row["movement_type"] or "").upper()
-            amount = float(row["amount"] or 0)
-            signed = amount if movement_type == "DEBIT" else -amount
-            running_balance = round(running_balance + signed, 2)
-            serialized_movements.append(
-                {
-                    "id": int(row["id"]),
-                    "movement_type": movement_type,
-                    "amount": amount,
-                    "signed_amount": signed,
-                    "reference": row["reference"],
-                    "invoice_id": int(row["invoice_id"]) if row["invoice_id"] is not None else None,
-                    "created_at": row["created_at"],
-                    "payment_method": row["payment_method"],
-                    "document_type": row["document_type"],
-                    "invoice_total": float(row["total"] or 0) if row["total"] is not None else None,
-                    "due_date": row["due_date"],
-                    "running_balance": running_balance,
-                }
-            )
         return {
             "id": int(customer["id"]),
             "name": customer["name"],
@@ -7606,20 +7562,6 @@ def admin_backoffice_customer_detail(
             "zone": customer["zone"],
             "created_at": customer["created_at"],
             "is_active": bool(int(customer["is_active"] or 0)) if customer["is_active"] is not None else True,
-            "balance": _customer_current_balance_from_rows(movements),
-            "documents": [
-                {
-                    "id": int(item["id"]),
-                    "total": float(item["total"] or 0),
-                    "created_at": item["created_at"],
-                    "document_type": item["document_type"],
-                    "sale_mode": item["sale_mode"],
-                    "due_date": item["due_date"],
-                    "notes": item["notes"],
-                }
-                for item in invoices
-            ],
-            "movements": list(reversed(serialized_movements[-20:])),
         }
     finally:
         conn.close()

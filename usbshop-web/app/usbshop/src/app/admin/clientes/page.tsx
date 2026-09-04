@@ -50,8 +50,8 @@ type CustomerDetail = {
   external_ref?: string | null;
   seller_id?: number | null;
   zone?: string | null;
-  balance: number;
   created_at?: string | null;
+  accountHistory?: boolean;
   documents: Array<{
     id: number;
     total: number;
@@ -926,10 +926,6 @@ export default function ClientesPage() {
           </div>
           <div className={styles.workspaceBannerStats}>
             <div>
-              <span>Saldo actual</span>
-              <strong>{formatCurrency(selectedCustomer.balance)}</strong>
-            </div>
-            <div>
               <span>Estado</span>
               <strong>{selectedCustomer.is_active === false ? 'Inactivo' : 'Activo'}</strong>
             </div>
@@ -1068,10 +1064,20 @@ export default function ClientesPage() {
                 <span>{selectedCustomer.zone || 'Sin zona'}</span>
               </div>
               <div>
-                <strong>Saldo</strong>
-                <span className={selectedCustomer.balance > 0 ? styles.debt : styles.credit}>
-                  {formatCurrency(selectedCustomer.balance)}
-                </span>
+                <strong>Contacto</strong>
+                <span>{selectedCustomer.phone || selectedCustomer.email || 'Sin dato de contacto'}</span>
+              </div>
+              <div>
+                <strong>Domicilio</strong>
+                <span>{selectedCustomer.address || selectedCustomer.locality || 'Sin domicilio cargado'}</span>
+              </div>
+              <div>
+                <strong>Condicion fiscal</strong>
+                <span>{selectedCustomer.tax_condition || 'Sin condicion fiscal'}</span>
+              </div>
+              <div>
+                <strong>Modalidad de venta</strong>
+                <span>{selectedCustomer.sale_mode === 'CUENTA_CORRIENTE' ? 'Cuenta corriente' : 'Contado'}</span>
               </div>
               <div className={styles.summaryField}>
                 <strong>Asignar vendedor</strong>
@@ -1129,55 +1135,7 @@ export default function ClientesPage() {
               </div>
             </div>
 
-            <div className={styles.grid}>
-            <div className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <h3>Movimientos recientes</h3>
-                  <p>Ultimos movimientos de la cuenta real del cliente.</p>
-                </div>
-              </div>
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Tipo</th>
-                      <th>Detalle</th>
-                      <th>Importe</th>
-                      <th>Saldo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedCustomer.movements.length === 0 ? (
-                      <tr>
-                        <td colSpan={5}>Sin movimientos registrados.</td>
-                      </tr>
-                    ) : (
-                      selectedCustomer.movements.map((movement) => (
-                        <tr key={movement.id}>
-                          <td>{formatDate(movement.created_at)}</td>
-                          <td>{movement.movement_type === 'DEBIT' ? 'Debito' : 'Credito'}</td>
-                          <td>
-                            {movement.reference || movement.payment_method || '-'}
-                            {movement.invoice_id ? (
-                              <span className={styles.metaLine}>
-                                {movement.document_type || 'Comprobante'} #{movement.invoice_id}
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className={movement.signed_amount >= 0 ? styles.debt : styles.credit}>
-                            {formatCurrency(movement.signed_amount)}
-                          </td>
-                          <td>{formatCurrency(movement.running_balance)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
+            {selectedCustomer.accountHistory ? (
             <div className={styles.panel}>
               <div className={styles.panelHeader}>
                 <div>
@@ -1208,7 +1166,7 @@ export default function ClientesPage() {
                 )}
               </div>
             </div>
-          </div>
+            ) : null}
           </div>
         ) : null}
 
