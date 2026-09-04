@@ -270,9 +270,13 @@ export default function CartCheckout({
         <button
           className="button button--lime"
           type="submit"
-          disabled={orderStatus === "submitting"}
+          disabled={orderStatus === "submitting" || cartItems.length === 0}
         >
-          {orderStatus === "submitting" ? "Enviando..." : "Iniciar pedido"}
+          {orderStatus === "submitting"
+            ? "Enviando..."
+            : cartItems.length === 0
+              ? "Agregá productos para continuar"
+              : "Confirmar pedido"}
         </button>
         <button
           className="button button--whatsapp"

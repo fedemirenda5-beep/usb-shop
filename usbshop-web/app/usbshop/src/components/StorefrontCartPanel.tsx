@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 type CartProduct = {
   id: number;
   name: string;
@@ -190,8 +192,11 @@ export default function StorefrontCartPanel({
             onClick={onCheckout}
             disabled={orderStatus === "submitting"}
           >
-            {orderStatus === "submitting" ? "Enviando..." : "Enviar pedido"}
+            {orderStatus === "submitting" ? "Enviando..." : "Confirmar pedido"}
           </button>
+          <Link className="button button--ghost" href="/carrito/">
+            Abrir carrito completo
+          </Link>
         </>
       ) : null}
     </>
