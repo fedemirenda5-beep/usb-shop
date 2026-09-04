@@ -17,6 +17,8 @@ API local para leer stock y precios desde la base de datos de ControlStock.
 - Default: `^https://([a-z0-9-]+\.)*usbshop\.com\.ar$`
 - Variable opcional `USB_AUTO_SYNC` (0/1) para sincronizar automaticamente la DB local con la principal.
 - Default: `1`
+- Variable obligatoria en produccion `USB_AUTH_SECRET` para firmar sesiones. Configurarla en el panel de Render, nunca en Git.
+- Variable temporal `USB_LEGACY_AUTH_SECRET` para validar hashes anteriores durante una rotacion. Debe conservar el secreto viejo hasta que todos los usuarios hayan iniciado sesion al menos una vez.
 - Variables opcionales `USB_ADMIN_USERNAME` y `USB_ADMIN_PASSWORD` para crear o actualizar un admin bootstrap al iniciar login.
 - Variable opcional `USB_ORDER_SECRET` para proteger `POST /orders` con el header `X-USB-ORDER-SECRET`.
 - Variable opcional `USB_SYNC_TOKEN` o `USB_SYNC_SECRET` para habilitar sincronizaciones remotas administrativas.
@@ -75,3 +77,10 @@ python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local -
 - `POST /sync` (copia la base desde `CONTROLSTOCK_SOURCE_DB` a `CONTROLSTOCK_DB`)
 - `POST /sync/remote` (requiere `USB_SYNC_TOKEN` o `USB_SYNC_SECRET`)
 - `POST /orders` (si `USB_ORDER_SECRET` esta definido, requiere header `X-USB-ORDER-SECRET`)
+
+## Rotacion de secreto de autenticacion
+
+1. Desplegar una version que soporte hashes PBKDF2 y configurar `USB_LEGACY_AUTH_SECRET` con el secreto actual.
+2. Cambiar `USB_AUTH_SECRET` por un valor aleatorio nuevo desde Environment en Render.
+3. Mantener `USB_LEGACY_AUTH_SECRET` hasta que los usuarios activos hayan vuelto a iniciar sesion; cada acceso actualiza su hash automaticamente.
+4. Eliminar `USB_LEGACY_AUTH_SECRET` y revocar las sesiones activas cuando la migracion este completa.

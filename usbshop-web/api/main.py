@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from contextvars import ContextVar
 import hashlib
 import hmac
@@ -160,6 +161,9 @@ class DBConn:
 
     def commit(self) -> None:
         self._conn.commit()
+
+    def rollback(self) -> None:
+        self._conn.rollback()
 
     def close(self) -> None:
         self._conn.close()
@@ -735,10 +739,14 @@ _AUTH_USERS_CACHE_TTL_SECONDS = max(5, int(os.getenv("USB_AUTH_USERS_CACHE_TTL",
 _AUTH_USERS_CACHE_LOCK = threading.Lock()
 _AUTH_USERS_CACHE: Optional[tuple[float, list[dict[str, str]]]] = None
 _REMOTE_IMAGE_CACHE_TTL_SECONDS = max(300, int(os.getenv("USB_REMOTE_IMAGE_CACHE_TTL", "21600") or "21600"))
+_REMOTE_IMAGE_CACHE_MAX_ENTRIES = max(1, int(os.getenv("USB_REMOTE_IMAGE_CACHE_MAX_ENTRIES", "24") or "24"))
 _REMOTE_IMAGE_CACHE_LOCK = threading.Lock()
 _REMOTE_IMAGE_CACHE: dict[str, tuple[float, bytes, str]] = {}
 _REMOTE_THUMBNAIL_CACHE_TTL_SECONDS = max(
     300, int(os.getenv("USB_REMOTE_THUMBNAIL_CACHE_TTL", "21600") or "21600")
+)
+_REMOTE_THUMBNAIL_CACHE_MAX_ENTRIES = max(
+    1, int(os.getenv("USB_REMOTE_THUMBNAIL_CACHE_MAX_ENTRIES", "72") or "72")
 )
 _REMOTE_THUMBNAIL_CACHE_LOCK = threading.Lock()
 _REMOTE_THUMBNAIL_CACHE: dict[str, tuple[float, bytes, str]] = {}
@@ -835,10 +843,41 @@ def _auth_secret() -> str:
     return AUTH_SECRET
 
 
+def _legacy_hash_password(password: str) -> str:
+    # Existing users were stored with the old keyed SHA-256 scheme. Keep this
+    # only to migrate them on their next successful login.
+    legacy_secret = (os.getenv("USB_LEGACY_AUTH_SECRET") or _auth_secret()).encode("utf-8")
+    return hashlib.sha256(legacy_secret + b":" + password.encode("utf-8")).hexdigest()
+
+
 def _hash_password(password: str) -> str:
-    secret = _auth_secret().encode("utf-8")
-    data = f"{password}".encode("utf-8")
-    return hashlib.sha256(secret + b":" + data).hexdigest()
+    """Create a salted, intentionally expensive password hash for new credentials."""
+    iterations = 310_000
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    encoded_salt = base64.urlsafe_b64encode(salt).decode("ascii").rstrip("=")
+    encoded_digest = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return f"$pbkdf2-sha256${iterations}${encoded_salt}${encoded_digest}"
+
+
+def _verify_password(password: str, stored_hash: Any) -> tuple[bool, bool]:
+    """Return whether the credential matches and whether its hash needs migration."""
+    value = str(stored_hash or "")
+    if value.startswith("$pbkdf2-sha256$"):
+        parts = value.split("$")
+        if len(parts) != 5:
+            return False, False
+        try:
+            iterations = int(parts[2])
+            if iterations < 100_000 or iterations > 2_000_000:
+                return False, False
+            salt = base64.urlsafe_b64decode(parts[3] + "=" * (-len(parts[3]) % 4))
+            expected = base64.urlsafe_b64decode(parts[4] + "=" * (-len(parts[4]) % 4))
+            actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+        except (TypeError, ValueError, binascii.Error):
+            return False, False
+        return hmac.compare_digest(actual, expected), False
+    return hmac.compare_digest(value, _legacy_hash_password(password)), True
 
 
 def _sign_session(payload: dict) -> str:
@@ -1454,6 +1493,7 @@ def _get_remote_image_cache(url: str) -> Optional[tuple[bytes, str]]:
 
 def _set_remote_image_cache(url: str, content: bytes, media_type: str) -> tuple[bytes, str]:
     with _REMOTE_IMAGE_CACHE_LOCK:
+        _trim_image_cache(_REMOTE_IMAGE_CACHE, _REMOTE_IMAGE_CACHE_MAX_ENTRIES, url)
         _REMOTE_IMAGE_CACHE[url] = (
             time.time() + _REMOTE_IMAGE_CACHE_TTL_SECONDS,
             content,
@@ -1506,12 +1546,29 @@ def _get_remote_thumbnail_cache(cache_key: str) -> Optional[tuple[bytes, str]]:
 
 def _set_remote_thumbnail_cache(cache_key: str, content: bytes, media_type: str) -> tuple[bytes, str]:
     with _REMOTE_THUMBNAIL_CACHE_LOCK:
+        _trim_image_cache(_REMOTE_THUMBNAIL_CACHE, _REMOTE_THUMBNAIL_CACHE_MAX_ENTRIES, cache_key)
         _REMOTE_THUMBNAIL_CACHE[cache_key] = (
             time.time() + _REMOTE_THUMBNAIL_CACHE_TTL_SECONDS,
             content,
             media_type,
         )
     return content, media_type
+
+
+def _trim_image_cache(
+    cache: dict[str, tuple[float, bytes, str]],
+    max_entries: int,
+    incoming_key: str,
+) -> None:
+    if incoming_key in cache:
+        return
+    now = time.time()
+    for key, (expires_at, _, _) in list(cache.items()):
+        if expires_at <= now:
+            cache.pop(key, None)
+    while len(cache) >= max_entries:
+        oldest_key = min(cache, key=lambda key: cache[key][0])
+        cache.pop(oldest_key, None)
 
 
 def _has_column(conn: DBConn, table: str, column: str) -> bool:
@@ -2065,7 +2122,8 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 confirmed_at TIMESTAMP,
                 confirmed_invoice_id INTEGER,
-                external_ref TEXT
+                external_ref TEXT,
+                idempotency_key TEXT
             )
             """
         )
@@ -2086,6 +2144,12 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
             conn.execute("ALTER TABLE web_orders ADD COLUMN confirmed_invoice_id INTEGER")
         if not _has_column(conn, "web_orders", "external_ref"):
             conn.execute("ALTER TABLE web_orders ADD COLUMN external_ref TEXT")
+        if not _has_column(conn, "web_orders", "idempotency_key"):
+            conn.execute("ALTER TABLE web_orders ADD COLUMN idempotency_key TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_web_orders_idempotency_key "
+            "ON web_orders(idempotency_key) WHERE idempotency_key IS NOT NULL"
+        )
         conn.commit()
         _invalidate_table_cache("web_orders")
         _invalidate_table_cache("web_order_items")
@@ -2103,7 +2167,8 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             confirmed_at DATETIME,
             confirmed_invoice_id INTEGER,
-            external_ref TEXT
+            external_ref TEXT,
+            idempotency_key TEXT
         )
         """
     )
@@ -2126,6 +2191,12 @@ def _ensure_web_order_tables(conn: DBConn) -> None:
         conn.execute("ALTER TABLE web_orders ADD COLUMN confirmed_invoice_id INTEGER")
     if not _has_column(conn, "web_orders", "external_ref"):
         conn.execute("ALTER TABLE web_orders ADD COLUMN external_ref TEXT")
+    if not _has_column(conn, "web_orders", "idempotency_key"):
+        conn.execute("ALTER TABLE web_orders ADD COLUMN idempotency_key TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_web_orders_idempotency_key "
+        "ON web_orders(idempotency_key) WHERE idempotency_key IS NOT NULL"
+    )
     conn.commit()
     _invalidate_table_cache("web_orders")
     _invalidate_table_cache("web_order_items")
@@ -4327,6 +4398,7 @@ class OrderPayload(BaseModel):
     customer_phone: Optional[str] = None
     customer_email: Optional[str] = None
     notes: Optional[str] = None
+    idempotency_key: str = Field(min_length=16, max_length=120)
 
 
 class OrderStatusPayload(BaseModel):
@@ -4820,6 +4892,16 @@ def create_order(payload: OrderPayload) -> dict:
         _ensure_web_order_tables(conn)
         _ensure_product_bundle_support(conn)
         _ensure_products_flash_offer_columns(conn)
+        idempotency_key = payload.idempotency_key.strip()
+        existing_order = conn.execute(
+            "SELECT id, total FROM web_orders WHERE idempotency_key = ?",
+            (idempotency_key,),
+        ).fetchone()
+        if existing_order is not None:
+            return {
+                "id": int(existing_order["id"] if isinstance(existing_order, dict) else existing_order[0]),
+                "total": float(existing_order["total"] if isinstance(existing_order, dict) else existing_order[1]),
+            }
         reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
         has_description = _has_column(conn, "products", "description")
         has_image_path = _has_column(conn, "products", "image_path")
@@ -4903,38 +4985,38 @@ def create_order(payload: OrderPayload) -> dict:
             if _has_column(conn, "web_orders", "external_ref"):
                 row = conn.execute(
                     """
-                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status, external_ref)
-                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status, external_ref, idempotency_key)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
                     RETURNING id
                     """,
-                    (customer_name, customer_phone, customer_email, notes, total, external_ref),
+                    (customer_name, customer_phone, customer_email, notes, total, external_ref, idempotency_key),
                 ).fetchone()
             else:
                 row = conn.execute(
                     """
-                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status)
-                    VALUES (?, ?, ?, ?, ?, 'PENDING')
+                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status, idempotency_key)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
                     RETURNING id
                     """,
-                    (customer_name, customer_phone, customer_email, notes, total),
+                    (customer_name, customer_phone, customer_email, notes, total, idempotency_key),
                 ).fetchone()
             order_id = int(row["id"] if isinstance(row, dict) else row[0])
         else:
             if _has_column(conn, "web_orders", "external_ref"):
                 conn.execute(
                     """
-                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status, external_ref)
-                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
+                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status, external_ref, idempotency_key)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?)
                     """,
-                    (customer_name, customer_phone, customer_email, notes, total, external_ref),
+                    (customer_name, customer_phone, customer_email, notes, total, external_ref, idempotency_key),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status)
-                    VALUES (?, ?, ?, ?, ?, 'PENDING')
+                    INSERT INTO web_orders (customer_name, customer_phone, customer_email, notes, total, status, idempotency_key)
+                    VALUES (?, ?, ?, ?, ?, 'PENDING', ?)
                     """,
-                    (customer_name, customer_phone, customer_email, notes, total),
+                    (customer_name, customer_phone, customer_email, notes, total, idempotency_key),
                 )
             order_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
@@ -5387,17 +5469,24 @@ def auth_login(request: Request, response: Response, payload: dict = Body(...)) 
             """,
             (username_key, username),
         ).fetchall()
+        row = None
+        migrate_password_hash = False
+        for item in rows:
+            if not int(item["active"] or 0):
+                continue
+            matches, needs_migration = _verify_password(password, item["password_hash"])
+            if matches:
+                row = item
+                migrate_password_hash = needs_migration
+                break
+        if row is not None and migrate_password_hash:
+            conn.execute(
+                "UPDATE users SET password_hash = ? WHERE id = ?",
+                (_hash_password(password), int(row["id"])),
+            )
+            conn.commit()
     finally:
         conn.close()
-    password_hash = _hash_password(password)
-    row = next(
-        (
-            item
-            for item in rows
-            if int(item["active"] or 0) and str(item["password_hash"] or "") == password_hash
-        ),
-        None,
-    )
     if row is None:
         raise HTTPException(status_code=401, detail="Credenciales invalidas")
     payload_data = {
@@ -5961,6 +6050,7 @@ def admin_create_product(
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
         _ensure_product_imeis_table(conn)
+        _ensure_product_images_table(conn)
         imeis = _normalize_imei_list(payload.get("imeis") or [])
         bundle_items = _normalize_bundle_items(payload.get("bundle_items") or [])
         is_bundle = bool(payload.get("is_bundle"))
@@ -6032,7 +6122,7 @@ def admin_create_product(
             row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
             product_id = int(row["id"] if isinstance(row, dict) else row[0])
 
-        conn.commit()
+        # Product, images, IMEIs and bundle components must succeed together.
         _replace_product_images(conn, product_id, image_values)
         _replace_product_imeis(conn, product_id, imeis)
         _replace_product_bundle_items(conn, product_id, bundle_items if is_bundle else [])

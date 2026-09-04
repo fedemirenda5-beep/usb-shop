@@ -22,7 +22,7 @@ services:
       - key: USB_ALLOWED_ORIGIN_REGEX
         value: ^https://([a-z0-9-]+\.)*usbshop\.com\.ar$
       - key: USB_AUTH_SECRET
-        value: usbshop2026securekey1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7
+        sync: false
       - key: USB_ORDER_SECRET
         value: ""
       - key: USB_SYNC_SECRET

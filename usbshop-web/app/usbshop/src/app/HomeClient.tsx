@@ -8,6 +8,7 @@ import StorefrontCartPanel from "@/components/StorefrontCartPanel";
 import {
   fetchJson,
   fetchProductsByIds,
+  createOrderIdempotencyKey,
   getApiBaseUrl,
   submitOrder,
   loadRuntimeConfig,
@@ -407,6 +408,7 @@ export default function HomeClient({
   const isFetchingMoreRef = useRef(false);
   const hasMoreProductsRef = useRef(true);
   const checkoutSubmittingRef = useRef(false);
+  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const quickViewHistoryActiveRef = useRef(false);
   const quickViewClosingFromHistoryRef = useRef(false);
   const [orderName, setOrderName] = useState("");
@@ -1599,6 +1601,19 @@ export default function HomeClient({
         );
         return;
       }
+      const checkoutFingerprint = JSON.stringify({
+        items: cartItems.map((item) => [item.product.id, item.qty]),
+        name: orderName.trim(),
+        phone: orderPhone.trim(),
+        email: orderEmail.trim(),
+        notes: orderNotes.trim(),
+      });
+      const currentAttempt = checkoutAttemptRef.current;
+      const idempotencyKey =
+        currentAttempt?.fingerprint === checkoutFingerprint
+          ? currentAttempt.key
+          : createOrderIdempotencyKey();
+      checkoutAttemptRef.current = { fingerprint: checkoutFingerprint, key: idempotencyKey };
       await submitOrder(
         {
           items: cartItems.map((item) => ({
@@ -1610,6 +1625,7 @@ export default function HomeClient({
           customer_phone: orderPhone.trim(),
           customer_email: orderEmail.trim() || null,
           notes: orderNotes.trim() || null,
+          idempotency_key: idempotencyKey,
         },
         {
           baseUrl: (productsApiBase || getApiBaseUrl()).trim(),
@@ -1617,6 +1633,7 @@ export default function HomeClient({
         }
       );
       await refreshCartProducts();
+      checkoutAttemptRef.current = null;
       setCart({});
       setOrderName("");
       setOrderPhone("");

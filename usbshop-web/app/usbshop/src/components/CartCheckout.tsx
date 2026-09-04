@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { getApiBaseUrl, submitOrder } from "@/lib/api";
+import { createOrderIdempotencyKey, getApiBaseUrl, submitOrder } from "@/lib/api";
 import type { CartItem } from "@/lib/cart";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 
@@ -43,6 +43,7 @@ export default function CartCheckout({
   >("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const checkoutSubmittingRef = useRef(false);
+  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const remainingForFreeShipping = useMemo(
     () => Math.max(0, freeShippingThreshold - total),
@@ -82,6 +83,19 @@ export default function CartCheckout({
         );
         return;
       }
+      const checkoutFingerprint = JSON.stringify({
+        items: cartItems.map((item) => [item.product.id, item.qty]),
+        name: orderName.trim(),
+        phone: orderPhone.trim(),
+        email: orderEmail.trim(),
+        notes: orderNotes.trim(),
+      });
+      const currentAttempt = checkoutAttemptRef.current;
+      const idempotencyKey =
+        currentAttempt?.fingerprint === checkoutFingerprint
+          ? currentAttempt.key
+          : createOrderIdempotencyKey();
+      checkoutAttemptRef.current = { fingerprint: checkoutFingerprint, key: idempotencyKey };
 
       const data = await submitOrder(
         {
@@ -94,11 +108,13 @@ export default function CartCheckout({
           customer_phone: orderPhone.trim(),
           customer_email: orderEmail.trim() || null,
           notes: orderNotes.trim() || null,
+          idempotency_key: idempotencyKey,
         },
         { baseUrl: (apiBaseUrl || "").trim() || getApiBaseUrl() }
       );
 
       onClearCart();
+      checkoutAttemptRef.current = null;
       setOrderName("");
       setOrderPhone("");
       setOrderEmail("");

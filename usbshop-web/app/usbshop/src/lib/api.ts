@@ -470,11 +470,19 @@ export type OrderPayload = {
   customer_phone: string;
   customer_email?: string | null;
   notes?: string | null;
+  idempotency_key: string;
 };
 
 export type OrderResponse = {
   id: number;
   total: number;
+};
+
+export const createOrderIdempotencyKey = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `order-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
 };
 
 export async function fetchProductsByIds<T>(
