@@ -459,3 +459,92 @@ export async function fetchJson<T>(
     throw new Error(`API request failed: ${url} -> ${message}`);
   }
 }
+
+export type OrderPayload = {
+  items: Array<{
+    product_id: number;
+    quantity: number;
+    unit_price: number;
+  }>;
+  customer_name: string;
+  customer_phone: string;
+  customer_email?: string | null;
+  notes?: string | null;
+};
+
+export type OrderResponse = {
+  id: number;
+  total: number;
+};
+
+export async function fetchProductsByIds<T>(
+  ids: number[],
+  options?: FetchJsonOptions
+): Promise<T[]> {
+  const uniqueIds = Array.from(
+    new Set(
+      ids
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  );
+  if (uniqueIds.length === 0) {
+    return [];
+  }
+  const params = new URLSearchParams({
+    ids: uniqueIds.join(","),
+    limit: String(uniqueIds.length),
+  });
+  return fetchJson<T[]>(`/products?${params.toString()}`, undefined, options);
+}
+
+export async function submitOrder(
+  payload: OrderPayload,
+  options?: { baseUrl?: string; timeoutMs?: number }
+): Promise<OrderResponse> {
+  await ensureApiBaseUrl();
+  const baseUrl = options?.baseUrl?.trim() || getApiBaseUrl();
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const orderSecret = getOrderSecret();
+  if (orderSecret) {
+    headers.set("X-USB-ORDER-SECRET", orderSecret);
+  }
+  let response: Response;
+  try {
+    response = await fetchWithRetry(
+      `${baseUrl}/orders`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify(payload),
+      },
+      options?.timeoutMs ?? DEFAULT_API_TIMEOUT_MS,
+      1
+    );
+  } catch (error) {
+    throw new Error(
+      getFriendlyApiError(error, "No se pudo generar el pedido. Intenta nuevamente.")
+    );
+  }
+
+  const detail = await response
+    .clone()
+    .json()
+    .catch(() => null) as { detail?: string; id?: number; total?: number } | null;
+
+  if (!response.ok) {
+    throw new Error(
+      detail?.detail ||
+        (response.status === 503
+          ? "Sistema en mantenimiento. Intenta mas tarde."
+          : "No se pudo generar el pedido. Intenta nuevamente.")
+    );
+  }
+
+  const data = detail || ((await response.json()) as OrderResponse);
+  return {
+    id: Number(data.id),
+    total: Number(data.total),
+  };
+}

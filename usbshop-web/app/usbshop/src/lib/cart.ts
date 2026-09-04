@@ -35,6 +35,11 @@ export type StoredCart = {
   savedAt?: string;
 };
 
+export type ReconciledCartResult<TProduct extends CartProduct> = {
+  items: Array<{ product: TProduct; qty: number }>;
+  changed: boolean;
+};
+
 export const CART_STORAGE_KEY = "usbshop_cart_v1";
 export const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 
@@ -124,5 +129,39 @@ export const writeStoredCart = (items: Array<{ product: StoredCartProduct; qty: 
   } catch {
     // ignore storage failures (private mode, etc.)
   }
+};
+
+export const reconcileCartItems = <TProduct extends CartProduct>(
+  currentItems: CartItem[],
+  liveProducts: TProduct[]
+): ReconciledCartResult<TProduct> => {
+  const liveById = new Map(liveProducts.map((product) => [product.id, product] as const));
+  const nextItems: Array<{ product: TProduct; qty: number }> = [];
+  let changed = false;
+
+  currentItems.forEach((item) => {
+    const live = liveById.get(item.product.id);
+    if (!live) {
+      changed = true;
+      return;
+    }
+    const rawStock = Number(live.stock);
+    const stock = Number.isFinite(rawStock) ? rawStock : Number.POSITIVE_INFINITY;
+    if (stock <= 0) {
+      changed = true;
+      return;
+    }
+    const qty = stock === Number.POSITIVE_INFINITY ? item.qty : Math.min(item.qty, stock);
+    if (qty <= 0) {
+      changed = true;
+      return;
+    }
+    if (qty !== item.qty || item.product !== live) {
+      changed = true;
+    }
+    nextItems.push({ product: live, qty });
+  });
+
+  return { items: nextItems, changed };
 };
 

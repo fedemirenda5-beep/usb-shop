@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getApiBaseUrl, getOrderSecret } from "@/lib/api";
+import { getApiBaseUrl, submitOrder } from "@/lib/api";
 import type { CartItem } from "@/lib/cart";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
 
@@ -16,6 +16,7 @@ type CartCheckoutProps = {
   onUpdateQty: (id: number, delta: number) => void;
   onRemoveItem: (id: number) => void;
   onClearCart: () => void;
+  onSyncCart?: () => Promise<boolean> | boolean;
   onAfterOrder?: () => Promise<void> | void;
 };
 
@@ -30,6 +31,7 @@ export default function CartCheckout({
   onUpdateQty,
   onRemoveItem,
   onClearCart,
+  onSyncCart,
   onAfterOrder,
 }: CartCheckoutProps) {
   const [orderName, setOrderName] = useState("");
@@ -41,9 +43,10 @@ export default function CartCheckout({
   >("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
 
-  const remainingForFreeShipping = useMemo(() => {
-    return Math.max(0, freeShippingThreshold - total);
-  }, [freeShippingThreshold, total]);
+  const remainingForFreeShipping = useMemo(
+    () => Math.max(0, freeShippingThreshold - total),
+    [freeShippingThreshold, total]
+  );
 
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
@@ -53,51 +56,43 @@ export default function CartCheckout({
     }
     if (!orderName.trim() || !orderPhone.trim()) {
       setOrderStatus("error");
-      setOrderMessage("Completa nombre y teléfono para continuar.");
+      setOrderMessage("Completa nombre y telefono para continuar.");
       return;
     }
     if (orderEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orderEmail.trim())) {
       setOrderStatus("error");
-      setOrderMessage("Completa un email válido para continuar.");
+      setOrderMessage("Completa un email valido para continuar.");
       return;
     }
+
     setOrderStatus("submitting");
     setOrderMessage(null);
+
     try {
-      const baseUrl = (apiBaseUrl || "").trim() || getApiBaseUrl();
-      const payload = {
-        items: cartItems.map((item) => ({
-          product_id: item.product.id,
-          quantity: item.qty,
-          unit_price: item.product.price,
-        })),
-        customer_name: orderName.trim(),
-        customer_phone: orderPhone.trim(),
-        customer_email: orderEmail.trim() || null,
-        notes: orderNotes.trim() || null,
-      };
-      const orderSecret = getOrderSecret();
-      const response = await fetch(`${baseUrl}/orders`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(orderSecret ? { "X-USB-ORDER-SECRET": orderSecret } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        const message =
-          detail?.detail ||
-          (response.status === 503
-            ? "Sistema en mantenimiento. Intenta más tarde."
-            : "No se pudo generar el pedido. Intenta nuevamente.");
+      const cartWasAdjusted = (await onSyncCart?.()) ?? false;
+      if (cartWasAdjusted) {
         setOrderStatus("error");
-        setOrderMessage(message);
+        setOrderMessage(
+          "Actualizamos tu carrito por cambios de stock. Revisa el pedido y vuelve a confirmarlo."
+        );
         return;
       }
-      const data = (await response.json()) as { id: number; total: number };
+
+      const data = await submitOrder(
+        {
+          items: cartItems.map((item) => ({
+            product_id: item.product.id,
+            quantity: item.qty,
+            unit_price: item.product.price,
+          })),
+          customer_name: orderName.trim(),
+          customer_phone: orderPhone.trim(),
+          customer_email: orderEmail.trim() || null,
+          notes: orderNotes.trim() || null,
+        },
+        { baseUrl: (apiBaseUrl || "").trim() || getApiBaseUrl() }
+      );
+
       onClearCart();
       setOrderName("");
       setOrderPhone("");
@@ -110,9 +105,13 @@ export default function CartCheckout({
       } catch {
         // ignore refresh errors
       }
-    } catch {
+    } catch (error) {
       setOrderStatus("error");
-      setOrderMessage("No se pudo generar el pedido. Intenta nuevamente.");
+      setOrderMessage(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "No se pudo generar el pedido. Intenta nuevamente."
+      );
     }
   };
 
@@ -150,7 +149,7 @@ export default function CartCheckout({
           </div>
           <div className="empty-title">Carrito listo para empezar</div>
           <div className="empty-text">
-            Todavía no agregaste productos. Elegí un destacado para empezar.
+            Todavia no agregaste productos. Elegi un destacado para empezar.
           </div>
         </div>
       ) : (
@@ -210,14 +209,14 @@ export default function CartCheckout({
           onChange={(event) => setOrderName(event.target.value)}
         />
         <label className="sr-only" htmlFor="usbshop-order-phone">
-          Teléfono
+          Telefono
         </label>
         <input
           id="usbshop-order-phone"
           type="tel"
           inputMode="tel"
           autoComplete="tel"
-          placeholder="Teléfono"
+          placeholder="Telefono"
           value={orderPhone}
           onChange={(event) => setOrderPhone(event.target.value)}
         />
@@ -260,11 +259,11 @@ export default function CartCheckout({
         </div>
         <div className="cart-shipping-hint">
           {totalItems === 0 ? (
-            "Agregá productos para ver el total."
+            "Agrega productos para ver el total."
           ) : remainingForFreeShipping === 0 ? (
-            "Envío gratis desbloqueado."
+            "Envio gratis desbloqueado."
           ) : (
-            `Te faltan $${remainingForFreeShipping.toLocaleString("es-AR")} para envío gratis.`
+            `Te faltan $${remainingForFreeShipping.toLocaleString("es-AR")} para envio gratis.`
           )}
         </div>
         <button
@@ -275,7 +274,7 @@ export default function CartCheckout({
           {orderStatus === "submitting"
             ? "Enviando..."
             : cartItems.length === 0
-              ? "Agregá productos para continuar"
+              ? "Agrega productos para continuar"
               : "Confirmar pedido"}
         </button>
         <button
@@ -292,7 +291,7 @@ export default function CartCheckout({
               "Hola! Quiero hacer un pedido desde la web.",
               "",
               ...(name ? [`Nombre: ${name}`] : []),
-              ...(phone ? [`Teléfono: ${phone}`] : []),
+              ...(phone ? [`Telefono: ${phone}`] : []),
               ...(email ? [`Email: ${email}`] : []),
               ...(notes ? [`Notas: ${notes}`] : []),
               "",
@@ -301,7 +300,7 @@ export default function CartCheckout({
               "",
               `Total aprox.: $${total.toLocaleString("es-AR")}`,
               "",
-              "¿Me confirmas stock y envío? Gracias.",
+              "Me confirmas stock y envio? Gracias.",
             ];
             const href = buildWhatsAppLink(lines.join("\n"));
             window.open(href, "_blank", "noopener,noreferrer");

@@ -8,10 +8,12 @@ import PageLogo from "@/components/PageLogo";
 import WhatsappFloat from "@/components/WhatsappFloat";
 import {
   API_BASE_URL,
+  fetchProductsByIds,
   loadRuntimeConfig,
   resolveImageUrl,
   resolveImageUrls,
 } from "@/lib/api";
+import { reconcileCartItems } from "@/lib/cart";
 import { useUsbShopCart } from "@/lib/useUsbShopCart";
 
 type Product = {
@@ -83,7 +85,7 @@ export default function CartPage() {
 
   const refreshProducts = useCallback(async () => {
     if (cartItems.length === 0) {
-      return;
+      return false;
     }
     const cartProductIds = Array.from(
       new Set(
@@ -93,7 +95,7 @@ export default function CartPage() {
       )
     );
     if (cartProductIds.length === 0) {
-      return;
+      return false;
     }
 
     const host = typeof window !== "undefined" ? window.location.hostname : "";
@@ -110,56 +112,27 @@ export default function CartPage() {
 
     for (const baseUrl of bases) {
       try {
-        const response = await fetch(
-          `${baseUrl}/products?ids=${encodeURIComponent(cartProductIds.join(","))}&limit=${cartProductIds.length}`,
-          {
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          }
-        );
-        if (!response.ok) {
-          continue;
-        }
-        const data = (await response.json()) as Product[];
-        if (!Array.isArray(data) || data.length === 0) {
-          continue;
-        }
+        const data = await fetchProductsByIds<Product>(cartProductIds, { baseUrl });
         setProductsApiBase((prev) => (prev === baseUrl ? prev : baseUrl));
         const normalized = data.map((item) => normalizeProductWithBase(item, baseUrl));
-        const index = new Map(normalized.map((product) => [product.id, product] as const));
+        const nextCart = reconcileCartItems(cartItems, normalized);
         setCart((prev) => {
-          const entries = Object.entries(prev);
-          if (entries.length === 0) {
+          if (!nextCart.changed) {
             return prev;
           }
-          let changed = false;
           const next: typeof prev = {};
-          entries.forEach(([idRaw, entry]) => {
-            const id = Number(idRaw);
-            const live = index.get(id);
-            if (!live) {
-              next[id] = entry;
-              return;
-            }
-            const stock = Number.isFinite(live.stock) ? Number(live.stock) : 0;
-            if (stock <= 0) {
-              changed = true;
-              return;
-            }
-            const qty = Math.min(entry.qty, stock);
-            if (entry.product !== live || qty !== entry.qty) {
-              changed = true;
-            }
-            next[id] = { product: live, qty };
+          nextCart.items.forEach((entry) => {
+            next[entry.product.id] = entry;
           });
-          return changed ? next : prev;
+          return next;
         });
-        return;
+        return nextCart.changed;
       } catch {
         // try next base
       }
     }
-  }, [cartItems.length, normalizeProductWithBase, productsApiBase, setCart]);
+    return false;
+  }, [cartItems, normalizeProductWithBase, productsApiBase, setCart]);
 
   useEffect(() => {
     if (!cartHydrated) {
@@ -206,7 +179,10 @@ export default function CartPage() {
           onUpdateQty={updateQty}
           onRemoveItem={removeItem}
           onClearCart={clearCart}
-          onAfterOrder={refreshProducts}
+          onSyncCart={refreshProducts}
+          onAfterOrder={() => {
+            void refreshProducts();
+          }}
         />
       </section>
     </main>

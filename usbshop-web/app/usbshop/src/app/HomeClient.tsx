@@ -7,12 +7,14 @@ import CartDrawer from "@/components/CartDrawer";
 import StorefrontCartPanel from "@/components/StorefrontCartPanel";
 import {
   fetchJson,
-  getOrderSecret,
+  fetchProductsByIds,
   getApiBaseUrl,
+  submitOrder,
   loadRuntimeConfig,
   resolveImageUrl,
   resolveImageUrls,
 } from "@/lib/api";
+import { reconcileCartItems } from "@/lib/cart";
 import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText, searchTokensFromQuery } from "@/lib/search";
 
 type Product = {
@@ -1039,6 +1041,17 @@ export default function HomeClient({
   const total = cartItems.reduce((sum, item) => sum + item.qty * item.product.price, 0);
   const freeShippingThreshold = 250000;
   const remainingForFreeShipping = Math.max(0, freeShippingThreshold - total);
+  const cartProductIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          cartItems
+            .map((item) => Number(item.product.id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )
+      ),
+    [cartItems]
+  );
 
   useEffect(() => {
     setIsCartOpen(totalItems > 0);
@@ -1487,6 +1500,64 @@ export default function HomeClient({
     });
   };
 
+  const refreshCartProducts = async () => {
+    if (cartProductIds.length === 0) {
+      return false;
+    }
+    const host = typeof window !== "undefined" ? window.location.hostname : "";
+    const protocol = typeof window !== "undefined" ? window.location.protocol || "http:" : "http:";
+    const fallbackBase =
+      (productsApiBase || "").startsWith("/") && host ? `${protocol}//${host}:8000` : null;
+    const bases = Array.from(
+      new Set(
+        [productsApiBase, getApiBaseUrl(), fallbackBase]
+          .map((value) => (value || "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    for (const baseUrl of bases) {
+      try {
+        const data = await fetchProductsByIds<Product>(cartProductIds, {
+          baseUrl,
+          timeoutMs: STOREFRONT_FETCH_TIMEOUT_MS,
+        });
+        const normalized = data.map((item) => normalizeProductWithBase(item, baseUrl));
+        const nextCart = reconcileCartItems(cartItems, normalized);
+        setProductsApiBase((prev) => (prev === baseUrl ? prev : baseUrl));
+        if (nextCart.changed) {
+          const nextState: Record<number, CartItem> = {};
+          nextCart.items.forEach((entry) => {
+            nextState[entry.product.id] = entry;
+          });
+          setCart(nextState);
+        }
+        return nextCart.changed;
+      } catch {
+        // try next base
+      }
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!cartHydrated.current || cartProductIds.length === 0) {
+      return;
+    }
+    void refreshCartProducts().then((changed) => {
+      if (!changed) {
+        return;
+      }
+      setCartNotice("Actualizamos tu carrito segun el stock disponible.");
+      if (cartNoticeTimer.current) {
+        window.clearTimeout(cartNoticeTimer.current);
+      }
+      cartNoticeTimer.current = window.setTimeout(() => {
+        setCartNotice(null);
+      }, 2600);
+    });
+  }, [cartProductIds, productsApiBase]);
+
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
       setOrderStatus("error");
@@ -1498,44 +1569,40 @@ export default function HomeClient({
       setOrderMessage("Completa nombre y telefono para continuar.");
       return;
     }
+    if (orderEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orderEmail.trim())) {
+      setOrderStatus("error");
+      setOrderMessage("Completa un email valido para continuar.");
+      return;
+    }
     setOrderStatus("submitting");
     setOrderMessage(null);
     try {
-      const baseUrl = productsApiBase || getApiBaseUrl();
-      const orderSecret = getOrderSecret();
-      const payload = {
-        items: cartItems.map((item) => ({
-          product_id: item.product.id,
-          quantity: item.qty,
-          unit_price: item.product.price,
-        })),
-        customer_name: orderName.trim(),
-        customer_phone: orderPhone.trim(),
-        customer_email: orderEmail.trim() || null,
-        notes: orderNotes.trim() || null,
-      };
-      const response = await fetch(`${baseUrl}/orders`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(orderSecret ? { "X-USB-ORDER-SECRET": orderSecret } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
-        const message =
-          detail?.detail ||
-          (response.status === 503
-            ? "Sistema en mantenimiento. Intenta mas tarde."
-            : "No se pudo generar el pedido. Intenta nuevamente.");
+      const cartWasAdjusted = await refreshCartProducts();
+      if (cartWasAdjusted) {
         setOrderStatus("error");
-        setOrderMessage(message);
+        setOrderMessage(
+          "Actualizamos tu carrito por cambios de stock. Revisa el pedido y vuelve a confirmarlo."
+        );
         return;
       }
-      const data = (await response.json()) as { id: number; total: number };
-      await refreshProducts();
+      await submitOrder(
+        {
+          items: cartItems.map((item) => ({
+            product_id: item.product.id,
+            quantity: item.qty,
+            unit_price: item.product.price,
+          })),
+          customer_name: orderName.trim(),
+          customer_phone: orderPhone.trim(),
+          customer_email: orderEmail.trim() || null,
+          notes: orderNotes.trim() || null,
+        },
+        {
+          baseUrl: (productsApiBase || getApiBaseUrl()).trim(),
+          timeoutMs: STOREFRONT_FETCH_TIMEOUT_MS,
+        }
+      );
+      await refreshCartProducts();
       setCart({});
       setOrderName("");
       setOrderPhone("");
@@ -1546,9 +1613,13 @@ export default function HomeClient({
         setOrderMessage(
           `Gracias ${firstName} por confiar en Usb-Shop. Tu pedido tiene prioridad para el envio.`
         );
-    } catch {
+    } catch (error) {
       setOrderStatus("error");
-      setOrderMessage("No se pudo generar el pedido. Intenta nuevamente.");
+      setOrderMessage(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "No se pudo generar el pedido. Intenta nuevamente."
+      );
     }
   };
 
