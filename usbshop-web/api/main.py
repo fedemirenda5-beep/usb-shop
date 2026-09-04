@@ -4823,6 +4823,7 @@ def create_order(payload: OrderPayload) -> dict:
         reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
         has_description = _has_column(conn, "products", "description")
         has_image_path = _has_column(conn, "products", "image_path")
+        has_is_active = _has_column(conn, "products", "is_active")
         total = 0.0
         items: list[tuple[int, int, float]] = []
         items_details: list[dict] = []
@@ -4845,6 +4846,7 @@ def create_order(payload: OrderPayload) -> dict:
                 SELECT {", ".join(select_fields)}
                 FROM products
                 WHERE id = ? AND deleted_at IS NULL
+                {"AND is_active = 1" if has_is_active else ""}
                 """,
                 (int(item.product_id),),
             ).fetchone()
@@ -4872,8 +4874,9 @@ def create_order(payload: OrderPayload) -> dict:
                 reserved_stock_by_product[int(row["id"])] = (
                     reserved_stock_by_product.get(int(row["id"]), 0) + int(item.quantity)
                 )
-            submitted_price = float(item.unit_price or 0)
-            unit_price = submitted_price if submitted_price > 0 else _storefront_price(row)
+            # The storefront price is authoritative; browser payloads are only
+            # a request and must not be able to alter the order total.
+            unit_price = _storefront_price(row)
             total += unit_price * int(item.quantity)
             items.append((int(row["id"]), int(item.quantity), float(unit_price)))
             image_url = _public_image_url(

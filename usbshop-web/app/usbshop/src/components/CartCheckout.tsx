@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getApiBaseUrl, submitOrder } from "@/lib/api";
 import type { CartItem } from "@/lib/cart";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
@@ -42,6 +42,7 @@ export default function CartCheckout({
     "idle" | "submitting" | "success" | "error"
   >("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
+  const checkoutSubmittingRef = useRef(false);
 
   const remainingForFreeShipping = useMemo(
     () => Math.max(0, freeShippingThreshold - total),
@@ -49,6 +50,9 @@ export default function CartCheckout({
   );
 
   const handleCheckout = async () => {
+    if (checkoutSubmittingRef.current) {
+      return;
+    }
     if (cartItems.length === 0) {
       setOrderStatus("error");
       setOrderMessage("Agrega productos antes de iniciar el pedido.");
@@ -65,6 +69,7 @@ export default function CartCheckout({
       return;
     }
 
+    checkoutSubmittingRef.current = true;
     setOrderStatus("submitting");
     setOrderMessage(null);
 
@@ -112,6 +117,8 @@ export default function CartCheckout({
           ? error.message
           : "No se pudo generar el pedido. Intenta nuevamente."
       );
+    } finally {
+      checkoutSubmittingRef.current = false;
     }
   };
 

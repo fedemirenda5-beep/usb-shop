@@ -406,6 +406,7 @@ export default function HomeClient({
   const searchRequestRef = useRef(0);
   const isFetchingMoreRef = useRef(false);
   const hasMoreProductsRef = useRef(true);
+  const checkoutSubmittingRef = useRef(false);
   const quickViewHistoryActiveRef = useRef(false);
   const quickViewClosingFromHistoryRef = useRef(false);
   const [orderName, setOrderName] = useState("");
@@ -1568,6 +1569,9 @@ export default function HomeClient({
   }, [cartProductIds, productsApiBase]);
 
   const handleCheckout = async () => {
+    if (checkoutSubmittingRef.current) {
+      return;
+    }
     if (cartItems.length === 0) {
       setOrderStatus("error");
       setOrderMessage("Agrega productos antes de iniciar el pedido.");
@@ -1583,6 +1587,7 @@ export default function HomeClient({
       setOrderMessage("Completa un email valido para continuar.");
       return;
     }
+    checkoutSubmittingRef.current = true;
     setOrderStatus("submitting");
     setOrderMessage(null);
     try {
@@ -1629,6 +1634,8 @@ export default function HomeClient({
           ? error.message
           : "No se pudo generar el pedido. Intenta nuevamente."
       );
+    } finally {
+      checkoutSubmittingRef.current = false;
     }
   };
 
