@@ -536,6 +536,13 @@
   gap: 18px;
 }
 
+.customerFormModal {
+  width: min(900px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.2);
+}
+
 .chartFrame {
   border: 1px solid #dbe4ee;
   border-radius: 18px;
@@ -804,5 +811,9 @@
 
   .chartModal {
     padding: 16px;
+  }
+
+  .customerFormModal {
+    max-height: calc(100vh - 24px);
   }
 }

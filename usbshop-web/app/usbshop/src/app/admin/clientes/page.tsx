@@ -192,8 +192,7 @@ export default function ClientesPage() {
   useEffect(() => {
     if (!showCustomerForm) return;
     const frameId = window.requestAnimationFrame(() => {
-      customerNameInputRef.current?.focus({ preventScroll: true });
-      detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      customerNameInputRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frameId);
   }, [showCustomerForm]);
@@ -942,12 +941,18 @@ export default function ClientesPage() {
         </div>
       ) : null}
 
-      <section className={styles.main} ref={detailSectionRef}>
-        {showCustomerForm ? (
-          <div className={styles.panel}>
+      {showCustomerForm ? (
+        <div className={styles.modalOverlay} onClick={() => !saving && setShowCustomerForm(false)}>
+          <div
+            className={`${styles.panel} ${styles.customerFormModal}`}
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-form-title"
+          >
             <div className={styles.panelHeader}>
               <div>
-                <h2>{selectedCustomerId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+                <h2 id="customer-form-title">{selectedCustomerId ? 'Editar cliente' : 'Nuevo cliente'}</h2>
                 <p>{selectedCustomerId ? 'Actualiza nombre, direccion, telefono y datos fiscales del cliente.' : 'Alta y edicion sobre la tabla real de clientes.'}</p>
               </div>
             </div>
@@ -1046,7 +1051,10 @@ export default function ClientesPage() {
               </div>
             </form>
           </div>
-        ) : null}
+        </div>
+      ) : null}
+
+      <section className={styles.main} ref={detailSectionRef}>
 
         {selectedCustomer ? (
           <div className={styles.main}>
