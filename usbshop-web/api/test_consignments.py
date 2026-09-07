@@ -162,6 +162,15 @@ class ConsignmentTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_customer_and_product_summaries_show_pending_stock(self):
+        self.delivery(quantity=6)
+        self.delivery(quantity=2, customer=2)
+        customers = main.admin_consignment_customer_summary(None, limit=200)
+        self.assertEqual({row['customer_name']: row['pending'] for row in customers}, {'Cliente Uno': 6, 'Cliente Dos': 2})
+        products = main.admin_consignment_product_summary(None, q='USB-1', limit=100)
+        self.assertEqual(products[0]['consigned'], 8)
+        self.assertEqual(products[0]['customers'], 2)
+
     def test_combos_reserve_components_and_limit_web_stock(self):
         conn = main._connect()
         try:

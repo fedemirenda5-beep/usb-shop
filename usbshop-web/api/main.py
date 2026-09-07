@@ -8530,6 +8530,66 @@ def admin_list_consignments(
         conn.close()
 
 
+@app.get("/admin/consignments/customer-summary")
+def admin_consignment_customer_summary(
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    q: str = "", limit: int = Query(default=200, ge=1, le=300),
+) -> list[dict]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        params: list[Any] = []
+        where = ""
+        if q.strip():
+            where = "WHERE LOWER(cu.name) LIKE ?"
+            params.append(f"%{q.strip().lower()}%")
+        return [dict(row) for row in conn.execute(f"""
+            SELECT c.customer_id, cu.name AS customer_name, COUNT(DISTINCT c.id) AS deliveries,
+                   SUM(ci.delivered) AS delivered, SUM(ci.sold) AS sold, SUM(ci.returned) AS returned,
+                   SUM(ci.delivered - ci.sold - ci.returned) AS pending
+            FROM consignments c
+            JOIN customers cu ON cu.id = c.customer_id
+            JOIN consignment_items ci ON ci.consignment_id = c.id
+            {where}
+            GROUP BY c.customer_id, cu.name
+            HAVING SUM(ci.delivered - ci.sold - ci.returned) > 0
+            ORDER BY LOWER(cu.name), c.customer_id
+            LIMIT ?
+        """, [*params, limit]).fetchall()]
+    finally:
+        conn.close()
+
+
+@app.get("/admin/consignments/product-summary")
+def admin_consignment_product_summary(
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    q: str = "", limit: int = Query(default=100, ge=1, le=200),
+) -> list[dict]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        params: list[Any] = []
+        where = ""
+        if q.strip():
+            like = f"%{q.strip().lower()}%"
+            where = "WHERE LOWER(p.name) LIKE ? OR LOWER(COALESCE(p.sku, '')) LIKE ?"
+            params.extend([like, like])
+        return [dict(row) for row in conn.execute(f"""
+            SELECT ci.product_id, p.name, p.sku, COUNT(DISTINCT c.customer_id) AS customers,
+                   SUM(ci.delivered - ci.sold - ci.returned) AS consigned
+            FROM consignment_items ci
+            JOIN consignments c ON c.id = ci.consignment_id
+            JOIN products p ON p.id = ci.product_id
+            {where}
+            GROUP BY ci.product_id, p.name, p.sku
+            HAVING SUM(ci.delivered - ci.sold - ci.returned) > 0
+            ORDER BY LOWER(p.name), ci.product_id
+            LIMIT ?
+        """, [*params, limit]).fetchall()]
+    finally:
+        conn.close()
+
+
 @app.get("/admin/consignments/{consignment_id}")
 def admin_consignment_detail(
     consignment_id: int, session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),

@@ -645,7 +645,7 @@ export default function GenerarComprobantePage() {
   );
   const shouldAppendWarrantyNote = form.document_type === 'FACTURA' && hasCellphoneItems;
 
-  const canSubmitWithoutCustomer = Boolean(form.order_id) && form.document_type !== 'NOTA_CREDITO';
+  const canSubmitWithoutCustomer = Boolean(form.order_id) && !['NOTA_CREDITO', 'CONSIGNACION'].includes(form.document_type);
 
   const commitImeiToInvoiceItem = (index: number, scannedValue: string) => {
     let wasAdded = true;
@@ -1164,7 +1164,7 @@ export default function GenerarComprobantePage() {
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
     if (invoiceSubmitting.current) return;
-    if (consignmentId && (!consignmentDetail || consignmentDetail.customer_id !== Number(form.customer_id))) {
+    if (form.document_type === 'FACTURA' && consignmentId && (!consignmentDetail || consignmentDetail.customer_id !== Number(form.customer_id))) {
       setError('Selecciona una consignacion del cliente antes de emitir');
       return;
     }
@@ -1175,6 +1175,25 @@ export default function GenerarComprobantePage() {
     try {
       setCreating(true);
       setError('');
+      if (form.document_type === 'CONSIGNACION') {
+        const consignmentPayload = {
+          customer_id: Number(form.customer_id),
+          created_at: formatInputDateTime(form.created_at),
+          notes: form.notes || null,
+          items: form.items.map((item) => ({
+            product_id: Number(item.product_id),
+            quantity: Number(item.quantity),
+          })),
+        };
+        const fingerprint = JSON.stringify(consignmentPayload);
+        if (invoiceAttempt.current?.fingerprint !== fingerprint) invoiceAttempt.current = { fingerprint, key: createOrderIdempotencyKey() };
+        const data = await consignmentRequest<ConsignmentDetail>('/admin/consignments', {
+          ...consignmentPayload,
+          idempotency_key: invoiceAttempt.current.key,
+        });
+        router.push(`/admin/consignaciones?consignment_id=${data.id}`);
+        return;
+      }
       const payload = {
         consignment_id: form.document_type === 'FACTURA' && !form.order_id ? consignmentId || null : null,
         order_id: form.order_id ? Number(form.order_id) : null,
@@ -1316,6 +1335,7 @@ export default function GenerarComprobantePage() {
                   <option value="FACTURA">Factura</option>
                   <option value="NOTA_CREDITO">Nota de crédito</option>
                   <option value="PRESUPUESTO">Presupuesto</option>
+                  <option value="CONSIGNACION">Consignación</option>
                 </select>
               </label>
               {form.document_type === 'FACTURA' && !form.order_id && <label>
@@ -1346,9 +1366,9 @@ export default function GenerarComprobantePage() {
                 <select
                   value={form.seller_id}
                   onChange={(e) => setForm((current) => ({ ...current, seller_id: e.target.value }))}
-                  required={form.document_type !== 'PRESUPUESTO'}
+                  required={!['PRESUPUESTO', 'CONSIGNACION'].includes(form.document_type)}
                 >
-                  <option value="" disabled={form.document_type !== 'PRESUPUESTO'}>Selecciona un vendedor</option>
+                  <option value="" disabled={!['PRESUPUESTO', 'CONSIGNACION'].includes(form.document_type)}>Selecciona un vendedor</option>
                   {sellers.map((seller) => (
                     <option key={seller.id} value={seller.id}>
                       {seller.name} - {seller.commission_percent}%
@@ -1358,8 +1378,10 @@ export default function GenerarComprobantePage() {
                 <small className={styles.fieldHint}>
                   {selectedSeller
                     ? `Comision estimada: ${money(commissionPreview)}`
-                    : form.document_type === 'PRESUPUESTO'
-                      ? 'En presupuestos el vendedor es opcional. Al facturarlo despues, si queres, podes asignarlo ahi.'
+                    : ['PRESUPUESTO', 'CONSIGNACION'].includes(form.document_type)
+                      ? form.document_type === 'CONSIGNACION'
+                        ? 'La entrega reserva mercadería para el cliente y no genera una venta.'
+                        : 'En presupuestos el vendedor es opcional. Al facturarlo despues, si queres, podes asignarlo ahi.'
                       : 'El vendedor es obligatorio para emitir el comprobante'}
                 </small>
               </label>
@@ -1718,7 +1740,7 @@ export default function GenerarComprobantePage() {
                 className={styles.createButton}
                 disabled={creating || (!form.customer_id && !canSubmitWithoutCustomer) || form.items.length === 0}
               >
-                {creating ? 'Guardando...' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
+                {creating ? 'Guardando...' : form.document_type === 'CONSIGNACION' ? 'Registrar consignación' : form.document_type === 'PRESUPUESTO' ? 'Guardar presupuesto' : form.document_type === 'NOTA_CREDITO' ? 'Emitir nota de crédito' : 'Emitir factura'}
               </button>
             </div>
           </form>

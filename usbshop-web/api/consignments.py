@@ -159,7 +159,8 @@ def create(conn, payload, quantities, reservations):
         if quantity > available:
             raise HTTPException(400, f"Stock disponible insuficiente para {product['name']}: {max(0, available)}")
     sql = 'INSERT INTO consignments (customer_id, created_at, notes, request_key) VALUES (?, ?, ?, ?)'
-    params = (customer_id, datetime.utcnow().isoformat(), notes, key)
+    created_at = str(payload.get('created_at') or '').strip() or datetime.utcnow().isoformat()
+    params = (customer_id, created_at, notes, key)
     if conn.is_postgres:
         consignment_id = conn.execute(sql + ' RETURNING id', params).fetchone()['id']
     else:

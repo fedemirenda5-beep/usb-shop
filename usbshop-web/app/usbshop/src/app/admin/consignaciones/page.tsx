@@ -12,6 +12,8 @@ import styles from './consignaciones.module.css';
 type Customer = { id: number; name: string };
 type Product = { id: number; name: string; stock: number; available_stock: number; is_bundle?: boolean };
 type Draft = Product & { quantity: number };
+type CustomerSummary = { customer_id: number; customer_name: string; deliveries: number; delivered: number; sold: number; returned: number; pending: number };
+type ProductSummary = { product_id: number; name: string; sku: string; customers: number; consigned: number };
 const movementLabels: Record<string, string> = { DELIVERY: 'Entrega', RETURN: 'Devolución', SALE: 'Venta', SALE_CANCEL: 'Venta cancelada' };
 
 export default function ConsignacionesPage() {
@@ -38,6 +40,31 @@ export default function ConsignacionesPage() {
   const attempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const detailRequest = useRef(0);
   const [revision, setRevision] = useState(0);
+  const [customerSummary, setCustomerSummary] = useState<CustomerSummary[]>([]);
+  const [summaryQuery, setSummaryQuery] = useState('');
+  const [consignedProductQuery, setConsignedProductQuery] = useState('');
+  const [productSummary, setProductSummary] = useState<ProductSummary[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      void consignmentRequest<CustomerSummary[]>(`/admin/consignments/customer-summary?q=${encodeURIComponent(summaryQuery)}`)
+        .then((data) => { if (active) setCustomerSummary(data); })
+        .catch((err) => { if (active) setError(err.message); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [summaryQuery, revision]);
+
+  useEffect(() => {
+    let active = true;
+    if (!consignedProductQuery.trim()) { setProductSummary([]); return; }
+    const timer = setTimeout(() => {
+      void consignmentRequest<ProductSummary[]>(`/admin/consignments/product-summary?q=${encodeURIComponent(consignedProductQuery)}`)
+        .then((data) => { if (active) setProductSummary(data); })
+        .catch((err) => { if (active) setError(err.message); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [consignedProductQuery, revision]);
 
   useEffect(() => {
     let active = true;
@@ -112,6 +139,22 @@ export default function ConsignacionesPage() {
     </header>
     {error && <div className={styles.error} role="alert">{error}</div>}
     {notice && <div className={styles.notice} role="status">{notice}</div>}
+    <section className={styles.panel}>
+      <h2>Clientes con mercadería en consignación</h2>
+      <label>Buscar cliente<input value={summaryQuery} onChange={(event) => setSummaryQuery(event.target.value)} placeholder="Nombre del cliente" /></label>
+      <div className={styles.tableWrap}><table><thead><tr><th>Cliente</th><th>Entregas</th><th>Entregadas</th><th>Vendidas</th><th>Devueltas</th><th>En su poder</th></tr></thead><tbody>{customerSummary.map((item) => <tr key={item.customer_id}>
+        <td><strong>{item.customer_name}</strong></td><td>{item.deliveries}</td><td>{item.delivered}</td><td>{item.sold}</td><td>{item.returned}</td><td><strong>{item.pending}</strong></td>
+      </tr>)}</tbody></table></div>
+      {!customerSummary.length && <p>No hay clientes con mercadería pendiente.</p>}
+    </section>
+    <section className={styles.panel}>
+      <h2>Consultar mercadería consignada</h2>
+      <label>Buscar producto o SKU<input value={consignedProductQuery} onChange={(event) => setConsignedProductQuery(event.target.value)} placeholder="Escribí un producto para consultar" /></label>
+      {consignedProductQuery.trim() && <div className={styles.tableWrap}><table><thead><tr><th>Producto</th><th>SKU</th><th>Clientes</th><th>Unidades consignadas</th></tr></thead><tbody>{productSummary.map((item) => <tr key={item.product_id}>
+        <td>{item.name}</td><td>{item.sku || '—'}</td><td>{item.customers}</td><td><strong>{item.consigned}</strong></td>
+      </tr>)}</tbody></table></div>}
+      {consignedProductQuery.trim() && !productSummary.length && <p>No hay unidades consignadas para esa búsqueda.</p>}
+    </section>
     {showCreate && <form className={styles.panel} onSubmit={(event) => { event.preventDefault(); void save('create'); }}>
       <h2>Nueva entrega en consignación</h2>
       <p>Se reserva stock disponible. Si la mercadería ya fue entregada, verificá que todavía esté incluida en el stock general antes de registrarla.</p>
@@ -130,7 +173,7 @@ export default function ConsignacionesPage() {
       <div><button className={styles.primary} disabled={busy || !customer || !draft.length}>{busy ? 'Guardando...' : 'Registrar entrega y reservar'}</button></div>
     </form>}
     <section className={styles.panel}>
-      <h2>Mercadería por cliente</h2>
+      <h2>Entregas y movimientos</h2>
       <div className={styles.row}>
         <label>Buscar cliente, producto o SKU<input value={query} onChange={(event) => { setQuery(event.target.value); setOffset(0); }} /></label>
         <label>Estado<select value={String(pendingOnly)} onChange={(event) => { setPendingOnly(event.target.value === 'true'); setOffset(0); }}><option value="true">Con unidades pendientes</option><option value="false">Todas las entregas</option></select></label>
