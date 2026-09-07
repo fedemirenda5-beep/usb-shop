@@ -1064,7 +1064,9 @@ export default function HomeClient({
   );
 
   useEffect(() => {
-    setIsCartOpen(totalItems > 0);
+    if (totalItems > 0) {
+      setIsCartOpen(true);
+    }
   }, [totalItems]);
 
   const orderedCategories = useMemo(() => {

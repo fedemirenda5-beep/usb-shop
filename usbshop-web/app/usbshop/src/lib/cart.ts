@@ -156,7 +156,15 @@ export const reconcileCartItems = <TProduct extends CartProduct>(
       changed = true;
       return;
     }
-    if (qty !== item.qty || item.product !== live) {
+    // API responses create new objects even when the product has not changed.
+    // Compare cart values so an unchanged refresh can proceed to checkout.
+    if (
+      qty !== item.qty ||
+      item.product.price !== live.price ||
+      item.product.stock !== live.stock ||
+      item.product.name !== live.name ||
+      item.product.category !== live.category
+    ) {
       changed = true;
     }
     nextItems.push({ product: live, qty });

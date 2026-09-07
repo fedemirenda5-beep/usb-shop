@@ -2859,6 +2859,7 @@ input.button {
 }
 
 .cart-drawer__header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2875,6 +2876,10 @@ input.button {
 }
 
 .cart-panel--drawer {
+  position: static;
+  align-self: stretch;
+  width: 100%;
+  max-width: none;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2883,6 +2888,7 @@ input.button {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 .modal-backdrop {
@@ -3909,6 +3915,15 @@ input.button {
 
   .cart-panel .empty-state {
     display: none;
+  }
+
+  .cart-panel--drawer .empty-state {
+    display: grid;
+  }
+
+  .cart-form input,
+  .cart-form textarea {
+    font-size: 16px;
   }
 
   .category-panel {
