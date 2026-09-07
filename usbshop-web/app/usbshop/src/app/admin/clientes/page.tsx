@@ -207,6 +207,7 @@ export default function ClientesPage() {
       const items = Array.isArray(data)
         ? (data as Customer[]).map((customer) => ({ ...customer, balance: 0, invoice_count: 0 }))
         : [];
+      setError('');
       setCustomers(items);
       if (!selectedCustomerId && items.length > 0) setSelectedCustomerId(items[0].id);
       if (selectedCustomerId && !items.some((item) => item.id === selectedCustomerId)) {
@@ -233,8 +234,9 @@ export default function ClientesPage() {
         },
       });
       setCustomerZones(Array.isArray(data) ? data.filter((zone): zone is string => typeof zone === 'string') : []);
-    } catch (err) {
-      setError(getFriendlyApiError(err, 'Error cargando zonas'));
+    } catch {
+      // Zonas is an optional filter; a failure must not block the customer list.
+      setCustomerZones([]);
     }
   };
 
@@ -288,9 +290,10 @@ export default function ClientesPage() {
       });
       if (signal?.aborted) return;
       setSellers(Array.isArray(data) ? data.filter((item: Seller) => item.is_active) : []);
-    } catch (err) {
+    } catch {
       if (signal?.aborted) return;
-      setError(getFriendlyApiError(err, 'Error cargando vendedores'));
+      // Sellers is an optional filter; a failure must not block the customer list.
+      setSellers([]);
     }
   };
 
