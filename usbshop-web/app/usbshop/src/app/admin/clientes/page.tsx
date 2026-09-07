@@ -138,6 +138,7 @@ export default function ClientesPage() {
   const detailRequestRef = useRef(0);
   const skipNextDetailLoadRef = useRef<number | null>(null);
   const detailSectionRef = useRef<HTMLElement | null>(null);
+  const customerNameInputRef = useRef<HTMLInputElement | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerZones, setCustomerZones] = useState<string[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
@@ -187,6 +188,15 @@ export default function ClientesPage() {
       setDesktopWorkspaceMode(false);
     }
   }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!showCustomerForm) return;
+    const frameId = window.requestAnimationFrame(() => {
+      customerNameInputRef.current?.focus({ preventScroll: true });
+      detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [showCustomerForm]);
 
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
@@ -945,7 +955,13 @@ export default function ClientesPage() {
             <form className={styles.formGrid} onSubmit={saveCustomer}>
               <label>
                 Nombre o razon social
-                <input name="name" value={customerForm.name} onChange={handleCustomerFormChange} required />
+                <input
+                  ref={customerNameInputRef}
+                  name="name"
+                  value={customerForm.name}
+                  onChange={handleCustomerFormChange}
+                  required
+                />
               </label>
               <label>
                 Estado
