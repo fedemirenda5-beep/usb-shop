@@ -6824,30 +6824,27 @@ def admin_backoffice_customers(
         if not customer_ids:
             return []
         customer_placeholders = ", ".join(["?"] * len(customer_ids))
-        balance_rows = conn.execute(
+        movements = conn.execute(
             """
-            SELECT customer_id,
-                   SUM(
-                       CASE
-                           WHEN UPPER(COALESCE(movement_type, '')) = 'DEBIT' THEN COALESCE(amount, 0)
-                           ELSE -COALESCE(amount, 0)
-                       END
-                   ) AS balance
+            SELECT customer_id, amount, movement_type
             FROM account_movements
             WHERE customer_id IN ("""
             + customer_placeholders
             + ")"
             + _active_account_movements_clause(conn)
             + """
-            GROUP BY customer_id
+            ORDER BY created_at ASC, id ASC
             """,
             customer_ids,
         ).fetchall()
-        balances = {
-            int(row["customer_id"]): round(float(row["balance"] or 0), 2)
-            for row in balance_rows
-            if row["customer_id"] is not None
-        }
+        balances: dict[int, float] = {}
+        for row in movements:
+            customer_id = int(row["customer_id"] or 0)
+            if customer_id <= 0:
+                continue
+            amount = float(row["amount"] or 0)
+            signed = amount if str(row["movement_type"] or "").upper() == "DEBIT" else -amount
+            balances[customer_id] = round(balances.get(customer_id, 0.0) + signed, 2)
         invoice_counts = {
             int(row["customer_id"]): int(row["qty"])
             for row in conn.execute(
