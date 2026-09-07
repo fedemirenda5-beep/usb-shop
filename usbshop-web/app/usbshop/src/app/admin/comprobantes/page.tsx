@@ -26,6 +26,7 @@ type Invoice = {
   commission_amount?: number | null;
   special_discount?: number | null;
   web_order_id?: number | null;
+  consignment_id?: number | null;
 };
 
 type InvoiceDetail = {
@@ -437,7 +438,9 @@ export default function ComprobantesPage() {
                     <td className={styles.total}>{money(item.total)}</td>
                     <td className={styles.dateCell}>{formatListDate(item.created_at)}</td>
                     <td className={styles.originCell}>
-                      {item.web_order_id ? (
+                      {item.consignment_id ? (
+                        <Link href={`/admin/consignaciones?consignment_id=${item.consignment_id}`} className={styles.originBadge}>Consignación #{item.consignment_id}</Link>
+                      ) : item.web_order_id ? (
                         <span className={styles.originBadge}>Web #{item.web_order_id}</span>
                       ) : (
                         <span className={styles.originMuted}>Manual</span>

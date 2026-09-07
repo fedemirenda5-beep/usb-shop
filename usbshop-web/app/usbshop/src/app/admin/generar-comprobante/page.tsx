@@ -6,6 +6,8 @@ import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig
 import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
 import styles from '../comprobantes/comprobantes.module.css';
+import { consignmentRequest, type Consignment, type ConsignmentDetail } from '@/lib/consignments';
+import { createOrderIdempotencyKey } from '@/lib/api';
 
 type CustomerOption = {
   id: number;
@@ -28,6 +30,7 @@ type ProductOption = {
   price_list_1?: number | null;
   price_list_2?: number | null;
   stock: number;
+  available_stock?: number;
   imageUrl?: string | null;
   image_path?: string | null;
 };
@@ -252,6 +255,11 @@ export default function GenerarComprobantePage() {
   const orderIdParam = Number(searchParams?.get('order_id') || 0);
   const budgetInvoiceIdParam = Number(searchParams?.get('budget_invoice_id') || 0);
   const customerIdParam = Number(searchParams?.get('customer_id') || 0);
+  const [consignmentId, setConsignmentId] = useState(Number(searchParams?.get('consignment_id') || 0));
+  const [consignmentOptions, setConsignmentOptions] = useState<Consignment[]>([]);
+  const [consignmentDetail, setConsignmentDetail] = useState<ConsignmentDetail | null>(null);
+  const invoiceSubmitting = useRef(false);
+  const invoiceAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
@@ -1085,6 +1093,7 @@ export default function GenerarComprobantePage() {
   };
 
   const selectCustomer = (customer: CustomerOption) => {
+    setConsignmentId(0);
     setCustomerSearch(customer.name);
     setCustomerOptions((current) => uniqById([customer, ...current]));
     setForm((current) => ({
@@ -1154,6 +1163,12 @@ export default function GenerarComprobantePage() {
 
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (invoiceSubmitting.current) return;
+    if (consignmentId && (!consignmentDetail || consignmentDetail.customer_id !== Number(form.customer_id))) {
+      setError('Selecciona una consignacion del cliente antes de emitir');
+      return;
+    }
+    invoiceSubmitting.current = true;
     if (hasPendingOrderCellphoneImeis) {
       setError('');
     }
@@ -1161,6 +1176,7 @@ export default function GenerarComprobantePage() {
       setCreating(true);
       setError('');
       const payload = {
+        consignment_id: form.document_type === 'FACTURA' && !form.order_id ? consignmentId || null : null,
         order_id: form.order_id ? Number(form.order_id) : null,
         customer_id: Number(form.customer_id),
         document_type: form.document_type,
@@ -1179,10 +1195,12 @@ export default function GenerarComprobantePage() {
           imeis: item.imeis,
         })),
       };
+      const fingerprint = JSON.stringify(payload);
+      if (invoiceAttempt.current?.fingerprint !== fingerprint) invoiceAttempt.current = { fingerprint, key: createOrderIdempotencyKey() };
       const res = await fetchApiResponse('/admin/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, idempotency_key: invoiceAttempt.current.key }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo crear el comprobante');
@@ -1190,9 +1208,32 @@ export default function GenerarComprobantePage() {
     } catch (err) {
       setError(getFriendlyApiError(err, 'Error creando comprobante'));
     } finally {
+      invoiceSubmitting.current = false;
       setCreating(false);
     }
   };
+
+  useEffect(() => {
+    let active = true;
+    setConsignmentOptions([]);
+    if (!form.customer_id || form.document_type !== 'FACTURA' || form.order_id) return;
+    void consignmentRequest<Consignment[]>(`/admin/consignments?customer_id=${form.customer_id}&limit=${ADMIN_LIMITS.consignmentsList}`)
+      .then((data) => { if (active) setConsignmentOptions(data); })
+      .catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [form.customer_id, form.document_type, form.order_id]);
+
+  useEffect(() => {
+    let active = true;
+    setConsignmentDetail(null);
+    if (!consignmentId) return;
+    void consignmentRequest<ConsignmentDetail>(`/admin/consignments/${consignmentId}`)
+      .then(async (data) => {
+        await fetchProductsByIds(data.items.map((item) => item.product_id));
+        if (active) setConsignmentDetail(data);
+      }).catch((err) => { if (active) setError(err.message); });
+    return () => { active = false; };
+  }, [consignmentId]);
 
   return (
     <div className={styles.page}>
@@ -1277,6 +1318,18 @@ export default function GenerarComprobantePage() {
                   <option value="PRESUPUESTO">Presupuesto</option>
                 </select>
               </label>
+              {form.document_type === 'FACTURA' && !form.order_id && <label>
+                Origen de la mercadería
+                <select value={consignmentId} disabled={creating} onChange={(event) => {
+                  setConsignmentId(Number(event.target.value));
+                  setForm((current) => ({ ...current, items: [] }));
+                }}>
+                  <option value="0">Stock disponible del local</option>
+                  {consignmentOptions.map((item) => <option key={item.id} value={item.id}>Consignación #{item.id} · {item.pending} unidades pendientes</option>)}
+                  {consignmentId > 0 && !consignmentOptions.some((item) => item.id === consignmentId) && <option value={consignmentId}>Consignación #{consignmentId}</option>}
+                </select>
+                <small>Al cambiar de origen se vacía el detalle para elegir los productos correspondientes.</small>
+              </label>}
               <label>
                 Fecha y hora
                 <input type="datetime-local" value={form.created_at} onChange={(e) => setForm((current) => ({ ...current, created_at: e.target.value }))} />
@@ -1422,7 +1475,7 @@ export default function GenerarComprobantePage() {
                     <div className={styles.productSearchMain}>
                       <strong>{scannedDraft.product.name}</strong>
                       <span>
-                        #{scannedDraft.product.id} · {scannedDraft.product.sku || 'Sin SKU'} · Cod. {scannedDraft.product.barcode || '-'} · Stock {scannedDraft.product.stock}
+                        #{scannedDraft.product.id} · {scannedDraft.product.sku || 'Sin SKU'} · Cod. {scannedDraft.product.barcode || '-'} · Disponible local {scannedDraft.product.available_stock ?? scannedDraft.product.stock}
                       </span>
                     </div>
                   </div>
@@ -1440,6 +1493,16 @@ export default function GenerarComprobantePage() {
                 </div>
               ) : null}
               <div className={styles.desktopPickerResults}>
+                {consignmentId > 0 && form.document_type === 'FACTURA' && consignmentDetail && <div className={styles.productSearchList}>
+                  <p>En poder de {consignmentDetail.customer_name}. Agregá solo los productos vendidos y ajustá sus cantidades.</p>
+                  {consignmentDetail.items.filter((item) => item.pending > 0).map((item) => <div key={item.product_id} className={styles.productSearchItem}>
+                    <span>{item.name} · Pendientes: {item.pending}</span>
+                    <button type="button" className={styles.secondaryButton} disabled={creating} onClick={() => {
+                      const product = productMap.get(item.product_id);
+                      if (product) addProductToInvoice(product, 1);
+                    }}>Agregar a la venta</button>
+                  </div>)}
+                </div>}
                 {!productSearch.trim() ? (
                   <div className={styles.emptyCell}>Escribí para buscar productos y ver coincidencias.</div>
                 ) : productSearchLoading ? (
@@ -1462,7 +1525,7 @@ export default function GenerarComprobantePage() {
                           </div>
                           <div className={styles.productSearchMain}>
                             <strong>{product.name}</strong>
-                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Cod. {product.barcode || '-'} · Stock {product.stock}</span>
+                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Cod. {product.barcode || '-'} · Disponible local {product.available_stock ?? product.stock}</span>
                           </div>
                         </div>
                         <div className={styles.productSearchPrices}>

@@ -1,4 +1,5 @@
 export const ADMIN_LIMITS = {
+  consignmentsList: 100,
   productsLargeList: 1000,
   customersLargeList: 1000,
   invoicesList: 300,

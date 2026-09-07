@@ -1,0 +1,19 @@
+.page { display: grid; gap: 20px; color: var(--ink); }
+.page h1, .page h2, .page p { margin: 0; }
+.page p, .page small { color: var(--muted); line-height: 1.5; }
+.panel { display: grid; gap: 16px; padding: 20px; background: white; border: 1px solid var(--bg-soft); border-radius: 16px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.page label { display: grid; gap: 6px; font-size: 14px; }
+.page input, .page select, .page textarea { padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; min-width: 0; max-width: 100%; }
+.page button, .action { display: inline-block; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f1f5f9; color: #0f172a; font: inherit; cursor: pointer; text-decoration: none; }
+.page button:disabled { opacity: .5; cursor: default; }
+.page .primary { background: #6d28d9; color: white; }
+.tableWrap { overflow-x: auto; }
+.page table { width: 100%; border-collapse: collapse; text-align: left; }
+.page th, .page td { padding: 12px 8px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+.page td input { width: 85px; }
+.error { padding: 14px; background: #fef2f2; color: #991b1b; border-radius: 10px; }
+.notice { padding: 14px; background: #ecfdf5; color: #065f46; border-radius: 10px; }
+.results { display: grid; gap: 8px; max-height: 250px; overflow: auto; }
+.results button { text-align: left; }
+@media (max-width: 700px) { .panel { padding: 12px; } .page input, .page select, .page textarea { font-size: 16px; } .page th, .page td { padding: 10px 5px; } }

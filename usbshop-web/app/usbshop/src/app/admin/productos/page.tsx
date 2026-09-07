@@ -27,6 +27,9 @@ interface Product {
   storefront_price_source?: 'flash_offer' | 'price_list_1' | 'price';
   cost: number;
   stock: number;
+  consigned_stock?: number;
+  available_stock?: number;
+  reserved_stock?: number;
   imageUrl?: string | null;
   category_id: number | null;
   category?: string | null;
@@ -1110,7 +1113,7 @@ export default function ProductosPage() {
                 <th>Precio</th>
                 <th>Costo</th>
                 {canViewProfit ? <th>Margen</th> : null}
-                <th>Stock</th>
+                <th>Stock general / disponible</th>
                 <th>Destacado</th>
                 <th>Ult. ingresos</th>
                 <th>Oferta</th>
@@ -1154,6 +1157,8 @@ export default function ProductosPage() {
                       <span className={product.stock > 0 ? styles.inStock : styles.outOfStock}>
                         {product.stock}
                       </span>
+                      <div><small>Disponible: {product.available_stock ?? product.stock}</small></div>
+                      {!!product.consigned_stock && <Link href={`/admin/consignaciones?q=${encodeURIComponent(product.sku || product.name)}`}>Consignado: {product.consigned_stock}</Link>}
                     </td>
                     <td>
                       <button

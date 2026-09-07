@@ -34,6 +34,7 @@ from fastapi import Body, Cookie, FastAPI, File, Form, HTTPException, Query, Req
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
+import consignments
 
 try:
     import psycopg2
@@ -2356,7 +2357,7 @@ def _bundle_requires_imei(conn: DBConn, bundle_items: list[dict[str, Any]]) -> b
     return any(_category_requires_imei(conn, item.get("category_id")) for item in bundle_items)
 
 
-def _fetch_reserved_web_order_stock(conn: DBConn) -> dict[int, int]:
+def _fetch_reserved_web_order_stock(conn: DBConn, exclude_order_id: Optional[int] = None) -> dict[int, int]:
     if not _has_table(conn, "web_orders") or not _has_table(conn, "web_order_items"):
         return {}
     _ensure_product_bundle_support(conn)
@@ -2367,7 +2368,8 @@ def _fetch_reserved_web_order_stock(conn: DBConn) -> dict[int, int]:
         JOIN web_orders wo ON wo.id = wi.order_id
         LEFT JOIN products p ON p.id = wi.product_id
         WHERE UPPER(COALESCE(wo.status, '')) IN ('PENDING', 'BUDGETED')
-        """
+          AND wo.id <> ?
+        """, (exclude_order_id or 0,)
     ).fetchall()
     if not rows:
         return {}
@@ -2398,6 +2400,42 @@ def _fetch_reserved_web_order_stock(conn: DBConn) -> dict[int, int]:
             continue
         reserved_stock_by_product[product_id] = reserved_stock_by_product.get(product_id, 0) + quantity
     return reserved_stock_by_product
+
+
+def _lock_inventory(conn: DBConn) -> None:
+    # All reservations and stock-consuming operations share one transaction lock.
+    if conn.is_postgres:
+        conn.execute("LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE")
+    else:
+        conn.execute("UPDATE products SET stock = stock WHERE 1 = 0")
+
+
+def _fetch_reserved_stock(conn: DBConn, exclude_order_id: Optional[int] = None) -> dict[int, int]:
+    reserved = _fetch_reserved_web_order_stock(conn, exclude_order_id)
+    for product_id, quantity in consignments.reserved_stock(conn).items():
+        reserved[product_id] = reserved.get(product_id, 0) + quantity
+    return reserved
+
+
+def _validate_available_items(conn: DBConn, items: list, exclude_order_id: Optional[int] = None) -> None:
+    reserved = _fetch_reserved_stock(conn, exclude_order_id)
+    for product_id, quantity in consignments.normalize_items(items).items():
+        product = conn.execute("SELECT name, stock FROM products WHERE id = ?", (product_id,)).fetchone()
+        if product is None or int(product['stock'] or 0) - reserved.get(product_id, 0) < quantity:
+            label = product['name'] if product else str(product_id)
+            raise HTTPException(400, f"Sin stock disponible suficiente para {label}; revisa las reservas")
+
+
+def _assert_consignment_inventory(conn: DBConn) -> None:
+    invalid = conn.execute("""
+        SELECT p.name FROM consignment_items ci JOIN products p ON p.id = ci.product_id
+        GROUP BY p.id, p.name, p.stock, p.deleted_at, p.is_active
+        HAVING SUM(ci.delivered - ci.sold - ci.returned) > 0
+           AND (SUM(ci.delivered - ci.sold - ci.returned) > COALESCE(p.stock, 0)
+                OR p.deleted_at IS NOT NULL OR COALESCE(p.is_active, 1) = 0)
+    """).fetchone()
+    if invalid:
+        raise HTTPException(409, f"El cambio afecta unidades en consignacion de {invalid['name']}. Revisa las entregas pendientes")
 
 
 def _assert_bundle_components_valid(
@@ -3590,6 +3628,11 @@ def _sync_from_source() -> dict:
         return {"status": "ok", "skipped": True, "reason": "source=dest"}
     if not source.exists():
         raise FileNotFoundError(f"DB de origen no encontrada en {source}")
+    if dest.exists():
+        with sqlite3.connect(dest) as existing:
+            has_consignments = existing.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'consignments'").fetchone()
+            if has_consignments and existing.execute("SELECT 1 FROM consignments LIMIT 1").fetchone():
+                raise HTTPException(409, 'La base contiene consignaciones. No se puede reemplazar con una copia externa; usa sincronizacion por tablas')
     dest.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(source) as src, sqlite3.connect(dest) as dst:
         src.backup(dst)
@@ -4166,6 +4209,7 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _ensure_web_order_tables(conn)
             _ensure_accounting_tables(conn)
             _ensure_sellers_table(conn)
+            consignments.ensure_schema(conn)
             conn.commit()
             _RUNTIME_SCHEMA_READY = True
         finally:
@@ -4516,6 +4560,7 @@ def sync_products(
     conn = _connect()
     created = updated = skipped = 0
     try:
+        _lock_inventory(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_price_list_1 = _has_column(conn, "products", "price_list_1")
@@ -4633,6 +4678,7 @@ def sync_products(
                 elif has_is_active:
                     sql = f"UPDATE products SET is_active = 0 WHERE sku IN ({placeholders})"
                     conn.execute(sql, clean_skus)
+        _assert_consignment_inventory(conn)
         conn.commit()
     finally:
         conn.close()
@@ -4663,8 +4709,14 @@ def sync_backoffice_table(
     try:
         _ensure_syncable_tables(conn)
         if replace:
+            if table_name in {'products', 'customers', 'invoices', 'invoice_items'} and conn.execute('SELECT 1 FROM consignments LIMIT 1').fetchone():
+                raise HTTPException(409, 'No se puede reemplazar esta tabla mientras existe historial de consignaciones')
             conn.execute(f"DELETE FROM {table_name}")
+        if table_name == 'products':
+            _lock_inventory(conn)
         processed = _upsert_sync_rows(conn, table_name, rows)
+        if table_name == 'products':
+            _assert_consignment_inventory(conn)
         if finalize:
             _reset_sync_sequence(conn, table_name)
         if table_name in {
@@ -4841,7 +4893,7 @@ def list_products(
             conn,
             [int(row["id"]) for row in rows if bool(row["is_bundle"])],
         )
-        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
+        reserved_stock_by_product = _fetch_reserved_stock(conn)
     finally:
         conn.close()
 
@@ -4925,21 +4977,14 @@ def create_order(payload: OrderPayload) -> dict:
         raise HTTPException(status_code=400, detail="Falta el nombre del cliente")
     if not (payload.customer_phone or "").strip():
         raise HTTPException(status_code=400, detail="Falta el telefono del cliente")
-    if not DB_IS_POSTGRES and not _source_available():
-        raise HTTPException(status_code=503, detail="DB principal no disponible")
-    if DB_IS_POSTGRES:
-        conn = _connect()
-        target_db = None
-    else:
-        target_db = _write_db_path()
-        raw = sqlite3.connect(target_db, timeout=30)
-        _configure_sqlite_connection(raw)
-        conn = DBConn(raw, False)
+    # Use the same inventory database as the catalog and admin reservations.
+    conn = _connect()
     try:
         _ensure_web_order_tables(conn)
         _ensure_product_bundle_support(conn)
         _ensure_products_flash_offer_columns(conn)
         idempotency_key = payload.idempotency_key.strip()
+        _lock_inventory(conn)
         existing_order = conn.execute(
             "SELECT id, total FROM web_orders WHERE idempotency_key = ?",
             (idempotency_key,),
@@ -4949,7 +4994,7 @@ def create_order(payload: OrderPayload) -> dict:
                 "id": int(existing_order["id"] if isinstance(existing_order, dict) else existing_order[0]),
                 "total": float(existing_order["total"] if isinstance(existing_order, dict) else existing_order[1]),
             }
-        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
+        reserved_stock_by_product = _fetch_reserved_stock(conn)
         has_description = _has_column(conn, "products", "description")
         has_image_path = _has_column(conn, "products", "image_path")
         has_is_active = _has_column(conn, "products", "is_active")
@@ -5078,11 +5123,6 @@ def create_order(payload: OrderPayload) -> dict:
         conn.commit()
     finally:
         conn.close()
-    if not DB_IS_POSTGRES and target_db and target_db.resolve() != DB_PATH.resolve() and SOURCE_DB_PATH.exists():
-        try:
-            _sync_from_source()
-        except Exception:
-            pass
     _send_order_email_async(
         int(order_id),
         float(total),
@@ -5351,7 +5391,7 @@ def featured_products(limit: int = 6) -> list[dict]:
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
-        reserved_stock_by_product = _fetch_reserved_web_order_stock(conn)
+        reserved_stock_by_product = _fetch_reserved_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -5924,6 +5964,8 @@ def admin_list_products(
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
+        reserved_stock = _fetch_reserved_stock(conn)
+        consigned_stock = consignments.reserved_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
@@ -6043,6 +6085,9 @@ def admin_list_products(
                     ),
                     "cost": float(row["cost"] or 0),
                     "stock": _bundle_available_stock(bundle_items) if bool(row["is_bundle"]) else int(row["stock"] or 0),
+                    "consigned_stock": consigned_stock.get(product_id, 0),
+                    "reserved_stock": reserved_stock.get(product_id, 0),
+                    "available_stock": _bundle_available_stock(bundle_items, reserved_stock) if bool(row["is_bundle"]) else max(0, int(row["stock"] or 0) - reserved_stock.get(product_id, 0)),
                     "category_id": int(row["category_id"]) if row["category_id"] else None,
                     "is_active": bool(row["is_active"]) if has_is_active else True,
                     "is_featured": bool(row["is_featured"]),
@@ -6460,6 +6505,14 @@ def admin_update_product(
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
         _ensure_product_imeis_table(conn)
+        _lock_inventory(conn)
+        consigned = consignments.reserved_stock(conn).get(product_id, 0)
+        if consigned and (
+            ('stock' in payload and int(payload['stock']) < consigned)
+            or ('is_active' in payload and not payload['is_active'])
+            or payload.get('is_bundle')
+        ):
+            raise HTTPException(400, f'Hay {consigned} unidades en consignacion. Registra su venta o devolucion antes de reducir el stock o desactivar el producto')
         row = conn.execute(
             "SELECT id, name, category_id, COALESCE(is_bundle, 0) AS is_bundle FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
@@ -6600,6 +6653,9 @@ def admin_delete_product(
         if not row:
             raise HTTPException(status_code=404, detail="Producto no encontrado")
         
+        _lock_inventory(conn)
+        if consignments.reserved_stock(conn).get(product_id, 0):
+            raise HTTPException(400, 'No se puede eliminar un producto con consignaciones pendientes')
         conn.execute(
             "UPDATE products SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?",
             (product_id,),
@@ -8397,6 +8453,75 @@ def admin_cc_delete_customer(
         conn.close()
 
 
+@app.get("/admin/consignments")
+def admin_list_consignments(
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    q: str = "", customer_id: Optional[int] = None, pending_only: bool = True,
+    limit: int = Query(default=100, ge=1, le=200), offset: int = Query(default=0, ge=0),
+) -> list[dict]:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        return consignments.list_consignments(conn, q, customer_id, pending_only, limit, offset)
+    finally:
+        conn.close()
+
+
+@app.get("/admin/consignments/{consignment_id}")
+def admin_consignment_detail(
+    consignment_id: int, session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        return consignments.detail(conn, consignment_id)
+    finally:
+        conn.close()
+
+
+@app.post("/admin/consignments")
+def admin_create_consignment(
+    payload: dict = Body(...), session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _lock_inventory(conn)
+        quantities: dict[int, int] = {}
+        for product_id, quantity in consignments.normalize_items(payload.get('items')).items():
+            product = conn.execute("SELECT COALESCE(is_bundle, 0) AS is_bundle FROM products WHERE id = ?", (product_id,)).fetchone()
+            if product and product['is_bundle']:
+                components = _fetch_bundle_items_map(conn, [product_id]).get(product_id, [])
+                if not components:
+                    raise HTTPException(400, 'El combo no tiene componentes')
+                for component in components:
+                    component_id = int(component['product_id'])
+                    quantities[component_id] = quantities.get(component_id, 0) + quantity * int(component['quantity'])
+            else:
+                quantities[product_id] = quantities.get(product_id, 0) + quantity
+        result = consignments.create(conn, payload, quantities, _fetch_reserved_stock(conn))
+        conn.commit()
+        return result
+    finally:
+        conn.close()
+
+
+@app.post("/admin/consignments/{consignment_id}/returns")
+def admin_return_consignment(
+    consignment_id: int, payload: dict = Body(...),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _lock_inventory(conn)
+        result = consignments.return_items(conn, consignment_id, payload)
+        conn.commit()
+        return result
+    finally:
+        conn.close()
+
+
 @app.get("/admin/invoices")
 def admin_list_invoices(
     request: Request,
@@ -8425,11 +8550,12 @@ def admin_list_invoices(
                    i.price_list, i.due_date, i.notes, i.payment_method,
                    i.seller_id, i.commission_amount,
                    c.name AS customer_name, s.name AS seller_name,
-                   wo.id AS web_order_id
+                   wo.id AS web_order_id, cir.consignment_id
             FROM invoices i
             LEFT JOIN customers c ON c.id = i.customer_id
             LEFT JOIN sellers s ON s.id = i.seller_id
             LEFT JOIN web_orders wo ON wo.confirmed_invoice_id = i.id
+            LEFT JOIN consignment_invoice_requests cir ON cir.invoice_id = i.id
             {where}
             ORDER BY i.created_at DESC, i.id DESC
             LIMIT ?
@@ -8454,6 +8580,7 @@ def admin_list_invoices(
                 "seller_name": row["seller_name"],
                 "commission_amount": float(row["commission_amount"] or 0),
                 "web_order_id": int(row["web_order_id"]) if row["web_order_id"] is not None else None,
+                "consignment_id": int(row["consignment_id"]) if row["consignment_id"] is not None else None,
             }
             for row in rows
         ]
@@ -8480,6 +8607,11 @@ def admin_create_invoice(
     due_date = str(payload.get("due_date") or "").strip() or None
     notes = str(payload.get("notes") or "").strip() or None
     order_id = int(payload.get("order_id") or 0) or None
+    consignment_id = consignments.positive_int(payload['consignment_id'], 'Consignacion') if payload.get('consignment_id') else None
+    consignment_request_key = consignments.request_key(payload) if consignment_id else None
+    consignment_fingerprint = json.dumps(payload, sort_keys=True) if consignment_id else None
+    if consignment_id and (document_type != "FACTURA" or order_id):
+        raise HTTPException(400, "La consignacion solo se vincula a una venta, sin pedido web")
     created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
     seller_id = int(payload.get("seller_id") or 0) or None
     if seller_id is None and document_type != "PRESUPUESTO":
@@ -8494,6 +8626,16 @@ def admin_create_invoice(
         _ensure_product_imeis_table(conn)
         _ensure_invoice_item_imeis_table(conn)
         _ensure_sellers_table(conn)
+        _lock_inventory(conn)
+        if consignment_request_key:
+            previous = conn.execute('SELECT * FROM consignment_invoice_requests WHERE request_key = ?', (consignment_request_key,)).fetchone()
+            if previous:
+                if previous['fingerprint'] != consignment_fingerprint:
+                    raise HTTPException(409, 'La operacion ya fue utilizada con otros datos')
+                previous_invoice = conn.execute('SELECT id, total, document_type FROM invoices WHERE id = ?', (previous['invoice_id'],)).fetchone()
+                if not previous_invoice:
+                    raise HTTPException(409, 'Esta venta fue cancelada. Inicia un nuevo comprobante')
+                return dict(previous_invoice)
         if customer_id <= 0 and order_id and document_type in {"FACTURA", "PRESUPUESTO"}:
             web_order = conn.execute(
                 """
@@ -8600,7 +8742,7 @@ def admin_create_invoice(
             raise HTTPException(status_code=400, detail="Descuento especial invalido")
         for raw in items:
             product_id = int((raw or {}).get("product_id") or 0)
-            quantity = int((raw or {}).get("quantity") or 0)
+            quantity = consignments.positive_int((raw or {}).get('quantity')) if consignment_id else int((raw or {}).get("quantity") or 0)
             unit_price_payload = (raw or {}).get("unit_price")
             if product_id <= 0 or quantity <= 0:
                 raise HTTPException(status_code=400, detail="Items invalidos")
@@ -8661,6 +8803,13 @@ def admin_create_invoice(
                         "imeis": item_imeis,
                     }
                 )
+
+        consignment_quantities = None
+        if document_type == "FACTURA":
+            if consignment_id:
+                consignment_quantities = consignments.validate_sale(conn, consignment_id, customer_id, normalized_items)
+            else:
+                _validate_available_items(conn, normalized_items, order_id)
 
         includes_cellphones = any(
             _product_requires_imei(conn, item.get("category_id"), item.get("product_name") or item.get("name"))
@@ -8817,6 +8966,11 @@ def admin_create_invoice(
                     """,
                     [item["product_id"], *item["imeis"]],
                 )
+
+        if consignment_id and consignment_quantities:
+            consignments.record_sale(conn, consignment_id, invoice_id, consignment_quantities)
+            conn.execute('INSERT INTO consignment_invoice_requests (request_key, fingerprint, consignment_id, invoice_id) VALUES (?, ?, ?, ?)',
+                         (consignment_request_key, consignment_fingerprint, consignment_id, invoice_id))
 
         if creates_cc_movement and sale_mode == "CUENTA_CORRIENTE":
             conn.execute(
@@ -9121,6 +9275,7 @@ def admin_confirm_invoice(
     try:
         _ensure_syncable_tables(conn)
         _ensure_invoice_payment_method_column(conn)
+        _lock_inventory(conn)
         invoice = conn.execute(
             """
             SELECT id, customer_id, total, created_at, document_type, sale_mode, payment_method, seller_id
@@ -9158,6 +9313,9 @@ def admin_confirm_invoice(
                 raise HTTPException(status_code=400, detail="El presupuesto tiene items invalidos")
             if current_stock < quantity:
                 raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product_name}")
+
+        linked_order = conn.execute("SELECT id FROM web_orders WHERE confirmed_invoice_id = ?", (invoice_id,)).fetchone()
+        _validate_available_items(conn, [dict(item) for item in items], int(linked_order['id']) if linked_order else None)
 
         confirmation_created_at = datetime.utcnow().isoformat()
         sale_mode = str(invoice["sale_mode"] or "").strip().upper() or "CONTADO"
@@ -9252,6 +9410,7 @@ def admin_delete_invoice(
         _ensure_invoice_payment_method_column(conn)
         _ensure_product_imeis_table(conn)
         _ensure_invoice_item_imeis_table(conn)
+        _lock_inventory(conn)
         invoice = conn.execute(
             """
             SELECT id, customer_id, total, document_type, sale_mode
@@ -9375,6 +9534,8 @@ def admin_delete_invoice(
                         edited_by="ADMIN_DELETE_INVOICE",
                     )
         
+        consignments.reverse_sale(conn, invoice_id)
+        _assert_consignment_inventory(conn)
         conn.execute("DELETE FROM invoice_item_imeis WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
         conn.execute("DELETE FROM invoices WHERE id = ?", (invoice_id,))

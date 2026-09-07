@@ -3,6 +3,7 @@ export type AdminModuleId =
   | 'productos'
   | 'pedidos'
   | 'clientes'
+  | 'consignaciones'
   | 'vendedores'
   | 'gastos'
   | 'generar-comprobante'
@@ -48,6 +49,13 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/admin/clientes',
     navLabel: 'Clientes',
     dashboardLabel: 'Clientes y cuenta corriente operativa',
+  },
+  {
+    id: 'consignaciones',
+    title: 'Consignaciones',
+    href: '/admin/consignaciones',
+    navLabel: 'Consignaciones',
+    dashboardLabel: 'Mercaderia reservada por cliente, ventas y devoluciones',
   },
   {
     id: 'vendedores',
