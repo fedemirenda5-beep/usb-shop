@@ -191,7 +191,7 @@ export default function ClientesPage() {
   const loadCustomers = async (query = '', signal?: AbortSignal) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ limit: '300' });
+      const params = new URLSearchParams({ limit: '300', summary: 'true' });
       if (query.trim()) params.set('q', query.trim());
       if (sellerFilter !== 'all') params.set('seller_id', sellerFilter);
       if (zoneFilter !== 'all') params.set('zone', zoneFilter);
@@ -204,7 +204,9 @@ export default function ClientesPage() {
         },
       });
       if (signal?.aborted) return;
-      const items = Array.isArray(data) ? (data as Customer[]) : [];
+      const items = Array.isArray(data)
+        ? (data as Customer[]).map((customer) => ({ ...customer, balance: 0, invoice_count: 0 }))
+        : [];
       setCustomers(items);
       if (!selectedCustomerId && items.length > 0) setSelectedCustomerId(items[0].id);
       if (selectedCustomerId && !items.some((item) => item.id === selectedCustomerId)) {
@@ -840,8 +842,6 @@ export default function ClientesPage() {
                   <th className={styles.colVendedor}>Vendedor</th>
                   <th className={styles.colZona}>Zona</th>
                   <th className={styles.colCuit}>CUIT / DNI</th>
-                  <th className={styles.colComprobantes}>Comprobantes</th>
-                  <th className={styles.colSaldo}>Saldo</th>
                   <th className={styles.colAcciones}>Acciones</th>
                 </tr>
               </thead>
@@ -871,10 +871,6 @@ export default function ClientesPage() {
                     </td>
                     <td className={`${styles.colZona} ${styles.truncateCell}`}>{customer.zone || '-'}</td>
                     <td className={`${styles.colCuit} ${styles.truncateCell}`}>{customer.cuit || '-'}</td>
-                    <td className={styles.colComprobantes}>{customer.invoice_count}</td>
-                    <td className={`${styles.colSaldo} ${customer.balance > 0 ? styles.debt : styles.credit}`}>
-                      {formatCurrency(customer.balance)}
-                    </td>
                     <td className={styles.colAcciones}>
                       <div className={styles.rowActions}>
                         <button
@@ -1139,8 +1135,8 @@ export default function ClientesPage() {
             <div className={styles.panel}>
               <div className={styles.panelHeader}>
                 <div>
-                  <h3>Comprobantes recientes</h3>
-                  <p>Historial real tomado de `invoices`.</p>
+                  <h3>Historial completo de comprobantes</h3>
+                  <p>Se consulta únicamente al abrir este cliente.</p>
                 </div>
               </div>
               <div className={styles.documentList}>

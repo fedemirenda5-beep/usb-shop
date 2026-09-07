@@ -189,6 +189,14 @@ class ConsignmentTests(unittest.TestCase):
         main._ensure_runtime_schema(force=True)
         self.assertEqual(self.stock(), (10, 6))
 
+    def test_customer_detail_loads_complete_history_on_demand(self):
+        first = self.invoice(quantity=1)
+        second = self.invoice(quantity=1)
+        detail = main.admin_backoffice_customer_detail(1, None, None)
+        self.assertTrue(detail['accountHistory'])
+        self.assertEqual([row['id'] for row in detail['documents']], [second['id'], first['id']])
+        self.assertIn('movements', detail)
+
 
 if __name__ == '__main__':
     import sys
