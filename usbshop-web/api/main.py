@@ -8525,6 +8525,7 @@ def admin_list_invoices(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     limit: int = 200,
     customer_id: Optional[int] = None,
+    q: Optional[str] = None,
 ) -> list[dict]:
     _require_admin(session_token)
     conn = _connect()
@@ -8537,10 +8538,24 @@ def admin_list_invoices(
         _ensure_products_cost_column(conn)
         _ensure_sellers_table(conn)
         params: list[Any] = []
-        where = ""
+        conditions: list[str] = []
         if customer_id:
-            where = "WHERE i.customer_id = ?"
+            conditions.append("i.customer_id = ?")
             params.append(int(customer_id))
+        query_text = str(q or "").strip().lower()
+        if query_text:
+            like = f"%{query_text}%"
+            conditions.append(
+                "(LOWER(COALESCE(c.name, '')) LIKE ? OR "
+                "LOWER(COALESCE(i.document_type, '')) LIKE ? OR "
+                "LOWER(COALESCE(i.notes, '')) LIKE ? OR "
+                "CAST(i.id AS TEXT) LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        limit_clause = "" if query_text or customer_id else "LIMIT ?"
+        if limit_clause:
+            params.append(min(1000, max(1, limit)))
         rows = conn.execute(
             f"""
             SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.document_type, i.sale_mode,
@@ -8555,9 +8570,9 @@ def admin_list_invoices(
             LEFT JOIN consignment_invoice_requests cir ON cir.invoice_id = i.id
             {where}
             ORDER BY i.created_at DESC, i.id DESC
-            LIMIT ?
+            {limit_clause}
             """,
-            params + [limit],
+            params,
         ).fetchall()
         return [
             {

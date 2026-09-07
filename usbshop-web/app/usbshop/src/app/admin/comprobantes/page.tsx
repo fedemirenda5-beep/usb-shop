@@ -228,10 +228,13 @@ export default function ComprobantesPage() {
     return payload;
   }
 
-  async function loadInvoices() {
-    const res = await fetchApiResponse(`/admin/invoices?limit=${ADMIN_LIMITS.invoicesList}`);
+  async function loadInvoices(query = '', signal?: AbortSignal) {
+    const params = new URLSearchParams({ limit: String(ADMIN_LIMITS.invoicesList) });
+    if (query.trim()) params.set('q', query.trim());
+    const res = await fetchApiResponse(`/admin/invoices?${params.toString()}`, { signal });
     if (!res.ok) throw new Error('No se pudieron cargar los comprobantes');
     const data = await res.json();
+    if (signal?.aborted) return;
     setItems(data);
     if (data.length > 0) setSelectedId((current: number | null) => current ?? data[0].id);
   }
@@ -246,16 +249,34 @@ export default function ComprobantesPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        setLoading(true);
-        await Promise.all([loadInvoices(), loadSellerOptions()]);
+        await loadSellerOptions();
       } catch (err) {
         setError(getFriendlyApiError(err, 'Error cargando comprobantes'));
-      } finally {
-        setLoading(false);
       }
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError('');
+        await loadInvoices(search, controller.signal);
+      } catch (err) {
+        if (active && !controller.signal.aborted) setError(getFriendlyApiError(err, 'Error cargando comprobantes'));
+      } finally {
+        if (active) setLoading(false);
+      }
+    }, search.trim() ? 300 : 0);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [search]);
 
   useEffect(() => {
     const rawInvoiceId = searchParams.get('invoice') || searchParams.get('created');
@@ -348,7 +369,7 @@ export default function ComprobantesPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'No se pudo cancelar el comprobante');
       setPendingDeleteInvoice(null);
-      await loadInvoices();
+      await loadInvoices(search);
       if (selectedId === invoice.id) {
         setSelectedId(null);
         setDetail(null);
