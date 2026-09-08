@@ -1,6 +1,6 @@
 "use client";
 
-import { getOrderAttemptKey } from "@/lib/orderAttempt";
+import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { useMemo, useRef, useState } from "react";
 import { createOrderIdempotencyKey, getApiBaseUrl, submitOrder } from "@/lib/api";
 import type { CartItem } from "@/lib/cart";
@@ -107,6 +107,7 @@ export default function CartCheckout({
       );
 
       onClearCart();
+      clearOrderAttemptKey();
       setOrderName("");
       setOrderPhone("");
       setOrderEmail("");

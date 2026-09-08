@@ -3,6 +3,15 @@ const RETRY_WINDOW_MS = 15 * 60 * 1000;
 type Attempt = { fingerprint: string; key: string; createdAt: number };
 let memoryAttempt: Attempt | null = null;
 
+export function clearOrderAttemptKey(): void {
+  memoryAttempt = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage can be unavailable during private browsing or restricted modes.
+  }
+}
+
 // Shared by both checkouts and retained after a lost response or navigation.
 export function getOrderAttemptKey(fingerprint: string, createKey: () => string): string {
   let attempt = memoryAttempt;

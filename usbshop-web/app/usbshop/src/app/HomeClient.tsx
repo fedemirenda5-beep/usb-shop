@@ -1,6 +1,6 @@
 "use client";
 
-import { getOrderAttemptKey } from "@/lib/orderAttempt";
+import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductCard from "@/components/ProductCard";
@@ -1637,6 +1637,7 @@ export default function HomeClient({
         }
       );
       setCart({});
+      clearOrderAttemptKey();
       setOrderName("");
       setOrderPhone("");
       setOrderEmail("");
