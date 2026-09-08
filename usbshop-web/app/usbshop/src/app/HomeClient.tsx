@@ -1411,32 +1411,39 @@ export default function HomeClient({
 
   const weeklyOffers = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
+    const getSalesBoostScore = (product: Product) => {
+      let score = 0;
+      if (product.isRecommended) score += 100;
+      if (product.isFeatured) score += 70;
+      if (getFlashOfferTimeLeft(product) > 0) score += 35;
+      if (hasDiscountedPrice(product)) score += 20;
+      if (product.isOffer) score += 15;
+      return score;
+    };
+
     const offers = source
-      .filter((product) => {
-        if ((product.stock ?? 0) <= 0) {
-          return false;
-        }
-        return product.isOffer || hasDiscountedPrice(product) || getFlashOfferTimeLeft(product) > 0;
-      })
+      .filter((product) => (product.stock ?? 0) > 0)
       .sort((a, b) => {
+        const salesBoostDelta = getSalesBoostScore(b) - getSalesBoostScore(a);
+        if (salesBoostDelta !== 0) {
+          return salesBoostDelta;
+        }
+
         const flashDelta = Number(getFlashOfferTimeLeft(b) > 0) - Number(getFlashOfferTimeLeft(a) > 0);
         if (flashDelta !== 0) {
           return flashDelta;
         }
+
         const discountA = Math.max(0, Number(a.originalPrice || 0) - Number(a.price || 0));
         const discountB = Math.max(0, Number(b.originalPrice || 0) - Number(b.price || 0));
         if (discountB !== discountA) {
           return discountB - discountA;
         }
+
         return compareByNewest(a, b);
       });
-    if (offers.length > 0) {
-      return offers.slice(0, HOME_SECTION_CARD_LIMIT);
-    }
-    return [...source]
-      .filter((product) => (product.stock ?? 0) > 0)
-      .sort((a, b) => (a.price ?? 0) - (b.price ?? 0))
-      .slice(0, HOME_SECTION_CARD_LIMIT);
+
+    return offers.slice(0, HOME_SECTION_CARD_LIMIT);
   }, [products, featuredSource]);
 
   const discountedProducts = useMemo(() => {
@@ -2027,7 +2034,7 @@ export default function HomeClient({
         <div className="section-header">
           <div>
             <p className="section-kicker">Ofertas</p>
-            <h2 className="section-title">Ofertas para aprovechar ahora</h2>
+            <h2 className="section-title">Lo más vendido para aprovechar ahora</h2>
           </div>
           <a className="button button--ghost" href="#catalogo">
             Ver mas productos
