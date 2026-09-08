@@ -2976,9 +2976,12 @@ input.button {
   background: rgba(255, 255, 255, 0.9);
   font-size: 16px;
   cursor: pointer;
+  z-index: 10;
 }
 
 .modal-media {
+  position: relative;
+  z-index: 0;
   border-radius: 18px;
   background: linear-gradient(135deg, rgba(155, 248, 59, 0.15), rgba(124, 58, 237, 0.25));
   border: 1px solid rgba(124, 58, 237, 0.2);
