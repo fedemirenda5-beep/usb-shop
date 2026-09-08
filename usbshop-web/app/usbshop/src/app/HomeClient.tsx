@@ -1063,12 +1063,6 @@ export default function HomeClient({
     [cartItems]
   );
 
-  useEffect(() => {
-    if (totalItems > 0) {
-      setIsCartOpen(true);
-    }
-  }, [totalItems]);
-
   const orderedCategories = useMemo(() => {
     if (!categoriesLoaded) {
       return fallbackCategories;
@@ -1466,6 +1460,9 @@ export default function HomeClient({
         return prev;
       }
       setCartNotice(`${product.name} agregado al carrito.`);
+      if (isMobileLayout) {
+        setIsCartOpen(false);
+      }
       if (cartNoticeTimer.current) {
         window.clearTimeout(cartNoticeTimer.current);
       }
@@ -2228,9 +2225,24 @@ export default function HomeClient({
             <span>{totalItems} {totalItems === 1 ? "producto" : "productos"}</span>
             <strong>${total.toLocaleString("es-AR")}</strong>
           </div>
-          <button type="button" className="button button--lime" onClick={handleOpenCart}>
-            Ver carrito
-          </button>
+          <div className="cart-bar-actions">
+            <button
+              type="button"
+              className="button button--ghost button--compact"
+              onClick={() => {
+                setIsCartOpen(false);
+                const target = document.getElementById("catalogo") || document.getElementById("featured-grid") || window.document.body;
+                if (target && typeof target.scrollIntoView === "function") {
+                  target.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }}
+            >
+              Seguir comprando
+            </button>
+            <button type="button" className="button button--lime" onClick={handleOpenCart}>
+              Ver carrito
+            </button>
+          </div>
         </div>
       ) : null}
 

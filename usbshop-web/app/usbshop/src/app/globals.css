@@ -2861,6 +2861,13 @@ input.button {
   gap: 12px;
 }
 
+.cart-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
 .cart-bar-info {
   display: grid;
   gap: 2px;
