@@ -103,14 +103,13 @@ a:focus-visible {
 }
 
 .page-logo img {
-  width: min(1200px, 96vw);
-  max-height: 110px;
+  width: min(1320px, 98vw);
+  max-height: 132px;
   height: auto;
   object-fit: contain;
   filter:
-    drop-shadow(0 24px 60px rgba(155, 248, 59, 0.55))
-    drop-shadow(0 0 70px rgba(124, 58, 237, 0.75))
-    drop-shadow(0 0 18px rgba(155, 248, 59, 0.6));
+    drop-shadow(0 18px 42px rgba(155, 248, 59, 0.42))
+    drop-shadow(0 0 42px rgba(91, 61, 245, 0.4));
   position: relative;
   z-index: 1;
 }
@@ -125,30 +124,32 @@ a:focus-visible {
 }
 
 .wordmark-title {
-  font-family: var(--font-head);
-  font-size: clamp(32px, 4.6vw, 52px);
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-family: "Montserrat", "Segoe UI", sans-serif;
+  font-size: clamp(28px, 3.8vw, 44px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #5b21b6;
-  text-shadow: 0 6px 18px rgba(109, 40, 217, 0.35), 0 0 12px rgba(132, 204, 22, 0.25);
+  color: #1d1b3a;
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.7), 0 8px 18px rgba(91, 61, 245, 0.08);
+  line-height: 0.95;
 }
 
 .wordmark-sub {
-  font-size: 12px;
-  letter-spacing: 0.22em;
+  font-size: 11px;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
-  color: rgba(76, 29, 149, 0.75);
+  color: rgba(76, 29, 149, 0.7);
+  font-weight: 700;
 }
 
 .wordmark-title::after {
   content: "";
   display: block;
-  width: 86px;
+  width: 88px;
   height: 4px;
-  margin-top: 6px;
+  margin-top: 8px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--lime), rgba(132, 204, 22, 0.35));
+  background: linear-gradient(90deg, rgba(147, 216, 45, 0.9), rgba(91, 61, 245, 0.5));
 }
 
 .logo-icon {
