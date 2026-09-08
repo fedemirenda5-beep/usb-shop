@@ -4969,6 +4969,41 @@ def list_categories() -> list[dict]:
     ]
 
 
+def _find_recent_identical_order(conn: DBConn, payload: OrderPayload):
+    # Runs under the inventory lock so simultaneous retries cannot both insert.
+    # Ignore browser prices: the server calculates them, and they can change
+    # between a successful write and a retry whose response was lost.
+    cutoff = "CURRENT_TIMESTAMP - INTERVAL '15 minutes'" if DB_IS_POSTGRES else "datetime('now', '-15 minutes')"
+    candidates = conn.execute(
+        f"""SELECT id, total, customer_name, customer_phone, customer_email, notes
+            FROM web_orders WHERE status <> 'CANCELLED' AND created_at >= {cutoff}
+            ORDER BY id DESC"""
+    ).fetchall()
+
+    def identity(name, phone, email, notes):
+        return (
+            " ".join((name or "").split()).casefold(),
+            re.sub(r"[\s()+.\-]", "", phone or ""),
+            (email or "").strip().casefold(),
+            (notes or "").strip(),
+        )
+
+    customer = identity(payload.customer_name, payload.customer_phone, payload.customer_email, payload.notes)
+    quantities = {}
+    for item in payload.items:
+        quantities[item.product_id] = quantities.get(item.product_id, 0) + item.quantity
+    for row in candidates:
+        if identity(row["customer_name"], row["customer_phone"], row["customer_email"], row["notes"]) != customer:
+            continue
+        stored_items = conn.execute(
+            "SELECT product_id, SUM(quantity) AS quantity FROM web_order_items WHERE order_id = ? GROUP BY product_id",
+            (row["id"],),
+        ).fetchall()
+        if {int(item["product_id"]): int(item["quantity"]) for item in stored_items} == quantities:
+            return row
+    return None
+
+
 @app.post("/orders")
 def create_order(payload: OrderPayload) -> dict:
     if not payload.items:
@@ -4989,6 +5024,8 @@ def create_order(payload: OrderPayload) -> dict:
             "SELECT id, total FROM web_orders WHERE idempotency_key = ?",
             (idempotency_key,),
         ).fetchone()
+        if existing_order is None:
+            existing_order = _find_recent_identical_order(conn, payload)
         if existing_order is not None:
             return {
                 "id": int(existing_order["id"] if isinstance(existing_order, dict) else existing_order[0]),
@@ -5123,17 +5160,20 @@ def create_order(payload: OrderPayload) -> dict:
         conn.commit()
     finally:
         conn.close()
-    _send_order_email_async(
-        int(order_id),
-        float(total),
-        {
-            "name": customer_name,
-            "phone": customer_phone,
-            "email": customer_email,
-            "notes": notes,
-        },
-        items_details,
-    )
+    try:
+        _send_order_email_async(
+            int(order_id),
+            float(total),
+            {
+                "name": customer_name,
+                "phone": customer_phone,
+                "email": customer_email,
+                "notes": notes,
+            },
+            items_details,
+        )
+    except Exception:
+        LOGGER.exception("Pedido %s guardado; no se pudo iniciar su notificacion", order_id)
     return {"id": int(order_id), "total": float(total)}
 
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { getOrderAttemptKey } from "@/lib/orderAttempt";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductCard from "@/components/ProductCard";
@@ -408,7 +409,6 @@ export default function HomeClient({
   const isFetchingMoreRef = useRef(false);
   const hasMoreProductsRef = useRef(true);
   const checkoutSubmittingRef = useRef(false);
-  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const quickViewHistoryActiveRef = useRef(false);
   const quickViewClosingFromHistoryRef = useRef(false);
   const [orderName, setOrderName] = useState("");
@@ -1602,19 +1602,14 @@ export default function HomeClient({
         return;
       }
       const checkoutFingerprint = JSON.stringify({
-        items: cartItems.map((item) => [item.product.id, item.qty]),
+        items: cartItems.map((item) => [item.product.id, item.qty]).sort((a, b) => a[0] - b[0]),
         name: orderName.trim(),
         phone: orderPhone.trim(),
         email: orderEmail.trim(),
         notes: orderNotes.trim(),
       });
-      const currentAttempt = checkoutAttemptRef.current;
-      const idempotencyKey =
-        currentAttempt?.fingerprint === checkoutFingerprint
-          ? currentAttempt.key
-          : createOrderIdempotencyKey();
-      checkoutAttemptRef.current = { fingerprint: checkoutFingerprint, key: idempotencyKey };
-      await submitOrder(
+      const idempotencyKey = getOrderAttemptKey(checkoutFingerprint, createOrderIdempotencyKey);
+      const data = await submitOrder(
         {
           items: cartItems.map((item) => ({
             product_id: item.product.id,
@@ -1632,18 +1627,16 @@ export default function HomeClient({
           timeoutMs: STOREFRONT_FETCH_TIMEOUT_MS,
         }
       );
-      await refreshCartProducts();
-      checkoutAttemptRef.current = null;
       setCart({});
       setOrderName("");
       setOrderPhone("");
       setOrderEmail("");
       setOrderNotes("");
       setOrderStatus("success");
-        const firstName = orderName.trim().split(/\s+/)[0] || orderName.trim();
-        setOrderMessage(
-          `Gracias ${firstName} por confiar en Usb-Shop. Tu pedido tiene prioridad para el envio.`
-        );
+      const firstName = orderName.trim().split(/\s+/)[0] || orderName.trim();
+      setOrderMessage(
+        `Gracias ${firstName}. Tu pedido #${data.id} quedo guardado y tiene prioridad para el envio.`
+      );
     } catch (error) {
       setOrderStatus("error");
       setOrderMessage(
