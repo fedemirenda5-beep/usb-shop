@@ -208,50 +208,57 @@ export default function CartCheckout({
           void handleCheckout();
         }}
       >
-        <label className="sr-only" htmlFor="usbshop-order-name">
-          Nombre y apellido
-        </label>
-        <input
-          id="usbshop-order-name"
-          type="text"
-          autoComplete="name"
-          placeholder="Nombre y apellido"
-          value={orderName}
-          onChange={(event) => setOrderName(event.target.value)}
-        />
-        <label className="sr-only" htmlFor="usbshop-order-phone">
-          Telefono
-        </label>
-        <input
-          id="usbshop-order-phone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          placeholder="Telefono"
-          value={orderPhone}
-          onChange={(event) => setOrderPhone(event.target.value)}
-        />
-        <label className="sr-only" htmlFor="usbshop-order-email">
-          Email
-        </label>
-        <input
-          id="usbshop-order-email"
-          type="email"
-          autoComplete="email"
-          placeholder="Email (opcional)"
-          value={orderEmail}
-          onChange={(event) => setOrderEmail(event.target.value)}
-        />
-        <label className="sr-only" htmlFor="usbshop-order-notes">
-          Notas (opcional)
-        </label>
-        <textarea
-          id="usbshop-order-notes"
-          placeholder="Notas (opcional)"
-          value={orderNotes}
-          onChange={(event) => setOrderNotes(event.target.value)}
-          rows={2}
-        />
+        <div className="cart-form-hint">Solo pedimos estos datos para confirmar tu pedido.</div>
+
+        <div className="cart-field">
+          <label htmlFor="usbshop-order-name">Nombre y apellido <span>*</span></label>
+          <input
+            id="usbshop-order-name"
+            type="text"
+            autoComplete="name"
+            placeholder="Ingresá tu nombre completo"
+            value={orderName}
+            onChange={(event) => setOrderName(event.target.value)}
+            required
+          />
+        </div>
+
+        <div className="cart-field">
+          <label htmlFor="usbshop-order-phone">Telefono <span>*</span></label>
+          <input
+            id="usbshop-order-phone"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="Tu numero para coordinar envio"
+            value={orderPhone}
+            onChange={(event) => setOrderPhone(event.target.value)}
+            required
+          />
+        </div>
+
+        <div className="cart-field">
+          <label htmlFor="usbshop-order-email">Email</label>
+          <input
+            id="usbshop-order-email"
+            type="email"
+            autoComplete="email"
+            placeholder="mail@ejemplo.com (opcional)"
+            value={orderEmail}
+            onChange={(event) => setOrderEmail(event.target.value)}
+          />
+        </div>
+
+        <div className="cart-field">
+          <label htmlFor="usbshop-order-notes">Notas (opcional)</label>
+          <textarea
+            id="usbshop-order-notes"
+            placeholder="Indicá horario, dirección, o cualquier detalle importante"
+            value={orderNotes}
+            onChange={(event) => setOrderNotes(event.target.value)}
+            rows={2}
+          />
+        </div>
 
         {orderMessage ? (
           <div

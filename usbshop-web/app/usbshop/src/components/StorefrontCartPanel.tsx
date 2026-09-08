@@ -150,30 +150,53 @@ export default function StorefrontCartPanel({
           ) : null}
 
           <div className="cart-form">
-            <input
-              type="text"
-              placeholder="Nombre y apellido"
-              value={orderName}
-              onChange={(event) => onOrderNameChange(event.target.value)}
-            />
-            <input
-              type="tel"
-              placeholder="Telefono"
-              value={orderPhone}
-              onChange={(event) => onOrderPhoneChange(event.target.value)}
-            />
-            <input
-              type="email"
-              placeholder="Email (opcional)"
-              value={orderEmail}
-              onChange={(event) => onOrderEmailChange(event.target.value)}
-            />
-            <textarea
-              placeholder="Notas (opcional)"
-              value={orderNotes}
-              onChange={(event) => onOrderNotesChange(event.target.value)}
-              rows={2}
-            />
+            <div className="cart-form-hint">Solo te pedimos estos datos para confirmar tu pedido.</div>
+
+            <div className="cart-field">
+              <label htmlFor="storefront-order-name">Nombre y apellido <span>*</span></label>
+              <input
+                id="storefront-order-name"
+                type="text"
+                placeholder="Ingresá tu nombre completo"
+                value={orderName}
+                onChange={(event) => onOrderNameChange(event.target.value)}
+                required
+              />
+            </div>
+
+            <div className="cart-field">
+              <label htmlFor="storefront-order-phone">Telefono <span>*</span></label>
+              <input
+                id="storefront-order-phone"
+                type="tel"
+                placeholder="Tu numero para coordinar envio"
+                value={orderPhone}
+                onChange={(event) => onOrderPhoneChange(event.target.value)}
+                required
+              />
+            </div>
+
+            <div className="cart-field">
+              <label htmlFor="storefront-order-email">Email</label>
+              <input
+                id="storefront-order-email"
+                type="email"
+                placeholder="mail@ejemplo.com (opcional)"
+                value={orderEmail}
+                onChange={(event) => onOrderEmailChange(event.target.value)}
+              />
+            </div>
+
+            <div className="cart-field">
+              <label htmlFor="storefront-order-notes">Notas (opcional)</label>
+              <textarea
+                id="storefront-order-notes"
+                placeholder="Indicá horario, dirección, o cualquier detalle importante"
+                value={orderNotes}
+                onChange={(event) => onOrderNotesChange(event.target.value)}
+                rows={2}
+              />
+            </div>
           </div>
 
           <div className="cart-total">
