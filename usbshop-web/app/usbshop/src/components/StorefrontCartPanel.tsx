@@ -127,6 +127,16 @@ export default function StorefrontCartPanel({
 
       {cartItems.length > 0 ? (
         <>
+          <div className="cart-stepper" aria-label="Paso del carrito">
+            <span className={`cart-step ${!showCheckoutForm ? "is-active" : ""}`}>
+              Resumen
+            </span>
+            <span className="cart-step-divider" aria-hidden="true" />
+            <span className={`cart-step ${showCheckoutForm ? "is-active" : ""}`}>
+              Datos
+            </span>
+          </div>
+
           <div className="cart-list">
             {cartItems.map((item) => (
               <div key={item.product.id} className="cart-item">
