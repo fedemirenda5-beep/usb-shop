@@ -411,6 +411,7 @@ export default function HomeClient({
   const checkoutSubmittingRef = useRef(false);
   const quickViewHistoryActiveRef = useRef(false);
   const quickViewClosingFromHistoryRef = useRef(false);
+  const cartHistoryActiveRef = useRef(false);
   const [orderName, setOrderName] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
@@ -537,6 +538,17 @@ export default function HomeClient({
     const cartSection = document.getElementById("carrito");
     if (cartSection) {
       cartSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const handleContinueShopping = () => {
+    setIsCartOpen(false);
+    const catalogTarget =
+      document.getElementById("catalogo") ||
+      document.getElementById("featured-grid") ||
+      document.getElementById("carrito");
+    if (catalogTarget && typeof catalogTarget.scrollIntoView === "function") {
+      catalogTarget.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -1011,6 +1023,71 @@ export default function HomeClient({
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isMobileLayout) {
+      return;
+    }
+
+    const handlePopState = () => {
+      const currentState =
+        window.history.state && typeof window.history.state === "object"
+          ? (window.history.state as Record<string, unknown>)
+          : {};
+
+      if (currentState.usbshopCartOpen === true) {
+        cartHistoryActiveRef.current = true;
+        setIsCartOpen(true);
+        return;
+      }
+
+      if (!cartHistoryActiveRef.current) {
+        return;
+      }
+
+      cartHistoryActiveRef.current = false;
+      setIsCartOpen(false);
+      window.history.pushState(
+        {
+          ...currentState,
+          usbshopCartOpen: false,
+        },
+        "",
+        window.location.href
+      );
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isMobileLayout) {
+      return;
+    }
+
+    if (!isCartOpen) {
+      if (cartHistoryActiveRef.current) {
+        cartHistoryActiveRef.current = false;
+      }
+      return;
+    }
+
+    const nextState = {
+      ...(window.history.state && typeof window.history.state === "object"
+        ? (window.history.state as Record<string, unknown>)
+        : {}),
+      usbshopCartOpen: true,
+    };
+
+    if (cartHistoryActiveRef.current) {
+      window.history.replaceState(nextState, "", window.location.href);
+      return;
+    }
+
+    cartHistoryActiveRef.current = true;
+    window.history.pushState(nextState, "", window.location.href);
+  }, [isCartOpen, isMobileLayout]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2133,6 +2210,7 @@ export default function HomeClient({
                 onOrderNotesChange={setOrderNotes}
                 onUpdateQty={updateQty}
                 onRemoveItem={removeItem}
+                onContinueShopping={handleContinueShopping}
                 onCheckout={handleCheckout}
               />
             </aside>
@@ -2213,6 +2291,7 @@ export default function HomeClient({
               onOrderNotesChange={setOrderNotes}
               onUpdateQty={updateQty}
               onRemoveItem={removeItem}
+              onContinueShopping={handleContinueShopping}
               onCheckout={handleCheckout}
             />
           </div>
@@ -2225,24 +2304,9 @@ export default function HomeClient({
             <span>{totalItems} {totalItems === 1 ? "producto" : "productos"}</span>
             <strong>${total.toLocaleString("es-AR")}</strong>
           </div>
-          <div className="cart-bar-actions">
-            <button
-              type="button"
-              className="button button--ghost button--compact"
-              onClick={() => {
-                setIsCartOpen(false);
-                const target = document.getElementById("catalogo") || document.getElementById("featured-grid") || window.document.body;
-                if (target && typeof target.scrollIntoView === "function") {
-                  target.scrollIntoView({ behavior: "smooth", block: "start" });
-                }
-              }}
-            >
-              Seguir comprando
-            </button>
-            <button type="button" className="button button--lime" onClick={handleOpenCart}>
-              Ver carrito
-            </button>
-          </div>
+          <button type="button" className="button button--lime" onClick={handleOpenCart}>
+            Ver carrito
+          </button>
         </div>
       ) : null}
 

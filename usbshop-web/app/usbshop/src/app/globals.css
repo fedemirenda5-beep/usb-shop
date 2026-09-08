@@ -2686,6 +2686,13 @@ input.button {
   justify-self: end;
 }
 
+.cart-panel-footer {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
 .cart-header {
   display: flex;
   align-items: center;

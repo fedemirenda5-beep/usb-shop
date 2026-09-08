@@ -32,6 +32,7 @@ type StorefrontCartPanelProps = {
   onOrderNotesChange: (value: string) => void;
   onUpdateQty: (id: number, delta: number) => void;
   onRemoveItem: (id: number) => void;
+  onContinueShopping: () => void;
   onCheckout: () => void;
 };
 
@@ -54,6 +55,7 @@ export default function StorefrontCartPanel({
   onOrderNotesChange,
   onUpdateQty,
   onRemoveItem,
+  onContinueShopping,
   onCheckout,
 }: StorefrontCartPanelProps) {
   return (
@@ -210,13 +212,22 @@ export default function StorefrontCartPanel({
                   "es-AR"
                 )} para envio gratis.`}
           </div>
-          <button
-            className="button button--lime"
-            onClick={onCheckout}
-            disabled={orderStatus === "submitting"}
-          >
-            {orderStatus === "submitting" ? "Enviando..." : "Confirmar pedido"}
-          </button>
+          <div className="cart-panel-footer">
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={onContinueShopping}
+            >
+              Seguir comprando
+            </button>
+            <button
+              className="button button--lime"
+              onClick={onCheckout}
+              disabled={orderStatus === "submitting"}
+            >
+              {orderStatus === "submitting" ? "Enviando..." : "Confirmar pedido"}
+            </button>
+          </div>
           <Link className="button button--ghost" href="/carrito/">
             Abrir carrito completo
           </Link>
