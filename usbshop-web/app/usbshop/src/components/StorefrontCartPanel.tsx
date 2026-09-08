@@ -26,6 +26,7 @@ type StorefrontCartPanelProps = {
   orderMessage: string | null;
   stockNotice: string | null;
   cartNotice: string | null;
+  showCheckoutForm: boolean;
   onOrderNameChange: (value: string) => void;
   onOrderPhoneChange: (value: string) => void;
   onOrderEmailChange: (value: string) => void;
@@ -33,6 +34,8 @@ type StorefrontCartPanelProps = {
   onUpdateQty: (id: number, delta: number) => void;
   onRemoveItem: (id: number) => void;
   onContinueShopping: () => void;
+  onGoToCheckout: () => void;
+  onBackToSummary: () => void;
   onCheckout: () => void;
 };
 
@@ -49,6 +52,7 @@ export default function StorefrontCartPanel({
   orderMessage,
   stockNotice,
   cartNotice,
+  showCheckoutForm,
   onOrderNameChange,
   onOrderPhoneChange,
   onOrderEmailChange,
@@ -56,6 +60,8 @@ export default function StorefrontCartPanel({
   onUpdateQty,
   onRemoveItem,
   onContinueShopping,
+  onGoToCheckout,
+  onBackToSummary,
   onCheckout,
 }: StorefrontCartPanelProps) {
   return (
@@ -151,83 +157,111 @@ export default function StorefrontCartPanel({
             <div className="cart-notice cart-notice--success">{cartNotice}</div>
           ) : null}
 
-          <div className="cart-form">
-            <div className="cart-form-hint">Solo te pedimos estos datos para confirmar tu pedido.</div>
+          {!showCheckoutForm ? (
+            <>
+              <div className="cart-total">
+                <span>Total</span>
+                <span>${total.toLocaleString("es-AR")}</span>
+              </div>
+              <div className="cart-shipping-hint">
+                {remainingForFreeShipping === 0
+                  ? "Envio gratis desbloqueado."
+                  : `Te faltan $${remainingForFreeShipping.toLocaleString(
+                      "es-AR"
+                    )} para envio gratis.`}
+              </div>
+              <div className="cart-panel-footer">
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={onContinueShopping}
+                >
+                  Seguir comprando
+                </button>
+                <button
+                  type="button"
+                  className="button button--lime"
+                  onClick={onGoToCheckout}
+                >
+                  Completar datos
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="cart-form">
+                <div className="cart-form-hint">Completá tus datos para confirmar la compra.</div>
 
-            <div className="cart-field">
-              <label htmlFor="storefront-order-name">Nombre y apellido <span>*</span></label>
-              <input
-                id="storefront-order-name"
-                type="text"
-                placeholder="Ingresá tu nombre completo"
-                value={orderName}
-                onChange={(event) => onOrderNameChange(event.target.value)}
-                required
-              />
-            </div>
+                <div className="cart-field">
+                  <label htmlFor="storefront-order-name">Nombre y apellido <span>*</span></label>
+                  <input
+                    id="storefront-order-name"
+                    type="text"
+                    placeholder="Ingresá tu nombre completo"
+                    value={orderName}
+                    onChange={(event) => onOrderNameChange(event.target.value)}
+                    required
+                  />
+                </div>
 
-            <div className="cart-field">
-              <label htmlFor="storefront-order-phone">Telefono <span>*</span></label>
-              <input
-                id="storefront-order-phone"
-                type="tel"
-                placeholder="Tu numero para coordinar envio"
-                value={orderPhone}
-                onChange={(event) => onOrderPhoneChange(event.target.value)}
-                required
-              />
-            </div>
+                <div className="cart-field">
+                  <label htmlFor="storefront-order-phone">Telefono <span>*</span></label>
+                  <input
+                    id="storefront-order-phone"
+                    type="tel"
+                    placeholder="Tu numero para coordinar envio"
+                    value={orderPhone}
+                    onChange={(event) => onOrderPhoneChange(event.target.value)}
+                    required
+                  />
+                </div>
 
-            <div className="cart-field">
-              <label htmlFor="storefront-order-email">Email</label>
-              <input
-                id="storefront-order-email"
-                type="email"
-                placeholder="mail@ejemplo.com (opcional)"
-                value={orderEmail}
-                onChange={(event) => onOrderEmailChange(event.target.value)}
-              />
-            </div>
+                <div className="cart-field">
+                  <label htmlFor="storefront-order-email">Email</label>
+                  <input
+                    id="storefront-order-email"
+                    type="email"
+                    placeholder="mail@ejemplo.com (opcional)"
+                    value={orderEmail}
+                    onChange={(event) => onOrderEmailChange(event.target.value)}
+                  />
+                </div>
 
-            <div className="cart-field">
-              <label htmlFor="storefront-order-notes">Notas (opcional)</label>
-              <textarea
-                id="storefront-order-notes"
-                placeholder="Indicá horario, dirección, o cualquier detalle importante"
-                value={orderNotes}
-                onChange={(event) => onOrderNotesChange(event.target.value)}
-                rows={2}
-              />
-            </div>
-          </div>
+                <div className="cart-field">
+                  <label htmlFor="storefront-order-notes">Notas (opcional)</label>
+                  <textarea
+                    id="storefront-order-notes"
+                    placeholder="Indicá horario, dirección, o cualquier detalle importante"
+                    value={orderNotes}
+                    onChange={(event) => onOrderNotesChange(event.target.value)}
+                    rows={2}
+                  />
+                </div>
+              </div>
 
-          <div className="cart-total">
-            <span>Total</span>
-            <span>${total.toLocaleString("es-AR")}</span>
-          </div>
-          <div className="cart-shipping-hint">
-            {remainingForFreeShipping === 0
-              ? "Envio gratis desbloqueado."
-              : `Te faltan $${remainingForFreeShipping.toLocaleString(
-                  "es-AR"
-                )} para envio gratis.`}
-          </div>
-          <div className="cart-panel-footer">
-            <button
-              type="button"
-              className="button button--ghost"
-              onClick={onContinueShopping}
-            >
-              Seguir comprando
-            </button>
-            <button
-              className="button button--lime"
-              onClick={onCheckout}
-              disabled={orderStatus === "submitting"}
-            >
-              {orderStatus === "submitting" ? "Enviando..." : "Confirmar pedido"}
-            </button>
-          </div>
+              <div className="cart-total">
+                <span>Total</span>
+                <span>${total.toLocaleString("es-AR")}</span>
+              </div>
+              <div className="cart-panel-footer">
+                <button
+                  type="button"
+                  className="button button--ghost"
+                  onClick={onBackToSummary}
+                >
+                  Volver al resumen
+                </button>
+                <button
+                  className="button button--lime"
+                  onClick={onCheckout}
+                  disabled={orderStatus === "submitting"}
+                >
+                  {orderStatus === "submitting" ? "Enviando..." : "Confirmar compra"}
+                </button>
+              </div>
+            </>
+          )}
+
           <Link className="button button--ghost" href="/carrito/">
             Abrir carrito completo
           </Link>

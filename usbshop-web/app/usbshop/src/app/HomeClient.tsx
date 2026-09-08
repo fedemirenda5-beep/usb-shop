@@ -394,6 +394,7 @@ export default function HomeClient({
   const [orderStatus, setOrderStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [cartFlowStep, setCartFlowStep] = useState<"summary" | "checkout">("summary");
   const [isLoadingFeatured, setIsLoadingFeatured] = useState(!Array.isArray(initialFeatured));
   const [isLoadingProducts, setIsLoadingProducts] = useState(!Array.isArray(initialProducts));
   const [stockNotice, setStockNotice] = useState<string | null>(null);
@@ -531,6 +532,7 @@ export default function HomeClient({
   };
 
   const handleOpenCart = () => {
+    setCartFlowStep("summary");
     setIsCartOpen(true);
     if (isMobileLayout) {
       return;
@@ -542,6 +544,7 @@ export default function HomeClient({
   };
 
   const handleContinueShopping = () => {
+    setCartFlowStep("summary");
     setIsCartOpen(false);
     const catalogTarget =
       document.getElementById("catalogo") ||
@@ -551,6 +554,12 @@ export default function HomeClient({
       catalogTarget.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
+
+  useEffect(() => {
+    if (!isCartOpen) {
+      setCartFlowStep("summary");
+    }
+  }, [isCartOpen]);
 
   const handleOpenQuickView = (product: Product) => {
     setQuickView(product);
@@ -2190,30 +2199,35 @@ export default function HomeClient({
           </div>
 
           {!isMobileLayout ? (
-            <aside className="cart-panel" id="carrito">
-              <StorefrontCartPanel
-                cartItems={cartItems}
-                totalItems={totalItems}
-                total={total}
-                remainingForFreeShipping={remainingForFreeShipping}
-                orderName={orderName}
-                orderPhone={orderPhone}
-                orderEmail={orderEmail}
-                orderNotes={orderNotes}
-                orderStatus={orderStatus}
-                orderMessage={orderMessage}
-                stockNotice={stockNotice}
-                cartNotice={cartNotice}
-                onOrderNameChange={setOrderName}
-                onOrderPhoneChange={setOrderPhone}
-                onOrderEmailChange={setOrderEmail}
-                onOrderNotesChange={setOrderNotes}
-                onUpdateQty={updateQty}
-                onRemoveItem={removeItem}
-                onContinueShopping={handleContinueShopping}
-                onCheckout={handleCheckout}
-              />
-            </aside>
+            <CartDrawer open={isCartOpen} onClose={() => setIsCartOpen(false)}>
+              <div className="cart-panel cart-panel--drawer cart-panel--desktop">
+                <StorefrontCartPanel
+                  cartItems={cartItems}
+                  totalItems={totalItems}
+                  total={total}
+                  remainingForFreeShipping={remainingForFreeShipping}
+                  orderName={orderName}
+                  orderPhone={orderPhone}
+                  orderEmail={orderEmail}
+                  orderNotes={orderNotes}
+                  orderStatus={orderStatus}
+                  orderMessage={orderMessage}
+                  stockNotice={stockNotice}
+                  cartNotice={cartNotice}
+                  showCheckoutForm={cartFlowStep === "checkout"}
+                  onOrderNameChange={setOrderName}
+                  onOrderPhoneChange={setOrderPhone}
+                  onOrderEmailChange={setOrderEmail}
+                  onOrderNotesChange={setOrderNotes}
+                  onUpdateQty={updateQty}
+                  onRemoveItem={removeItem}
+                  onContinueShopping={handleContinueShopping}
+                  onGoToCheckout={() => setCartFlowStep("checkout")}
+                  onBackToSummary={() => setCartFlowStep("summary")}
+                  onCheckout={handleCheckout}
+                />
+              </div>
+            </CartDrawer>
           ) : null}
         </div>
         </section>
@@ -2285,6 +2299,7 @@ export default function HomeClient({
               orderMessage={orderMessage}
               stockNotice={stockNotice}
               cartNotice={cartNotice}
+              showCheckoutForm={cartFlowStep === "checkout"}
               onOrderNameChange={setOrderName}
               onOrderPhoneChange={setOrderPhone}
               onOrderEmailChange={setOrderEmail}
@@ -2292,6 +2307,8 @@ export default function HomeClient({
               onUpdateQty={updateQty}
               onRemoveItem={removeItem}
               onContinueShopping={handleContinueShopping}
+              onGoToCheckout={() => setCartFlowStep("checkout")}
+              onBackToSummary={() => setCartFlowStep("summary")}
               onCheckout={handleCheckout}
             />
           </div>

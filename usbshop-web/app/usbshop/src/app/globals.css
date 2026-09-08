@@ -2868,6 +2868,17 @@ input.button {
   gap: 12px;
 }
 
+@media (min-width: 701px) {
+  .cart-bar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(420px, calc(100vw - 32px));
+    bottom: 18px;
+    display: flex;
+  }
+}
+
 .cart-bar-actions {
   display: flex;
   align-items: center;
@@ -2938,6 +2949,11 @@ input.button {
   border-radius: 0;
   box-shadow: none;
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.cart-panel--desktop {
+  padding: 16px 18px 20px;
+  background: #f8fafc;
 }
 
 .modal-backdrop {
