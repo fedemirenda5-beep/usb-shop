@@ -1542,7 +1542,16 @@ export default function HomeClient({
           nextCart.items.forEach((entry) => {
             nextState[entry.product.id] = entry;
           });
-          setCart(nextState);
+          setCart((prev) => {
+            // Ignore stock responses for a cart that has since been changed
+            // or emptied by a successful checkout.
+            if (Object.keys(prev).length !== cartItems.length || cartItems.some(
+              (item) => prev[item.product.id]?.qty !== item.qty
+            )) {
+              return prev;
+            }
+            return nextState;
+          });
         }
         return nextCart.changed;
       } catch {

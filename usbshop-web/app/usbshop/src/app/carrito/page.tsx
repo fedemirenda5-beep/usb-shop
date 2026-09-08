@@ -117,6 +117,14 @@ export default function CartPage() {
         const normalized = data.map((item) => normalizeProductWithBase(item, baseUrl));
         const nextCart = reconcileCartItems(cartItems, normalized);
         setCart((prev) => {
+          // A response started before checkout/quantity edits must not restore
+          // the old cart after the customer has cleared or changed it.
+          const currentItems = Object.values(prev);
+          if (currentItems.length !== cartItems.length || cartItems.some(
+            (item) => prev[item.product.id]?.qty !== item.qty
+          )) {
+            return prev;
+          }
           if (!nextCart.changed) {
             return prev;
           }
@@ -180,9 +188,6 @@ export default function CartPage() {
           onRemoveItem={removeItem}
           onClearCart={clearCart}
           onSyncCart={refreshProducts}
-          onAfterOrder={() => {
-            void refreshProducts();
-          }}
         />
       </section>
     </main>

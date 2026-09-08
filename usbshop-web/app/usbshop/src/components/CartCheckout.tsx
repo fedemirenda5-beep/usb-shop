@@ -18,7 +18,6 @@ type CartCheckoutProps = {
   onRemoveItem: (id: number) => void;
   onClearCart: () => void;
   onSyncCart?: () => Promise<boolean> | boolean;
-  onAfterOrder?: () => Promise<void> | void;
 };
 
 export default function CartCheckout({
@@ -33,7 +32,6 @@ export default function CartCheckout({
   onRemoveItem,
   onClearCart,
   onSyncCart,
-  onAfterOrder,
 }: CartCheckoutProps) {
   const [orderName, setOrderName] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
@@ -115,11 +113,6 @@ export default function CartCheckout({
       setOrderNotes("");
       setOrderStatus("success");
       setOrderMessage(`Pedido #${data.id} guardado como pendiente.`);
-      try {
-        await onAfterOrder?.();
-      } catch {
-        // ignore refresh errors
-      }
     } catch (error) {
       setOrderStatus("error");
       setOrderMessage(
