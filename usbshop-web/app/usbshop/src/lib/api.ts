@@ -364,7 +364,7 @@ export const getFriendlyApiError = (error: unknown, fallback: string): string =>
     return "No se pudo conectar con la API. Revisa la conexion e intenta nuevamente.";
   }
   if (message.includes("demoro demasiado") || message.includes("timed out")) {
-    return "La API demoro demasiado en responder. Intenta nuevamente.";
+    return "No se pudo completar la solicitud. Revisa tu conexion e intenta nuevamente.";
   }
   return message;
 };

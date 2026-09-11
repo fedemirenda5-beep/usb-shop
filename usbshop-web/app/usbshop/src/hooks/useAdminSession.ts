@@ -20,7 +20,8 @@ type SessionSnapshot = {
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const LEGACY_SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 const SESSION_REQUEST_TIMEOUT_MS = 15000;
-const LOGIN_REQUEST_TIMEOUT_MS = 20000;
+const LOGIN_REQUEST_TIMEOUT_MS = 8000;
+const LOGIN_REQUEST_ATTEMPTS = 1;
 const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
 const SESSION_REQUEST_ATTEMPTS = 2;
 const SESSION_RETRY_DELAY_MS = 700;
@@ -93,7 +94,7 @@ const getFriendlySessionError = (err: unknown, fallback: string) => {
     return 'No se pudo conectar con la API. Revisa la conexion e intenta nuevamente.';
   }
   if (message.includes('timed out') || message.includes('tardo demasiado')) {
-    return 'La API demoro demasiado en responder. Intenta nuevamente.';
+    return 'No se pudo completar la solicitud. Revisa tu conexion e intenta nuevamente.';
   }
   return message;
 };
@@ -164,14 +165,19 @@ const isConnectivitySessionError = (error: unknown) => {
   );
 };
 
-const fetchWithRetry = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+const fetchWithRetry = async (
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  attempts = SESSION_REQUEST_ATTEMPTS
+): Promise<Response> => {
   let lastError: unknown;
-  for (let attempt = 1; attempt <= SESSION_REQUEST_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       return await fetchWithTimeout(url, init, timeoutMs);
     } catch (error) {
       lastError = error;
-      if (attempt >= SESSION_REQUEST_ATTEMPTS || !isRetryableSessionError(error)) {
+      if (attempt >= attempts || !isRetryableSessionError(error)) {
         throw error;
       }
       await wait(SESSION_RETRY_DELAY_MS * attempt);
@@ -343,7 +349,8 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         },
-        LOGIN_REQUEST_TIMEOUT_MS
+        LOGIN_REQUEST_TIMEOUT_MS,
+        LOGIN_REQUEST_ATTEMPTS
       );
 
       if (!res.ok) {

@@ -287,6 +287,8 @@ function ProductCard({
     setFailedImageIndexes(new Set());
   }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
 
+  const canRenderImage = shouldLoadImage || imagePriority === "high";
+
   const shouldAutoplayCarousel =
     allowCarouselAutoplay && hasMultipleImages && shouldLoadImage && imagePriority !== "low" && !isCarouselPaused;
 
@@ -399,7 +401,7 @@ function ProductCard({
         tabIndex={canView ? 0 : undefined}
         aria-label={canView ? `Ver detalles de ${product.name}` : undefined}
       >
-        {displaySrc && !imgFailed ? (
+        {displaySrc && !imgFailed && canRenderImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={displaySrc}

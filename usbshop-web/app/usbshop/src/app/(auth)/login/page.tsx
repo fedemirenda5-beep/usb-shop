@@ -110,7 +110,7 @@ export default function LoginPage() {
       try {
         setUsersLoading(true);
         setLocalNotice('');
-        const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 12000);
+        const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 8000);
         if (!res.ok) {
           throw new Error('No se pudo cargar la lista de usuarios');
         }
@@ -123,7 +123,7 @@ export default function LoginPage() {
           hasCachedUsers ||
           (typeof window !== 'undefined' && Boolean(window.localStorage.getItem(LOGIN_USERS_CACHE_KEY)));
         if (cachedAvailable) {
-          setLocalNotice('La API esta lenta. Se muestra la lista guardada para que puedas ingresar igual.');
+          setLocalNotice('Se usó la lista guardada. Puedes continuar con tu nombre de usuario y contraseña.');
         } else {
           setLocalError(fallbackMessage);
         }
@@ -252,7 +252,7 @@ export default function LoginPage() {
                 setUsersLoading(true);
                 void (async () => {
                   try {
-                    const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 12000);
+                    const res = await fetchApiResponse('/auth/users', { cache: 'no-store' }, 8000);
                     if (!res.ok) {
                       throw new Error('No se pudo cargar la lista de usuarios');
                     }

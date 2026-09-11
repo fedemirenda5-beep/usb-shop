@@ -499,7 +499,7 @@ export default function HomeClient({
     setSelectedCategory(category);
     setSearchQuery("");
     setShowCatalogSection(Boolean(category));
-    setCatalogLimit(category ? Number.MAX_SAFE_INTEGER : CATALOG_PAGE_SIZE);
+    setCatalogLimit(CATALOG_PAGE_SIZE);
     window.requestAnimationFrame(() => {
       const target =
         (category ? document.getElementById("selected-category-results") : null) ||
@@ -1287,14 +1287,14 @@ export default function HomeClient({
   }, [debouncedSearchQuery]);
 
   useEffect(() => {
-    if (!debouncedSearchQuery || !hasMoreProducts || isFetchingMore) {
+    if (!debouncedSearchQuery || selectedCategory || isSearching || !hasMoreProducts || isFetchingMore) {
       return;
     }
     if (filteredProducts.length >= SEARCH_PAGE_SIZE) {
       return;
     }
     void fetchAllProducts();
-  }, [debouncedSearchQuery, hasMoreProducts, isFetchingMore, filteredProducts.length]);
+  }, [debouncedSearchQuery, selectedCategory, isSearching, hasMoreProducts, isFetchingMore, filteredProducts.length]);
 
   const matchesSearch = (product: Product) => {
     if (searchTokens.length === 0) {
