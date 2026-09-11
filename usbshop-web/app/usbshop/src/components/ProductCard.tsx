@@ -287,15 +287,18 @@ function ProductCard({
     setFailedImageIndexes(new Set());
   }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
 
+  const shouldAutoplayCarousel =
+    allowCarouselAutoplay && hasMultipleImages && shouldLoadImage && imagePriority !== "low" && !isCarouselPaused;
+
   React.useEffect(() => {
-    if (!allowCarouselAutoplay || !hasMultipleImages || !shouldLoadImage || isCarouselPaused) {
+    if (!shouldAutoplayCarousel) {
       return;
     }
     const timer = window.setInterval(() => {
       setImageIndex((prev) => (prev + 1) % images.length);
     }, 4200);
     return () => window.clearInterval(timer);
-  }, [allowCarouselAutoplay, hasMultipleImages, images.length, isCarouselPaused, shouldLoadImage]);
+  }, [shouldAutoplayCarousel, images.length]);
 
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
