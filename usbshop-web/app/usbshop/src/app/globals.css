@@ -2045,6 +2045,8 @@ a:focus-visible {
   gap: 12px;
   position: relative;
   overflow: hidden;
+  content-visibility: auto;
+  contain: layout paint style;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
