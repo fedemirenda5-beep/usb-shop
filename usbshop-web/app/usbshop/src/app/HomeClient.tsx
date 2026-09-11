@@ -1880,6 +1880,25 @@ export default function HomeClient({
           Buscar
         </button>
       </div>
+
+      <div className="trust-bar" aria-label="Beneficios de compra para clientes">
+        <div className="trust-pill">
+          <span className="trust-pill__icon">⚡</span>
+          <span>Envío rápido</span>
+        </div>
+        <div className="trust-pill">
+          <span className="trust-pill__icon">🔒</span>
+          <span>Pago seguro</span>
+        </div>
+        <div className="trust-pill">
+          <span className="trust-pill__icon">🛡️</span>
+          <span>Garantía</span>
+        </div>
+        <div className="trust-pill">
+          <span className="trust-pill__icon">💬</span>
+          <span>Atención real</span>
+        </div>
+      </div>
       {showCategoryStripBeforeProducts ? categoryStrip : null}
 
       {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
