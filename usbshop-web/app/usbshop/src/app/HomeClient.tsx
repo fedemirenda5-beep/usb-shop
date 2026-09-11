@@ -863,12 +863,20 @@ export default function HomeClient({
       }
     };
     if (Array.isArray(initialFeatured)) {
-      refreshTimer = window.setTimeout(() => {
-        void loadFeatured();
-      }, 1200);
-    } else {
-      void loadFeatured();
+      // The server-rendered data is already available; avoid an unnecessary
+      // second network request that only causes extra work and re-render churn.
+      return () => {
+        active = false;
+        if (refreshTimer) {
+          window.clearTimeout(refreshTimer);
+        }
+        if (featuredRetryTimer.current) {
+          window.clearTimeout(featuredRetryTimer.current);
+          featuredRetryTimer.current = null;
+        }
+      };
     }
+    void loadFeatured();
     return () => {
       active = false;
       if (refreshTimer) {
@@ -934,12 +942,20 @@ export default function HomeClient({
       }
     };
     if (Array.isArray(initialProducts)) {
-      refreshTimer = window.setTimeout(() => {
-        void loadProducts();
-      }, 1600);
-    } else {
-      void loadProducts();
+      // Keep the first server-rendered page and avoid an extra refresh that
+      // adds render and network cost without improving the initial experience.
+      return () => {
+        active = false;
+        if (refreshTimer) {
+          window.clearTimeout(refreshTimer);
+        }
+        if (productsRetryTimer.current) {
+          window.clearTimeout(productsRetryTimer.current);
+          productsRetryTimer.current = null;
+        }
+      };
     }
+    void loadProducts();
     return () => {
       active = false;
       if (refreshTimer) {
