@@ -500,9 +500,6 @@ export default function HomeClient({
     setSearchQuery("");
     setShowCatalogSection(Boolean(category));
     setCatalogLimit(category ? Number.MAX_SAFE_INTEGER : CATALOG_PAGE_SIZE);
-    if (category && hasMoreProducts && !isFetchingMore) {
-      void fetchAllProducts();
-    }
     window.requestAnimationFrame(() => {
       const target =
         (category ? document.getElementById("selected-category-results") : null) ||
@@ -1237,12 +1234,6 @@ export default function HomeClient({
     }
     return map;
   }, [allIndexedProducts]);
-
-  useEffect(() => {
-    if (selectedCategory && hasMoreProducts && !isFetchingMore) {
-      void fetchAllProducts();
-    }
-  }, [selectedCategory, hasMoreProducts, isFetchingMore]);
 
   useEffect(() => {
     if (!debouncedSearchQuery) {
