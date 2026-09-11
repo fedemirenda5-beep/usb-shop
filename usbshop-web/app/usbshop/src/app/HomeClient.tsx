@@ -1274,8 +1274,11 @@ export default function HomeClient({
     if (!debouncedSearchQuery || !hasMoreProducts || isFetchingMore) {
       return;
     }
+    if (filteredProducts.length >= SEARCH_PAGE_SIZE) {
+      return;
+    }
     void fetchAllProducts();
-  }, [debouncedSearchQuery, hasMoreProducts, isFetchingMore]);
+  }, [debouncedSearchQuery, hasMoreProducts, isFetchingMore, filteredProducts.length]);
 
   const matchesSearch = (product: Product) => {
     if (searchTokens.length === 0) {
