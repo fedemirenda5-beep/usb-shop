@@ -206,6 +206,16 @@ class ConsignmentTests(unittest.TestCase):
         self.assertEqual([row['id'] for row in detail['documents']], [second['id'], first['id']])
         self.assertIn('movements', detail)
 
+    def test_fede_lentes_commission_is_50_percent(self):
+        conn = main._connect()
+        try:
+            conn.execute("INSERT INTO categories (id, name) VALUES (10, 'Lentes')")
+            conn.commit()
+            self.assertEqual(main._seller_commission_percent_for_item(conn, 10, 'Anteojos Sol', 28.0, 'Fede'), 50.0)
+            self.assertEqual(main._seller_commission_percent_for_item(conn, 10, 'Anteojos Sol', 28.0, 'Otro'), 28.0)
+        finally:
+            conn.close()
+
 
 if __name__ == '__main__':
     import sys

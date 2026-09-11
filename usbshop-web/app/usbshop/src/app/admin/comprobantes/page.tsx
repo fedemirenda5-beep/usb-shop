@@ -85,6 +85,7 @@ const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const CELULARES_COMMISSION_PERCENT = 5;
 const CELULARES_COMMISSION_PERCENT_FEDE = 10;
+const LENTES_COMMISSION_PERCENT_FEDE = 50;
 const normalizeSearchValue = (value: string) =>
   value
     .normalize('NFD')
@@ -114,13 +115,12 @@ const calculateCommissionPreview = ({
     const lineTotal = Number(item.line_total || 0);
     const discountShare = specialDiscount > 0 ? (specialDiscount * lineTotal) / subtotal : 0;
     const commissionable = Math.max(0, lineTotal - discountShare);
+    const isLentes = String(item.category_name || '').trim().toLowerCase() === 'lentes';
     const percent = item.is_cellphone && !isNokia106ExceptionProduct(item.product_name)
       ? (isFedeSellerName(sellerName) ? CELULARES_COMMISSION_PERCENT_FEDE : CELULARES_COMMISSION_PERCENT)
-      : Number(sellerPercent || 0);
-    return acc + (commissionable * percent) / 100;
-  }, 0);
-};
-
+      : isLentes && isFedeSellerName(sellerName)
+        ? LENTES_COMMISSION_PERCENT_FEDE
+        : Number(sellerPercent || 0);
 const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
 };

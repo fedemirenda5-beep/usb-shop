@@ -92,6 +92,7 @@ type ImeiLookupResponse = {
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const CELULARES_COMMISSION_PERCENT = 5;
 const CELULARES_COMMISSION_PERCENT_FEDE = 10;
+const LENTES_COMMISSION_PERCENT_FEDE = 50;
 const CELLPHONE_WARRANTY_NOTE =
   'Garantia de 30 dias solo por fallas de fabrica. No cubre equipos golpeados, pantalla rota ni equipos abiertos. Pasados los 30 dias, la garantia debe reclamarse con la marca y tiene una cobertura de 1 ano.';
 const normalizeSearchValue = (value: string) =>
@@ -168,9 +169,12 @@ const calculateCommissionPreview = ({
       const commissionable = Math.max(0, round(item.line_total - discountShare, 2));
       const isCellphone =
         !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id);
+      const isLentes = normalizeCategoryName(product?.category_name ?? '') === 'lentes';
       const percent = isCellphone
         ? (isFedeSellerName(sellerName) ? CELULARES_COMMISSION_PERCENT_FEDE : CELULARES_COMMISSION_PERCENT)
-        : Number(sellerPercent || 0);
+        : isLentes && isFedeSellerName(sellerName)
+          ? LENTES_COMMISSION_PERCENT_FEDE
+          : Number(sellerPercent || 0);
       let lineCommission = (commissionable * percent) / 100;
       if (!isCellphone) {
         const maxCommission = Math.max(0, round(commissionable - item.quantity * item.cost, 2));

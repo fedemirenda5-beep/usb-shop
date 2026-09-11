@@ -1810,6 +1810,10 @@ def _is_celulares_category_name(value: str) -> bool:
     return _normalize_category_label(value) == "celulares"
 
 
+def _is_lentes_category_name(value: str) -> bool:
+    return _normalize_category_label(value) == "lentes"
+
+
 def _is_nokia_106_exception_product_name(value: Any) -> bool:
     normalized = _normalize_search_text(value or "")
     return normalized == "nokia 106" or normalized.startswith("nokia 106 ")
@@ -1839,6 +1843,16 @@ def _is_fede_seller_name(value: Any) -> bool:
     return _normalize_search_text(value or "") == "fede"
 
 
+def _get_category_name(conn: DBConn, category_id: Any) -> str:
+    parsed_category_id = int(category_id or 0)
+    if parsed_category_id <= 0:
+        return ""
+    row = conn.execute("SELECT name FROM categories WHERE id = ?", (parsed_category_id,)).fetchone()
+    if not row:
+        return ""
+    return str(row["name"] if isinstance(row, dict) else row[0] or "")
+
+
 def _seller_commission_percent_for_item(
     conn: DBConn,
     category_id: Any,
@@ -1846,6 +1860,9 @@ def _seller_commission_percent_for_item(
     default_percent: float,
     seller_name: Any = None,
 ) -> float:
+    category_name = _get_category_name(conn, category_id)
+    if _is_fede_seller_name(seller_name) and _is_lentes_category_name(category_name):
+        return 50.0
     if _is_nokia_106_exception_product_name(product_name):
         return float(default_percent or 0)
     if _category_requires_imei(conn, category_id):
