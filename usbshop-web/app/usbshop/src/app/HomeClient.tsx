@@ -168,9 +168,8 @@ const toComparableTimestamp = (product: Product) => {
 };
 const compareByNewest = (a: Product, b: Product) =>
   toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
-const isPinnedNewArrival = (product: Product, now = Date.now()) =>
-  Boolean(product.highlightNewArrivals) &&
-  now - getProductActivityTimestamp(product) <= NEW_ARRIVAL_PIN_WINDOW_MS;
+const isPinnedNewArrival = (product: Product, _now = Date.now()) =>
+  Boolean(product.highlightNewArrivals);
 const hasDiscountedPrice = (product: Product) =>
   Number(product.originalPrice || 0) > Number(product.price || 0);
 const getFlashOfferTimeLeftAt = (product: Product | null | undefined, now: number) => {
