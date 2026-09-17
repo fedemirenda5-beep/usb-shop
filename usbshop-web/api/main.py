@@ -6647,8 +6647,8 @@ def admin_update_product(
         next_name = str(payload["name"]).strip() if "name" in payload else str(row["name"] if isinstance(row, dict) else row[1] or "").strip()
         next_category_id = (
             int(payload.get("category_id") or 0)
-            if "category_id" in payload and payload.get("category_id") not in (None, "", 0, "0")
-            else int(row["category_id"] if isinstance(row, dict) else row[2] or 0)
+            if "category_id" in payload
+            else int(row["category_id"] or 0)
         )
         next_stock = int(payload.get("stock") or 0) if "stock" in payload else 0
         if "stock" not in payload:
