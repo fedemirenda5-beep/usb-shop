@@ -2384,7 +2384,7 @@ def _fetch_reserved_web_order_stock(conn: DBConn, exclude_order_id: Optional[int
         FROM web_order_items wi
         JOIN web_orders wo ON wo.id = wi.order_id
         LEFT JOIN products p ON p.id = wi.product_id
-        WHERE UPPER(COALESCE(wo.status, '')) IN ('PENDING', 'BUDGETED')
+        WHERE UPPER(COALESCE(wo.status, '')) = 'PENDING'
           AND wo.id <> ?
         """, (exclude_order_id or 0,)
     ).fetchall()

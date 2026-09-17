@@ -87,6 +87,38 @@ class ConsignmentTests(unittest.TestCase):
         self.assertEqual(self.stock(), (7, 4))
         self.assertEqual(main.list_products(ids='1')[0]['stock'], 3)
 
+    def test_web_budget_releases_reservation_and_confirmation_deducts_once(self):
+        self.delivery(quantity=4)
+        order = main.create_order(main.OrderPayload(items=[{'product_id': 1, 'quantity': 3}],
+            customer_name='Web', customer_phone='123', idempotency_key=str(uuid.uuid4())))
+        self.assertEqual(main.list_products(ids='1')[0]['stock'], 3)
+        budget = self.invoice(quantity=3, kind='PRESUPUESTO', order_id=order['id'])
+        self.assertEqual(self.stock(), (10, 4))
+        self.assertEqual(main.list_products(ids='1')[0]['stock'], 6)
+        admin_product = main.admin_list_products(None, None, ids='1')[0]
+        self.assertEqual(admin_product['reserved_stock'], 4)
+        self.assertEqual(admin_product['available_stock'], 6)
+        featured = next(product for product in main.featured_products() if product['id'] == 1)
+        self.assertEqual(featured['stock'], 6)
+
+        main.admin_confirm_invoice(budget['id'], None, None)
+        self.assertEqual(self.stock(), (7, 4))
+        self.assertEqual(main.list_products(ids='1')[0]['stock'], 3)
+        with self.assertRaises(HTTPException):
+            main.admin_confirm_invoice(budget['id'], None, None)
+        self.assertEqual(self.stock(), (7, 4))
+
+    def test_web_budget_confirmation_rechecks_stock_reserved_by_other_orders(self):
+        order = main.create_order(main.OrderPayload(items=[{'product_id': 1, 'quantity': 10}],
+            customer_name='Web', customer_phone='123', idempotency_key=str(uuid.uuid4())))
+        budget = self.invoice(quantity=10, kind='PRESUPUESTO', order_id=order['id'])
+        main.create_order(main.OrderPayload(items=[{'product_id': 1, 'quantity': 1}],
+            customer_name='Otro', customer_phone='456', idempotency_key=str(uuid.uuid4())))
+        with self.assertRaises(HTTPException):
+            main.admin_confirm_invoice(budget['id'], None, None)
+        self.assertEqual(self.stock(), (10, 0))
+        self.assertEqual(main.list_products(ids='1')[0]['stock'], 9)
+
     def test_budget_preserves_stock_but_confirmation_checks_available(self):
         self.delivery()
         budget = self.invoice(quantity=5, kind='PRESUPUESTO')
