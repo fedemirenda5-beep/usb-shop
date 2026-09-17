@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { reconcileCartItems } from "@/lib/cart";
 import { useUsbShopCart } from "@/lib/useUsbShopCart";
+import { readPendingOrder } from '@/lib/checkoutSession';
 
 type Product = {
   id: number;
@@ -84,6 +85,7 @@ export default function CartPage() {
   );
 
   const refreshProducts = useCallback(async () => {
+    if (readPendingOrder()) return false;
     if (cartItems.length === 0) {
       return false;
     }
@@ -115,6 +117,7 @@ export default function CartPage() {
         const data = await fetchProductsByIds<Product>(cartProductIds, { baseUrl });
         setProductsApiBase((prev) => (prev === baseUrl ? prev : baseUrl));
         const normalized = data.map((item) => normalizeProductWithBase(item, baseUrl));
+        if (readPendingOrder()) return false;
         const nextCart = reconcileCartItems(cartItems, normalized);
         setCart((prev) => {
           // A response started before checkout/quantity edits must not restore

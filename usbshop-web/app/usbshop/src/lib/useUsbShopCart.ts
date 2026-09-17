@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCartStorageSync } from './useCartStorageSync';
 import {
   readStoredCart,
   writeStoredCart,
@@ -29,6 +30,7 @@ const DEFAULT_PLACEHOLDER_STOCK = 9999;
 
 export function useUsbShopCart(): UseUsbShopCartResult {
   const [cart, setCart] = useState<CartState>({});
+  useCartStorageSync(setCart);
   const [isHydrated, setIsHydrated] = useState(false);
   const [stockNotice, setStockNotice] = useState<string | null>(null);
   const stockNoticeTimer = useRef<number | null>(null);

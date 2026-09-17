@@ -1,6 +1,7 @@
 "use client";
 
 import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
+import PendingOrderRecovery from './PendingOrderRecovery';
 import { useMemo, useRef, useState } from "react";
 import { createOrderIdempotencyKey, getApiBaseUrl, submitOrder } from "@/lib/api";
 import type { CartItem } from "@/lib/cart";
@@ -128,6 +129,7 @@ export default function CartCheckout({
 
   return (
     <>
+      <PendingOrderRecovery />
       {cartItems.length === 0 ? (
         <div className="empty-state">
           <div className="empty-illustration" aria-hidden="true">

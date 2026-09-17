@@ -1,5 +1,4 @@
 const STORAGE_KEY = "usbshop.order-attempt";
-const RETRY_WINDOW_MS = 15 * 60 * 1000;
 type Attempt = { fingerprint: string; key: string; createdAt: number };
 let memoryAttempt: Attempt | null = null;
 
@@ -13,6 +12,8 @@ export function clearOrderAttemptKey(): void {
 }
 
 // Shared by both checkouts and retained after a lost response or navigation.
+// An unconfirmed attempt must not expire: the server may already have saved it.
+// Both checkouts clear the key once they receive a successful response.
 export function getOrderAttemptKey(fingerprint: string, createKey: () => string): string {
   let attempt = memoryAttempt;
   try {
@@ -24,7 +25,7 @@ export function getOrderAttemptKey(fingerprint: string, createKey: () => string)
   const now = Date.now();
   if (!attempt || attempt.fingerprint !== fingerprint || typeof attempt.key !== "string" ||
       !attempt.key || !Number.isFinite(attempt.createdAt) ||
-      now - attempt.createdAt < 0 || now - attempt.createdAt >= RETRY_WINDOW_MS) {
+      attempt.createdAt < 0) {
     attempt = { fingerprint, key: createKey(), createdAt: now };
   }
   memoryAttempt = attempt;

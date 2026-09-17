@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import PendingOrderRecovery from './PendingOrderRecovery';
 
 type CartProduct = {
   id: number;
@@ -66,6 +67,7 @@ export default function StorefrontCartPanel({
 }: StorefrontCartPanelProps) {
   return (
     <>
+      <PendingOrderRecovery />
       <div className="cart-header">
         <span>Tu pedido</span>
         <span className="cart-count">{totalItems}</span>

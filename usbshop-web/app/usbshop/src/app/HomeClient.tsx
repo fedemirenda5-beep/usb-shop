@@ -1,6 +1,7 @@
 "use client";
 
 import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
+import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import ProductCard from "@/components/ProductCard";
@@ -16,7 +17,7 @@ import {
   resolveImageUrl,
   resolveImageUrls,
 } from "@/lib/api";
-import { reconcileCartItems } from "@/lib/cart";
+import { readStoredCart, reconcileCartItems } from "@/lib/cart";
 import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText, searchTokensFromQuery } from "@/lib/search";
 
 type Product = {
@@ -382,6 +383,26 @@ export default function HomeClient({
     typeof initialHasMoreProducts === "boolean" ? initialHasMoreProducts : true
   );
   const [cart, setCart] = useState<Record<number, CartItem>>({});
+  useEffect(() => {
+    const sync = () => {
+      const items = readStoredCart().items;
+      setCart(prev => {
+        if (Object.keys(prev).length === items.length && items.every(item => prev[item.product.id]?.qty === item.qty)) return prev;
+        return Object.fromEntries(items.map(item => [item.product.id, {
+          product: prev[item.product.id]?.product || { ...item.product, stock: 9999 }, qty: item.qty,
+        }]));
+      });
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CART_STORAGE_KEY || event.key === null) sync();
+    };
+    window.addEventListener(CART_SYNC_EVENT, sync);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener(CART_SYNC_EVENT, sync);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
@@ -1612,6 +1633,7 @@ export default function HomeClient({
   };
 
   const refreshCartProducts = async () => {
+    if (readPendingOrder()) return false;
     if (cartProductIds.length === 0) {
       return false;
     }
@@ -1634,6 +1656,7 @@ export default function HomeClient({
           timeoutMs: STOREFRONT_FETCH_TIMEOUT_MS,
         });
         const normalized = data.map((item) => normalizeProductWithBase(item, baseUrl));
+        if (readPendingOrder()) return false;
         const nextCart = reconcileCartItems(cartItems, normalized);
         setProductsApiBase((prev) => (prev === baseUrl ? prev : baseUrl));
         if (nextCart.changed) {

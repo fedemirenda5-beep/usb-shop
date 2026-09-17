@@ -6,12 +6,13 @@ export const CHECKOUT_EVENT = 'usbshop:checkout';
 export const CART_SYNC_EVENT = 'usbshop:cart-sync';
 export type PendingOrder = { payload: OrderPayload; createdAt: number };
 let memoryPending: PendingOrder | null = null;
+let memoryOnly = false;
 
 export function readPendingOrder(): PendingOrder | null {
   try {
     const raw = localStorage.getItem(PENDING_ORDER_KEY);
     const saved = raw ? JSON.parse(raw) : null;
-    if (!saved) return memoryPending = null;
+    if (!saved) return memoryPending = memoryOnly ? memoryPending : null;
     if (typeof saved.payload?.idempotency_key !== 'string' ||
         !Array.isArray(saved.payload.items) || !saved.payload.items.length) return null;
     return memoryPending = saved;
@@ -33,7 +34,9 @@ export function savePendingOrder(payload: OrderPayload) {
   memoryPending = current || { payload: JSON.parse(JSON.stringify(payload)), createdAt: Date.now() };
   try {
     localStorage.setItem(PENDING_ORDER_KEY, JSON.stringify(memoryPending));
+    memoryOnly = false;
   } catch {
+    memoryOnly = true;
     // Private browsing retains the pending request for the lifetime of this page.
   }
   checkoutEvent({ phase: 'sending' });
@@ -41,6 +44,7 @@ export function savePendingOrder(payload: OrderPayload) {
 
 export function clearPendingOrder() {
   memoryPending = null;
+  memoryOnly = false;
   try { localStorage.removeItem(PENDING_ORDER_KEY); } catch { /* memory fallback */ }
 }
 

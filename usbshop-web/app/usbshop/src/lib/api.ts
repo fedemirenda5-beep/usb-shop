@@ -1,3 +1,5 @@
+import { savePendingOrder, clearPendingOrder, confirmPendingOrder, checkoutEvent } from './checkoutSession';
+
 const isPrivateIpv4Host = (host: string) => {
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     return false;
@@ -518,6 +520,7 @@ export async function submitOrder(
     headers.set("X-USB-ORDER-SECRET", orderSecret);
   }
   let response: Response;
+  savePendingOrder(payload);
   try {
     response = await fetchWithRetry(
       `${baseUrl}/orders`,
@@ -531,6 +534,7 @@ export async function submitOrder(
       1
     );
   } catch (error) {
+    checkoutEvent({ phase: 'uncertain' });
     throw new Error(
       getFriendlyApiError(error, "No se pudo generar el pedido. Intenta nuevamente.")
     );
@@ -542,6 +546,14 @@ export async function submitOrder(
     .catch(() => null) as { detail?: string; id?: number; total?: number } | null;
 
   if (!response.ok) {
+    // Validation/auth failures did not create an order. Timeouts and server
+    // failures may happen after the commit, so retain the original request.
+    if ([400, 401, 403, 404, 422].includes(response.status)) {
+      clearPendingOrder();
+      checkoutEvent({ phase: 'rejected' });
+    } else {
+      checkoutEvent({ phase: 'uncertain' });
+    }
     throw new Error(
       detail?.detail ||
         (response.status === 503
@@ -550,9 +562,16 @@ export async function submitOrder(
     );
   }
 
-  const data = detail || ((await response.json()) as OrderResponse);
-  return {
+  const data = detail;
+  if (!data || !Number.isInteger(data.id) || Number(data.id) <= 0 ||
+      typeof data.total !== 'number' || !Number.isFinite(data.total)) {
+    checkoutEvent({ phase: 'uncertain' });
+    throw new Error('No pudimos confirmar la respuesta. Verifica el envio pendiente antes de volver a comprar.');
+  }
+  const order = {
     id: Number(data.id),
     total: Number(data.total),
   };
+  confirmPendingOrder(order);
+  return order;
 }
