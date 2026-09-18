@@ -24,6 +24,7 @@ type ProductOption = {
   sku: string;
   barcode?: string | null;
   category_id?: number | null;
+  category_name?: string | null;
   imeis?: string[];
   price: number;
   cost?: number | null;
@@ -154,6 +155,7 @@ const calculateCommissionPreview = ({
       const lineTotal = round(quantity * unitPrice, 2);
       return {
         category_id: product?.category_id ?? null,
+        category_name: product?.category_name ?? null,
         product_name: product?.name ?? '',
         cost: Math.max(0, Number(product?.cost || 0)),
         quantity,
@@ -169,7 +171,7 @@ const calculateCommissionPreview = ({
       const commissionable = Math.max(0, round(item.line_total - discountShare, 2));
       const isCellphone =
         !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id);
-      const isLentes = normalizeCategoryName(product?.category_name ?? '') === 'lentes';
+      const isLentes = normalizeCategoryName(item.category_name ?? '') === 'lentes';
       const percent = isCellphone
         ? (isFedeSellerName(sellerName) ? CELULARES_COMMISSION_PERCENT_FEDE : CELULARES_COMMISSION_PERCENT)
         : isLentes && isFedeSellerName(sellerName)

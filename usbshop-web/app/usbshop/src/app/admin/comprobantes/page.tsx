@@ -49,6 +49,7 @@ type InvoiceDetail = {
     id: number;
     product_id?: number | null;
     category_id?: number | null;
+    category_name?: string | null;
     is_cellphone?: boolean;
     product_name: string;
     quantity: number;
@@ -121,6 +122,10 @@ const calculateCommissionPreview = ({
       : isLentes && isFedeSellerName(sellerName)
         ? LENTES_COMMISSION_PERCENT_FEDE
         : Number(sellerPercent || 0);
+    return acc + (commissionable * percent) / 100;
+  }, 0);
+};
+
 const formatDate = (value?: string | null) => {
   return formatArgentinaDateTime(value);
 };
