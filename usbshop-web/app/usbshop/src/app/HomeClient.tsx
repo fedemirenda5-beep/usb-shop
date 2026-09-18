@@ -4,7 +4,6 @@ import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
-import StorefrontHero from "@/components/StorefrontHero";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
 import CartDrawer from "@/components/CartDrawer";
@@ -1873,7 +1872,7 @@ export default function HomeClient({
   return (
     <main className="page storefront">
       <div className="shop-announcement">Tecnología para vos y tu negocio <span>Atención directa por WhatsApp</span></div>
-      <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} />
+      <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} showTrust={false} />
       <nav className="shop-nav" aria-label="Navegación de la tienda">
         <button type="button" onClick={handleViewFullCatalog}>Todos los productos</button>
         <a href="/#novedades">Novedades</a>
@@ -1914,27 +1913,53 @@ export default function HomeClient({
         </button>
       </div>
 
-      {!isSearching && !selectedCategory ? <StorefrontHero onExplore={handleViewFullCatalog} /> : null}
-
-      <div className="trust-bar" aria-label="Beneficios de compra para clientes">
-        <div className="trust-pill">
-          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h11v10H3z M14 10h4l3 4v3h-7 M5 17a2 2 0 1 0 4 0 M15 17a2 2 0 1 0 4 0" /></svg></span>
-          <span>Envío rápido</span>
-        </div>
-        <div className="trust-pill">
-          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9h16v11H4z M8 9V6a4 4 0 0 1 8 0v3 M12 13v3" /></svg></span>
-          <span>Pago seguro</span>
-        </div>
-        <div className="trust-pill">
-          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6" /></svg></span>
-          <span>Garantía</span>
-        </div>
-        <div className="trust-pill">
-          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a8 8 0 0 1-8 8H5l-3 3V11a9 9 0 0 1 19 0z M7 11h10 M7 15h6" /></svg></span>
-          <span>Atención real</span>
-        </div>
-      </div>
       {categoryStrip}
+
+      {!isSearching && !selectedCategory ? (
+      <section id="novedades" className="section">
+        <div className="section-header">
+          <div>
+            <p className="section-kicker">Novedades</p>
+            <h2 className="section-title">
+              {selectedCategory ? `Lo nuevo en ${selectedCategory}` : "Ultimos ingresos"}
+            </h2>
+          </div>
+          {!isSearching && !selectedCategory ? (
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={handleViewFullCatalog}
+            >
+              Ver catalogo completo
+            </button>
+          ) : null}
+        </div>
+        <div className="product-grid stagger">
+          {newArrivals.length > 0 ? (
+            newArrivals.map((product, index) => (
+              <ProductCard
+                key={`new-${product.id}`}
+                product={applyBadge(product, "catalog")}
+                imageRefreshKey={imageRefreshKey}
+                imagePriority={getCardImagePriority(index)}
+                inCart={cart[product.id]?.qty ?? 0}
+                onAdd={() => addItem(product)}
+                onView={() => handleOpenQuickView(product)}
+                style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
+              />
+            ))
+          ) : isLoadingProducts ? (
+            skeletonCards.slice(0, 4).map((card) => (
+              <div key={`new-skeleton-${card}`} className="product-card product-skeleton" />
+            ))
+          ) : (
+            <div className="empty-state empty-state--wide">
+              No hay novedades disponibles por el momento.
+            </div>
+          )}
+        </div>
+      </section>
+      ) : null}
 
       {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
         <section className="flash-offers">
@@ -2006,52 +2031,6 @@ export default function HomeClient({
             );
           })}
         </section>
-      ) : null}
-
-      {!isSearching && !selectedCategory ? (
-      <section id="novedades" className="section">
-        <div className="section-header">
-          <div>
-            <p className="section-kicker">Novedades</p>
-            <h2 className="section-title">
-              {selectedCategory ? `Lo nuevo en ${selectedCategory}` : "Ultimos ingresos"}
-            </h2>
-          </div>
-          {!isSearching && !selectedCategory ? (
-            <button
-              type="button"
-              className="button button--ghost"
-              onClick={handleViewFullCatalog}
-            >
-              Ver catalogo completo
-            </button>
-          ) : null}
-        </div>
-        <div className="product-grid stagger">
-          {newArrivals.length > 0 ? (
-            newArrivals.map((product, index) => (
-              <ProductCard
-                key={`new-${product.id}`}
-                product={applyBadge(product, "catalog")}
-                imageRefreshKey={imageRefreshKey}
-                imagePriority={getCardImagePriority(index)}
-                inCart={cart[product.id]?.qty ?? 0}
-                onAdd={() => addItem(product)}
-                onView={() => handleOpenQuickView(product)}
-                style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
-              />
-            ))
-          ) : isLoadingProducts ? (
-            skeletonCards.slice(0, 4).map((card) => (
-              <div key={`new-skeleton-${card}`} className="product-card product-skeleton" />
-            ))
-          ) : (
-            <div className="empty-state empty-state--wide">
-              No hay novedades disponibles por el momento.
-            </div>
-          )}
-        </div>
-      </section>
       ) : null}
 
       {!isSearching && !selectedCategory && (isLoadingProducts || filteredDiscountedProducts.length > 1) ? (
@@ -2571,6 +2550,24 @@ export default function HomeClient({
         </div>
       ) : null}
 
+      <div className="trust-bar" aria-label="Beneficios de compra para clientes">
+        <div className="trust-pill">
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h11v10H3z M14 10h4l3 4v3h-7 M5 17a2 2 0 1 0 4 0 M15 17a2 2 0 1 0 4 0" /></svg></span>
+          <span>Envío rápido</span>
+        </div>
+        <div className="trust-pill">
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9h16v11H4z M8 9V6a4 4 0 0 1 8 0v3 M12 13v3" /></svg></span>
+          <span>Pago seguro</span>
+        </div>
+        <div className="trust-pill">
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6" /></svg></span>
+          <span>Garantía</span>
+        </div>
+        <div className="trust-pill">
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a8 8 0 0 1-8 8H5l-3 3V11a9 9 0 0 1 19 0z M7 11h10 M7 15h6" /></svg></span>
+          <span>Atención real</span>
+        </div>
+      </div>
       <Footer />
     </main>
   );

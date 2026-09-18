@@ -12,6 +12,16 @@ export default function Footer() {
         Información de la tienda
       </h2>
       <div className="footer-inner">
+        <section className="footer-brands" aria-labelledby="footer-brands-heading">
+          <div>
+            <h3 id="footer-brands-heading">Marcas que encontrás en USB Shop</h3>
+            <p>Tecnología para todos los días.</p>
+          </div>
+          <ul className="footer-brands-list" aria-label="Marcas del catálogo">
+            <li><Image src="/brands/samsung.svg" alt="Samsung" width={130} height={29} /></li>
+            <li><Image src="/brands/xiaomi.png" alt="Xiaomi" width={48} height={48} /><span aria-hidden="true">Xiaomi</span></li>
+          </ul>
+        </section>
         <div className="footer-grid">
           <section className="footer-col" aria-label="USB Shop">
             <div className="footer-brand">
