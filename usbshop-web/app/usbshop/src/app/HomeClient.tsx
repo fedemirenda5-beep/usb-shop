@@ -4,6 +4,8 @@ import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
+import StorefrontHero from "@/components/StorefrontHero";
+import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
 import CartDrawer from "@/components/CartDrawer";
 import StorefrontCartPanel from "@/components/StorefrontCartPanel";
@@ -640,15 +642,16 @@ export default function HomeClient({
   }, [quickView]);
 
   const handleViewFullCatalog = () => {
+    setSelectedCategory(null);
+    setSearchQuery("");
     setShowCatalogSection(true);
     setCatalogLimit(Number.MAX_SAFE_INTEGER);
     if (hasMoreProducts && !isFetchingMore) {
       void fetchAllProducts();
     }
-    const target = document.getElementById("catalogo");
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    window.requestAnimationFrame(() => {
+      document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleLoadMoreCatalog = () => {
@@ -1306,16 +1309,6 @@ export default function HomeClient({
     };
   }, [debouncedSearchQuery]);
 
-  useEffect(() => {
-    if (!debouncedSearchQuery || selectedCategory || isSearching || !hasMoreProducts || isFetchingMore) {
-      return;
-    }
-    if (filteredProducts.length >= SEARCH_PAGE_SIZE) {
-      return;
-    }
-    void fetchAllProducts();
-  }, [debouncedSearchQuery, selectedCategory, isSearching, hasMoreProducts, isFetchingMore, filteredProducts.length]);
-
   const matchesSearch = (product: Product) => {
     if (searchTokens.length === 0) {
       return true;
@@ -1368,6 +1361,16 @@ export default function HomeClient({
       })
       .sort(compareByCategoryThenName);
   }, [products, featuredSource, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
+
+  useEffect(() => {
+    if (!debouncedSearchQuery || selectedCategory || isSearching || !hasMoreProducts || isFetchingMore) {
+      return;
+    }
+    if (filteredProducts.length >= SEARCH_PAGE_SIZE) {
+      return;
+    }
+    void fetchAllProducts();
+  }, [debouncedSearchQuery, selectedCategory, isSearching, hasMoreProducts, isFetchingMore, filteredProducts.length]);
 
   const catalogSource = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
@@ -1837,13 +1840,12 @@ export default function HomeClient({
     setEditMode((value) => !value);
   };
 
-  const showCategoryStripBeforeProducts = !isMobileLayout || isSearching || Boolean(selectedCategory);
   const categoryStrip = (
     <div className="category-strip category-strip--hero" id="category-strip">
       <div className="category-strip-header">
-        <div className="category-strip-title">Rubros</div>
+        <div className="category-strip-title">Explorá por categoría</div>
         <div className="category-strip-meta">
-          {availableCategories.length + 1} filtros para explorar mas rapido
+          Encontrá lo que va con vos
         </div>
       </div>
       <div className="category-strip-list">
@@ -1869,8 +1871,16 @@ export default function HomeClient({
   );
 
   return (
-    <main className="page">
+    <main className="page storefront">
+      <div className="shop-announcement">Tecnología para vos y tu negocio <span>Atención directa por WhatsApp</span></div>
       <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} />
+      <nav className="shop-nav" aria-label="Navegación de la tienda">
+        <button type="button" onClick={handleViewFullCatalog}>Todos los productos</button>
+        <a href="/#novedades">Novedades</a>
+        <a href="/#ofertas">Ofertas</a>
+        <a href="/#destacados">Destacados</a>
+        <a className="shop-nav-contact" href="https://wa.me/542364574765" target="_blank" rel="noreferrer">Te ayudamos a elegir <span aria-hidden="true">↗</span></a>
+      </nav>
       <a
         className="whatsapp-float"
         href="https://wa.me/542364574765?text=Hola%2C%20quiero%20consultar%20por%20un%20producto"
@@ -1888,6 +1898,7 @@ export default function HomeClient({
       <div className="hero-search hero-search--standalone">
         <input
           type="search"
+          aria-label="Buscar productos"
           placeholder="Buscar productos por nombre o categoria..."
           value={searchQuery}
           onChange={(event) => handleSearchChange(event.target.value)}
@@ -1903,25 +1914,27 @@ export default function HomeClient({
         </button>
       </div>
 
+      {!isSearching && !selectedCategory ? <StorefrontHero onExplore={handleViewFullCatalog} /> : null}
+
       <div className="trust-bar" aria-label="Beneficios de compra para clientes">
         <div className="trust-pill">
-          <span className="trust-pill__icon">⚡</span>
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7h11v10H3z M14 10h4l3 4v3h-7 M5 17a2 2 0 1 0 4 0 M15 17a2 2 0 1 0 4 0" /></svg></span>
           <span>Envío rápido</span>
         </div>
         <div className="trust-pill">
-          <span className="trust-pill__icon">🔒</span>
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 9h16v11H4z M8 9V6a4 4 0 0 1 8 0v3 M12 13v3" /></svg></span>
           <span>Pago seguro</span>
         </div>
         <div className="trust-pill">
-          <span className="trust-pill__icon">🛡️</span>
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6z M8 12l3 3 5-6" /></svg></span>
           <span>Garantía</span>
         </div>
         <div className="trust-pill">
-          <span className="trust-pill__icon">💬</span>
+          <span className="trust-pill__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11a8 8 0 0 1-8 8H5l-3 3V11a9 9 0 0 1 19 0z M7 11h10 M7 15h6" /></svg></span>
           <span>Atención real</span>
         </div>
       </div>
-      {showCategoryStripBeforeProducts ? categoryStrip : null}
+      {categoryStrip}
 
       {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
         <section className="flash-offers">
@@ -2078,7 +2091,6 @@ export default function HomeClient({
         </section>
       ) : null}
 
-      {!showCategoryStripBeforeProducts ? categoryStrip : null}
 
       {!isSearching && !selectedCategory && (
         <section id="ofertas" className="section">
@@ -2559,6 +2571,7 @@ export default function HomeClient({
         </div>
       ) : null}
 
+      <Footer />
     </main>
   );
 }
