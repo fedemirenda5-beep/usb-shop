@@ -841,7 +841,7 @@ export function ProductForm({
               onChange={handleChange}
               disabled={loading}
             />
-            <span>Destacar en seccion destacados</span>
+            <span>Incluir en Vidriera (máximo 8 destacados)</span>
           </label>
 
           <label className={styles.checkbox}>
@@ -855,16 +855,7 @@ export function ProductForm({
             <span>Es una oferta especial</span>
           </label>
 
-          <label className={styles.checkbox}>
-            <input
-              type="checkbox"
-              name="highlight_new_arrivals"
-              checked={formData.highlight_new_arrivals}
-              onChange={handleChange}
-              disabled={loading}
-            />
-            <span>Mostrar primero en Ultimos ingresos</span>
-          </label>
+          <p>Novedades aparece automáticamente durante 14 días desde la creación. Las reposiciones se muestran durante 7 días.</p>
         </div>
 
         {formData.is_bundle ? (

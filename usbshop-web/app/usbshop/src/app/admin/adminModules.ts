@@ -1,6 +1,7 @@
 export type AdminModuleId =
   | 'dashboard'
   | 'productos'
+  | 'vidriera'
   | 'pedidos'
   | 'clientes'
   | 'consignaciones'
@@ -35,6 +36,13 @@ export const ADMIN_MODULES: AdminModule[] = [
     href: '/admin/productos',
     navLabel: 'Productos',
     dashboardLabel: 'Stock, imagenes, costos y precios',
+  },
+  {
+    id: 'vidriera',
+    title: 'Vidriera',
+    href: '/admin/vidriera',
+    navLabel: 'Vidriera',
+    dashboardLabel: 'Elegir y ordenar hasta 8 destacados',
   },
   {
     id: 'pedidos',

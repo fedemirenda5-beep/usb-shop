@@ -35,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 import consignments
+import storefront
 
 try:
     import psycopg2
@@ -4243,6 +4244,7 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _ensure_accounting_tables(conn)
             _ensure_sellers_table(conn)
             consignments.ensure_schema(conn)
+            storefront.ensure_schema(conn, DB_IS_POSTGRES)
             conn.commit()
             _RUNTIME_SCHEMA_READY = True
         finally:
@@ -4684,34 +4686,18 @@ def sync_products(
                 columns.append("updated_at")
                 values.append(datetime.utcnow().isoformat())
 
-            if DB_IS_POSTGRES:
-                if existing is None:
-                    placeholders = ", ".join(["?"] * len(columns))
-                    sql = f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})"
-                    conn.execute(sql, values)
-                    created += 1
-                else:
-                    update_cols = [col for col in columns if col != "sku"]
-                    updates = ", ".join([f"{col} = ?" for col in update_cols])
-                    update_values = [values[columns.index(col)] for col in update_cols]
-                    update_values.append(sku)
-                    sql = f"UPDATE products SET {updates} WHERE sku = ?"
-                    conn.execute(sql, update_values)
-                    updated += 1
-            else:
+            if existing is None:
                 placeholders = ", ".join(["?"] * len(columns))
-                update_cols = [col for col in columns if col != "sku"]
-                updates = ", ".join([f"{col}=excluded.{col}" for col in update_cols])
-                sql = (
-                    f"INSERT INTO products ({', '.join(columns)}) "
-                    f"VALUES ({placeholders}) "
-                    f"ON CONFLICT(sku) DO UPDATE SET {updates}"
-                )
+                sql = f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})"
                 conn.execute(sql, values)
-                if existing is None:
-                    created += 1
-                else:
-                    updated += 1
+                created += 1
+            else:
+                update_cols = [col for col in columns if col != "sku"]
+                updates = ", ".join([f"{col} = ?" for col in update_cols])
+                update_values = [values[columns.index(col)] for col in update_cols]
+                update_values.append(existing['id'])
+                conn.execute(f"UPDATE products SET {updates} WHERE id = ?", update_values)
+                updated += 1
         if isinstance(deleted_skus, list) and deleted_skus:
             clean_skus = [str(s).strip() for s in deleted_skus if str(s).strip()]
             if clean_skus:
@@ -4722,6 +4708,7 @@ def sync_products(
                 elif has_is_active:
                     sql = f"UPDATE products SET is_active = 0 WHERE sku IN ({placeholders})"
                     conn.execute(sql, clean_skus)
+        storefront.restore_flags(conn)
         _assert_consignment_inventory(conn)
         conn.commit()
     finally:
@@ -4752,6 +4739,8 @@ def sync_backoffice_table(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        if table_name == 'products':
+            _lock_inventory(conn)
         if replace:
             if table_name in {'products', 'customers', 'invoices', 'invoice_items'} and conn.execute('SELECT 1 FROM consignments LIMIT 1').fetchone():
                 raise HTTPException(409, 'No se puede reemplazar esta tabla mientras existe historial de consignaciones')
@@ -4760,6 +4749,7 @@ def sync_backoffice_table(
             _lock_inventory(conn)
         processed = _upsert_sync_rows(conn, table_name, rows)
         if table_name == 'products':
+            storefront.restore_flags(conn)
             _assert_consignment_inventory(conn)
         if finalize:
             _reset_sync_sequence(conn, table_name)
@@ -5470,8 +5460,55 @@ def admin_update_order_status(
         conn.close()
 
 
+@app.get("/admin/showcase")
+def admin_showcase(session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        rows = storefront.selection(conn)
+        legacy = not storefront.configured(conn) and len(rows) > storefront.MAX_FEATURED
+        reserved = _fetch_reserved_stock(conn)
+        bundles = _fetch_bundle_items_map(conn, [int(row["id"]) for row in rows])
+        products = []
+        for row in rows:
+            item = dict(row)
+            product_id = int(row["id"])
+            item["available_stock"] = (_bundle_available_stock(bundles[product_id], reserved)
+                if bundles.get(product_id) else max(0, int(row["stock"] or 0) - reserved.get(product_id, 0)))
+            products.append(item)
+        return {"selected": [] if legacy else products, "legacy_count": len(rows) if legacy else 0,
+                "max_featured": storefront.MAX_FEATURED}
+    finally:
+        conn.close()
+
+
+@app.put("/admin/showcase")
+def admin_save_showcase(payload: dict = Body(...), session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _lock_inventory(conn)
+        storefront.save(conn, payload.get("product_ids"))
+        conn.commit()
+    finally:
+        conn.close()
+    return admin_showcase(session_token)
+
+
 @app.get("/featured")
-def featured_products(limit: int = 6) -> list[dict]:
+def featured_products(limit: int = 8) -> list[dict]:
+    return _storefront_collection(min(8, max(1, limit)), "featured")
+
+
+@app.get("/storefront/collections")
+def storefront_collections() -> dict:
+    return {
+        "new_arrivals": _storefront_collection(4, "new"),
+        "restocked": _storefront_collection(4, "restocked"),
+    }
+
+
+def _storefront_collection(limit: int, kind: str) -> list[dict]:
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
@@ -5511,44 +5548,62 @@ def featured_products(limit: int = 6) -> list[dict]:
             if highlight_new_arrivals_enabled
             else "NULL AS highlight_new_arrivals"
         )
+        curated = storefront.configured(conn)
+        select_fields.append("sf.restocked_at")
         conditions = []
+        query_params = []
         if has_deleted_at:
             conditions.append("p.deleted_at IS NULL")
         if has_is_active:
             conditions.append("p.is_active = 1")
-        if featured_enabled:
-            conditions.append("p.is_featured = 1")
+        if kind == "featured":
+            conditions.append("sf.position IS NOT NULL" if curated else "p.is_featured = 1")
+        elif kind == "new":
+            conditions.append("p.created_at IS NOT NULL")
         else:
-            conditions.append("p.stock > 0")
+            conditions.append("sf.restocked_at IS NOT NULL")
+        if kind != "featured":
+            now = datetime.now(timezone.utc)
+            date_column = "p.created_at" if kind == "new" else "sf.restocked_at"
+            date_expr = date_column if DB_IS_POSTGRES else f"julianday({date_column})"
+            placeholder = "?" if DB_IS_POSTGRES else "julianday(?)"
+            conditions.append(f"{date_expr} >= {placeholder} AND {date_expr} <= {placeholder}")
+            query_params = [(now - timedelta(days=14 if kind == "new" else 7)).isoformat(), now.isoformat()]
         base_conditions = []
         if has_deleted_at:
             base_conditions.append("deleted_at IS NULL")
         if has_is_active:
             base_conditions.append("is_active = 1")
-        if featured_enabled:
-            base_conditions.append("is_featured = 1")
-        else:
-            base_conditions.append("stock > 0")
+        if kind == "featured":
+            base_conditions.append("id IN (SELECT product_id FROM storefront_products WHERE position IS NOT NULL)" if curated else "is_featured = 1")
         dedupe_source = "products"
         if base_conditions:
             dedupe_source += f" WHERE {' AND '.join(base_conditions)}"
         activity_column = "p.updated_at" if has_updated_at else "p.id"
         if has_updated_at and has_created_at:
             activity_column = "COALESCE(p.updated_at, p.created_at)"
-        query = f"""
-            SELECT {", ".join(select_fields)}
-            FROM products p
-            INNER JOIN (
+        order = f"CASE WHEN {activity_column} IS NULL THEN 1 ELSE 0 END, {activity_column} DESC, p.id DESC"
+        if kind == "featured" and curated:
+            order = "sf.position ASC"
+        elif kind == "new":
+            order = "p.created_at DESC, p.id DESC"
+        elif kind == "restocked":
+            order = "sf.restocked_at DESC, p.id DESC"
+        dedupe_join = "" if kind == "featured" and curated else f"""INNER JOIN (
                 SELECT MAX(id) AS id
                 FROM {dedupe_source}
                 GROUP BY LOWER(TRIM(name))
-            ) latest ON latest.id = p.id
+            ) latest ON latest.id = p.id"""
+        query = f"""
+            SELECT {", ".join(select_fields)}
+            FROM products p
+            {dedupe_join}
             LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN storefront_products sf ON sf.product_id=p.id AND sf.sku=p.sku
             WHERE {' AND '.join(conditions)}
-            ORDER BY CASE WHEN {activity_column} IS NULL THEN 1 ELSE 0 END,
-                     {activity_column} DESC, p.id DESC
+            ORDER BY {order}
         """
-        rows = conn.execute(query).fetchall()
+        rows = conn.execute(query, query_params).fetchall()
         bundle_items_map = _fetch_bundle_items_map(
             conn,
             [int(row["id"]) for row in rows if bool(row["is_bundle"])],
@@ -5579,14 +5634,14 @@ def featured_products(limit: int = 6) -> list[dict]:
             "category": row["category"] or "General",
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            "badge": "Destacado" if featured_enabled else "Stock",
+            "badge": {"featured": "Destacado", "new": "Nuevo", "restocked": "Volvió a ingresar"}[kind],
             "description": row["description"],
             **_build_product_image_fields(
                 row["image_path"],
                 images_map.get(int(row["id"])) or [],
                 int(row["id"]),
             ),
-            "is_featured": True if featured_enabled else False,
+            "is_featured": bool(row["is_featured"]),
             "is_offer": bool(row["is_offer"]) if offer_enabled else False,
             "is_recommended": bool(row["is_recommended"]) if recommended_enabled else False,
             "highlight_new_arrivals": bool(row["highlight_new_arrivals"])
@@ -5618,6 +5673,8 @@ def set_featured(
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Producto no encontrado")
+        _lock_inventory(conn)
+        storefront.toggle(conn, product_id, is_featured)
         conn.execute(
             "UPDATE products SET is_featured = ? WHERE id = ?",
             (1 if is_featured else 0, product_id),
@@ -6284,7 +6341,7 @@ def admin_create_product(
             values.append(1)
         if _has_column(conn, "products", "is_featured"):
             columns.append("is_featured")
-            values.append(is_featured)
+            values.append(0)
         if _has_column(conn, "products", "is_offer"):
             columns.append("is_offer")
             values.append(is_offer)
@@ -6302,6 +6359,9 @@ def admin_create_product(
             raw_ends_at = str(payload.get("flash_offer_ends_at") or "").strip()
             values.append(raw_ends_at or None)
 
+        columns.append("created_at")
+        values.append(datetime.now(timezone.utc).isoformat())
+        _lock_inventory(conn)
         placeholders = ", ".join(["?"] * len(columns))
         insert_sql = f"INSERT INTO products ({', '.join(columns)}) VALUES ({placeholders})"
         if DB_IS_POSTGRES:
@@ -6311,6 +6371,9 @@ def admin_create_product(
             conn.execute(insert_sql, values)
             row = conn.execute("SELECT last_insert_rowid() as id").fetchone()
             product_id = int(row["id"] if isinstance(row, dict) else row[0])
+
+        if is_featured:
+            storefront.toggle(conn, product_id, True)
 
         # Product, images, IMEIs and bundle components must succeed together.
         _replace_product_images(conn, product_id, image_values)
@@ -6666,6 +6729,7 @@ def admin_update_product(
             params.append(image_values[0] if image_values else None)
             _replace_product_images(conn, product_id, image_values)
         if "is_featured" in payload:
+            storefront.toggle(conn, product_id, bool(payload["is_featured"]))
             updates.append("is_featured = ?")
             params.append(1 if payload["is_featured"] else 0)
         if "is_offer" in payload:

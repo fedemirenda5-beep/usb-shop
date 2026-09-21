@@ -30,7 +30,7 @@ type Category = {
 };
 
 const PRODUCTS_PAGE_SIZE = 24;
-const FEATURED_LIMIT = 6;
+const FEATURED_LIMIT = 8;
 const SERVER_FETCH_TIMEOUT_MS = 2500;
 
 const getServerApiBaseUrl = () => {

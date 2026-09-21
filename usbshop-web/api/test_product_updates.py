@@ -113,6 +113,7 @@ class ProductUpdateTests(unittest.TestCase):
         self.assertEqual(main.featured_products(), [])
         self.update({'stock': 5})
         self.assertEqual([p['id'] for p in main.featured_products()], [1])
+        main.admin_save_showcase({'product_ids': [1]}, None)
         self.update({'is_featured': False})
         self.assertEqual(main.featured_products(), [])
         self.update({'is_featured': True})
@@ -129,7 +130,8 @@ class ProductUpdateTests(unittest.TestCase):
             conn.commit()
         finally:
             conn.close()
-        self.update({'is_featured': True})
+        # An oversized old selection now requires an explicit editorial choice.
+        main.admin_save_showcase({'product_ids': [1, 9, 8]}, None)
         self.assertEqual(main.featured_products(limit=1)[0]['id'], 1)
         with patch.object(main, '_fetch_reserved_stock', return_value={1: 5, 9: 1}):
             self.assertEqual(main.featured_products(limit=1)[0]['id'], 8)

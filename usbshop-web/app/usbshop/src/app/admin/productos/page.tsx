@@ -709,15 +709,6 @@ export default function ProductosPage() {
     }
   };
 
-  const toggleNewArrivals = async (product: Product) => {
-    try {
-      await updateProduct(product, {
-        highlight_new_arrivals: !product.highlight_new_arrivals,
-      });
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error actualizando ultimos ingresos');
-    }
-  };
 
   const deleteCategory = async (category: Category) => {
     if (!confirm(`Eliminar rubro "${category.name}"?`)) return;
@@ -1042,7 +1033,6 @@ export default function ProductosPage() {
                       <span>{currencyFormatter.format(storefrontPrice)}</span>
                       <span>Stock {product.stock}</span>
                       <span>{product.is_featured ? 'Destacado' : 'Comun'}</span>
-                      <span>{product.highlight_new_arrivals ? 'Ult. ingresos' : 'Sin pin'}</span>
                     </div>
                   </button>
                 );
@@ -1080,7 +1070,6 @@ export default function ProductosPage() {
                 {canViewProfit ? <th>Margen</th> : null}
                 <th>Stock general / disponible</th>
                 <th>Destacado</th>
-                <th>Ult. ingresos</th>
                 <th>Oferta</th>
                 <th>Relampago</th>
                 <th>Acciones</th>
@@ -1135,18 +1124,6 @@ export default function ProductosPage() {
                         title="Cambiar destacado"
                       >
                         {product.is_featured ? 'Si' : 'No'}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        className={`${styles.toggle} ${product.highlight_new_arrivals ? styles.active : ''}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void toggleNewArrivals(product);
-                        }}
-                        title="Mostrar primero en Ultimos ingresos"
-                      >
-                        {product.highlight_new_arrivals ? 'Si' : 'No'}
                       </button>
                     </td>
                     <td>
@@ -1255,7 +1232,6 @@ export default function ProductosPage() {
               <div><span>Stock</span><strong>{selectedProduct.stock}</strong></div>
               <div><span>Estado</span><strong>{selectedProduct.is_active ? 'Activo' : 'Inactivo'}</strong></div>
               <div><span>Destacado</span><strong>{selectedProduct.is_featured ? 'Si' : 'No'}</strong></div>
-              <div><span>Ult. ingresos</span><strong>{selectedProduct.highlight_new_arrivals ? 'Si' : 'No'}</strong></div>
               <div><span>Oferta</span><strong>{selectedProduct.is_offer ? 'Si' : 'No'}</strong></div>
               {canViewProfit ? (
                 <div><span>Margen</span><strong>{calculateMargin(selectedProduct.cost, selectedProduct.price)?.toFixed(1) || '0'}%</strong></div>
@@ -1268,9 +1244,7 @@ export default function ProductosPage() {
             <button type="button" className={styles.btnSecondary} onClick={() => void toggleFeatured(selectedProduct)}>
               {selectedProduct.is_featured ? 'Quitar destacado' : 'Marcar destacado'}
             </button>
-            <button type="button" className={styles.btnSecondary} onClick={() => void toggleNewArrivals(selectedProduct)}>
-              {selectedProduct.highlight_new_arrivals ? 'Quitar de ultimos ingresos' : 'Marcar en ultimos ingresos'}
-            </button>
+            <Link className={styles.btnSecondary} href="/admin/vidriera">Organizar Vidriera</Link>
               <button type="button" className={styles.btnDelete} onClick={() => void handleDelete(selectedProduct)}>
                 {selectedProduct.stock <= 0 ? 'Eliminar agotado' : 'Eliminar'}
               </button>

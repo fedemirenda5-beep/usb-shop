@@ -171,8 +171,6 @@ const toComparableTimestamp = (product: Product) => {
 };
 const compareByNewest = (a: Product, b: Product) =>
   toComparableTimestamp(b) - toComparableTimestamp(a) || b.id - a.id;
-const isPinnedNewArrival = (product: Product, _now = Date.now()) =>
-  Boolean(product.highlightNewArrivals);
 const hasDiscountedPrice = (product: Product) =>
   Number(product.originalPrice || 0) > Number(product.price || 0);
 const getFlashOfferTimeLeftAt = (product: Product | null | undefined, now: number) => {
@@ -369,6 +367,11 @@ export default function HomeClient({
       normalizeProductWithBase(item, initialBase)
     )
   );
+  const [newArrivals, setNewArrivals] = useState<Product[]>([]);
+  const [restocked, setRestocked] = useState<Product[]>([]);
+  const [collectionsError, setCollectionsError] = useState(false);
+  const [collectionsAttempt, setCollectionsAttempt] = useState(0);
+  const [collectionsLoading, setCollectionsLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>(() =>
     (initialProducts ?? []).map((item) => normalizeProductWithBase(item, initialBase))
   );
@@ -775,6 +778,21 @@ export default function HomeClient({
     baseUrl: string = productsApiBase
   ) => normalizeProductWithBase(item, baseUrl);
 
+  useEffect(() => {
+    let active = true;
+    setCollectionsLoading(true);
+    setCollectionsError(false);
+    fetchWithRetry<{ new_arrivals: Product[]; restocked: Product[] }>("/storefront/collections")
+      .then(({ data, baseUrl }) => {
+        if (!active) return;
+        setNewArrivals(data.new_arrivals.map(item => normalizeProduct(item, baseUrl)));
+        setRestocked(data.restocked.map(item => normalizeProduct(item, baseUrl)));
+      })
+      .catch(() => { if (active) setCollectionsError(true); })
+      .finally(() => { if (active) setCollectionsLoading(false); });
+    return () => { active = false; };
+  }, [collectionsAttempt]);
+
   const applyFeaturedResult = (result: { data: Product[]; baseUrl: string }) => {
     setProductsApiBase(result.baseUrl);
     const normalized = result.data.map((item) => normalizeProduct(item, result.baseUrl));
@@ -809,7 +827,7 @@ export default function HomeClient({
 
   const refreshProducts = async () => {
     const [featuredResult, productsResult] = await Promise.all([
-      fetchWithRetry<Product[]>("/featured?limit=6"),
+      fetchWithRetry<Product[]>("/featured?limit=8"),
       fetchProductsPage(0),
     ]);
     applyFeaturedResult(featuredResult);
@@ -856,7 +874,7 @@ export default function HomeClient({
             setIsLoadingFeatured(true);
           }
         }
-        const result = await fetchWithRetry<Product[]>("/featured?limit=6");
+        const result = await fetchWithRetry<Product[]>("/featured?limit=8");
         if (!active || featuredRequestRef.current !== requestId || !Array.isArray(result.data)) {
           return;
         }
@@ -876,7 +894,7 @@ export default function HomeClient({
   }, [initialFeatured]);
 
   useEffect(() => {
-    const source = featured.length > 0 ? featured : products;
+    const source = featured;
     if (source.length <= 4) {
       return;
     }
@@ -1167,12 +1185,7 @@ export default function HomeClient({
   const availableCategories = useMemo(() => {
     return orderedCategories.length > 0 ? orderedCategories : fallbackCategories;
   }, [orderedCategories]);
-  const featuredSource = useMemo(() => {
-    if (featured.length > 0) {
-      return featured;
-    }
-    return products.slice(0, 12);
-  }, [featured, products]);
+  const featuredSource = featured;
 
   const searchTokens = useMemo(() => {
     return searchTokensFromQuery(debouncedSearchQuery);
@@ -1280,8 +1293,7 @@ export default function HomeClient({
         return false;
       }
       return matchesSearch(product);
-      })
-      .sort(compareByNewest);
+      });
   }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex, searchResultIds]);
   const filteredProducts = useMemo(() => {
     const sourceMap = new Map<number, Product>();
@@ -1351,29 +1363,6 @@ export default function HomeClient({
     }
     return { ...product, badge };
   };
-
-  const newArrivals = useMemo(() => {
-    const source = products.length > 0 ? products : featuredSource;
-    const now = Date.now();
-    const available = [...source]
-      .filter((product) => (product.stock ?? 0) > 0)
-      .sort((a, b) => {
-        const pinnedScore = (product: Product) =>
-          Number(Boolean(product.isFeatured)) * 3 + Number(isPinnedNewArrival(product, now));
-        const pinnedDelta = pinnedScore(b) - pinnedScore(a);
-        if (pinnedDelta !== 0) {
-          return pinnedDelta;
-        }
-        return compareByNewest(a, b);
-      });
-    if (!selectedCategory) {
-      return available.slice(0, HOME_SECTION_CARD_LIMIT);
-    }
-    const normalizedCategory = normalizeLabel(selectedCategory);
-    return available
-      .filter((product) => normalizeLabel(product.category) === normalizedCategory)
-      .slice(0, HOME_SECTION_CARD_LIMIT);
-  }, [products, featuredSource, selectedCategory]);
 
   const weeklyOffers = useMemo(() => {
     const source = products.length > 0 ? products : featuredSource;
@@ -1745,7 +1734,7 @@ export default function HomeClient({
     });
     try {
       const [featuredData, productsData] = await Promise.all([
-        fetchWithRetry<Product[]>("/featured?limit=6"),
+        fetchWithRetry<Product[]>("/featured?limit=8"),
         fetchProductsPage(0),
       ]);
       applyFeaturedResult(featuredData);
@@ -1845,7 +1834,7 @@ export default function HomeClient({
           <div>
             <p className="section-kicker">Novedades</p>
             <h2 className="section-title">
-              {selectedCategory ? `Lo nuevo en ${selectedCategory}` : "Ultimos ingresos"}
+              Novedades de los últimos 14 días
             </h2>
           </div>
           {!isSearching && !selectedCategory ? (
@@ -1872,17 +1861,29 @@ export default function HomeClient({
                 style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
               />
             ))
-          ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
+          ) : collectionsLoading ? (
             skeletonCards.slice(0, 4).map((card) => (
               <div key={`new-skeleton-${card}`} className="product-card product-skeleton" />
             ))
           ) : (
             <div className="empty-state empty-state--wide">
-              No hay novedades disponibles por el momento.
+              {collectionsError ? <>No pudimos cargar los últimos ingresos. <button className="button button--ghost" onClick={() => setCollectionsAttempt(value => value + 1)}>Reintentar ingresos</button></> : 'No hay novedades disponibles por el momento.'}
             </div>
           )}
         </div>
       </section>
+      ) : null}
+
+      {!isSearching && !selectedCategory && restocked.length > 0 ? (
+        <section id="reposiciones" className="section">
+          <div className="section-header"><div><p className="section-kicker">De nuevo en stock</p><h2 className="section-title">Volvió a ingresar</h2><p>Reposiciones de los últimos 7 días</p></div></div>
+          <div className="product-grid stagger">{restocked.map((product, index) => (
+            <ProductCard key={`restocked-${product.id}`} product={{ ...product, badge: "Volvió a ingresar" }}
+              imageRefreshKey={imageRefreshKey} imagePriority={getCardImagePriority(index)}
+              inCart={cart[product.id]?.qty ?? 0} onAdd={() => addItem(product)}
+              onView={() => handleOpenQuickView(product)} />
+          ))}</div>
+        </section>
       ) : null}
 
       {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
