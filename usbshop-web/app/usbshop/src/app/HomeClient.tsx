@@ -1832,9 +1832,8 @@ export default function HomeClient({
       <section id="novedades" className="section">
         <div className="section-header">
           <div>
-            <p className="section-kicker">Novedades</p>
             <h2 className="section-title">
-              Novedades de los últimos 14 días
+              Novedades
             </h2>
           </div>
           {!isSearching && !selectedCategory ? (
@@ -1854,7 +1853,7 @@ export default function HomeClient({
                 key={`new-${product.id}`}
                 product={applyBadge(product, "catalog")}
                 imageRefreshKey={imageRefreshKey}
-                imagePriority={getCardImagePriority(index)}
+                imagePriority={getCardImagePriority(index, true)}
                 inCart={cart[product.id]?.qty ?? 0}
                 onAdd={() => addItem(product)}
                 onView={() => handleOpenQuickView(product)}
@@ -1862,9 +1861,9 @@ export default function HomeClient({
               />
             ))
           ) : collectionsLoading ? (
-            skeletonCards.slice(0, 4).map((card) => (
-              <div key={`new-skeleton-${card}`} className="product-card product-skeleton" />
-            ))
+            <div className="empty-state empty-state--wide" role="status">
+              Cargando novedades…
+            </div>
           ) : (
             <div className="empty-state empty-state--wide">
               {collectionsError ? <>No pudimos cargar los últimos ingresos. <button className="button button--ghost" onClick={() => setCollectionsAttempt(value => value + 1)}>Reintentar ingresos</button></> : 'No hay novedades disponibles por el momento.'}

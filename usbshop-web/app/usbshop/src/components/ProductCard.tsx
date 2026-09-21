@@ -216,6 +216,8 @@ function ProductCard({
   }, [imageRefreshKey, optimizedImgSrc, imgSrc, proxySrc, useRawImage]);
   const [imgAttempt, setImgAttempt] = React.useState(0);
   const [imgFailed, setImgFailed] = React.useState(false);
+  const imageRef = React.useRef<HTMLImageElement | null>(null);
+  const [loadedSrc, setLoadedSrc] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (imagePriority === "high") {
@@ -290,6 +292,25 @@ function ProductCard({
   }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
 
   const canRenderImage = shouldLoadImage || imagePriority === "high";
+  const imagePending = Boolean(displaySrc && !imgFailed && canRenderImage && loadedSrc !== displaySrc);
+  const canUseOriginal = Boolean(proxySrc && imgSrc && isAbsoluteImageUrl(imgSrc) && !/\/products\/\d+\/image\b/.test(imgSrc));
+
+  React.useEffect(() => {
+    // Cached images can finish before hydration attaches the load handler.
+    const image = imageRef.current;
+    if (image?.complete && image.naturalWidth > 0) setLoadedSrc(displaySrc);
+  }, [displaySrc, canRenderImage]);
+
+  React.useEffect(() => {
+    if (!imagePending || !canUseOriginal) return;
+    const timer = window.setTimeout(() => {
+      setProxySrc(null);
+      setUseRawImage(true);
+      setHasTriedProxy(true);
+      setImgAttempt(0);
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [displaySrc, imagePending, canUseOriginal]);
 
   const shouldAutoplayCarousel =
     allowCarouselAutoplay && hasMultipleImages && shouldLoadImage && imagePriority !== "low" && !isCarouselPaused;
@@ -308,6 +329,13 @@ function ProductCard({
     const activeSrc = proxySrc ?? imgSrc;
     if (!activeSrc) {
       setImgFailed(true);
+      return;
+    }
+    if (canUseOriginal) {
+      setProxySrc(null);
+      setUseRawImage(true);
+      setHasTriedProxy(true);
+      setImgAttempt(0);
       return;
     }
     if (!proxySrc && !useRawImage && optimizedImgSrc && optimizedImgSrc !== imgSrc) {
@@ -394,10 +422,13 @@ function ProductCard({
         role={canView ? "button" : undefined}
         tabIndex={canView ? 0 : undefined}
         aria-label={canView ? `Ver detalles de ${product.name}` : undefined}
+        aria-busy={imagePending}
       >
+        {imagePending && <div className="product-image-loading" role="status">Cargando imagen…</div>}
         {displaySrc && !imgFailed && canRenderImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
+            ref={imageRef}
             src={displaySrc}
             alt={product.name}
             className="product-image"
@@ -409,6 +440,7 @@ function ProductCard({
             width={CARD_IMAGE_WIDTH}
             height={CARD_IMAGE_HEIGHT}
             onError={handleImageError}
+            onLoad={() => setLoadedSrc(displaySrc)}
           />
         ) : (
           <div className="product-image-fallback" aria-hidden="true">

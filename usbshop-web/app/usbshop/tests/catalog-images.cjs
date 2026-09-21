@@ -16,6 +16,9 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
     const imageRequests = [];
     const originals = [];
     const started = new Set();
+    let noveltyMode = false;
+    let releaseSlowImage;
+    const slowImage = new Promise(resolve => { releaseSlowImage = resolve; });
     let release;
     const firstRowStarted = new Promise(resolve => { release = resolve; });
     await context.route('**/*', async route => {
@@ -24,7 +27,7 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       if (url.pathname === '/products') return route.fulfill({ json: Number(url.searchParams.get('offset')) > 0 ? [] : products });
       if (url.pathname === '/categories') return route.fulfill({ json: [{ id: 1, name: 'Cargadores', product_count: 24 }] });
       if (url.pathname === '/featured') return route.fulfill({ json: [] });
-      if (url.pathname === '/storefront/collections') return route.fulfill({ json: { new_arrivals: [], restocked: [] } });
+      if (url.pathname === '/storefront/collections') return route.fulfill({ json: { new_arrivals: noveltyMode ? products.slice(-2) : [], restocked: [] } });
       if (url.hostname === 'images.invalid') {
         originals.push(url.href);
         return route.fulfill({ contentType: 'image/png', body: pixel });
@@ -32,6 +35,8 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       const match = url.pathname.match(/^\/products\/(\d+)\/image$/);
       if (match) {
         const id = Number(match[1]);
+        if (noveltyMode && id === 900024) return route.fulfill({ status: 503, body: 'unavailable' });
+        if (noveltyMode && id === 900023) await slowImage;
         if (id >= 900001) {
           imageRequests.push({ id, url });
           if (firstRow.has(id)) {
@@ -58,6 +63,18 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
     assert(imageRequests.every(request => request.url.searchParams.get('w') === '420'));
     assert.equal(await page.locator('#featured-grid .product-card').count(), 12, 'keep catalog rendering bounded');
     console.log('PASS first row downloads concurrently, uses only thumbnails and retains bounded rendering');
+    noveltyMode = true;
+    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.locator('#novedades').getByRole('heading', { name: 'Novedades', exact: true }).waitFor();
+    const delayed = page.locator('#novedades .product-card').filter({ hasText: 'Cargador 23' });
+    await delayed.getByRole('status').filter({ hasText: 'Cargando imagen' }).waitFor();
+    await page.waitForFunction(() => [...document.querySelectorAll('#novedades img')].some(image => image.src.includes('original-24.jpg') && image.complete && image.naturalWidth > 0));
+    assert(originals.some(url => url.includes('original-24.jpg')), 'failed thumbnail should recover using the original');
+    releaseSlowImage();
+    await delayed.getByRole('status').waitFor({ state: 'detached' });
+    assert.equal(await page.locator('#novedades .product-image-loading').count(), 0);
+    assert.equal(await page.locator('#novedades img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)), true);
+    console.log('PASS Novedades title, visible loading status and original-image recovery after thumbnail failure');
     await context.close();
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
