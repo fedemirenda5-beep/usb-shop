@@ -16,7 +16,7 @@ Regla: el admin siempre debe leer desde la API. No se agregan pantallas que lean
 
 ## Modulos actuales
 
-- `Dashboard`: operativo, usa `/admin/reports/overview`
+- `Dashboard`: usa `/admin/dashboard`, un resumen de consultas agregadas. Si la API aun no tiene esa ruta, vuelve temporalmente a `/admin/reports/overview`.
 - `Productos`: operativo
 - `Pedidos`: operativo
 - `Clientes`: operativo sobre `customers`

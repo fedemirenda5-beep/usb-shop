@@ -10,6 +10,7 @@ import CartDrawer from "@/components/CartDrawer";
 import StorefrontCartPanel from "@/components/StorefrontCartPanel";
 import {
   fetchJson,
+  getFriendlyApiError,
   fetchProductsByIds,
   createOrderIdempotencyKey,
   getApiBaseUrl,
@@ -90,7 +91,7 @@ const CATALOG_PAGE_SIZE = 12;
 const SEARCH_PAGE_SIZE = 48;
 const SEARCH_DEBOUNCE_MS = 250;
 const HOME_SECTION_CARD_LIMIT = 4;
-const STOREFRONT_FETCH_TIMEOUT_MS = 4_500;
+const STOREFRONT_FETCH_TIMEOUT_MS = 15_000;
 const STOREFRONT_FETCH_ATTEMPTS = 1;
 const STOREFRONT_BASE_ATTEMPTS = 2;
 const STOREFRONT_RETRY_DELAY_MS = 250;
@@ -379,6 +380,9 @@ export default function HomeClient({
   );
   const imageRefreshKey = 0;
   const [catalogLimit, setCatalogLimit] = useState(CATALOG_PAGE_SIZE);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchRetry, setSearchRetry] = useState(0);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [hasMoreProducts, setHasMoreProducts] = useState(
     typeof initialHasMoreProducts === "boolean" ? initialHasMoreProducts : true
@@ -423,8 +427,6 @@ export default function HomeClient({
   const [cartNotice, setCartNotice] = useState<string | null>(null);
   const cartNoticeTimer = useRef<number | null>(null);
   const cartHydrated = useRef(false);
-  const featuredRetryTimer = useRef<number | null>(null);
-  const productsRetryTimer = useRef<number | null>(null);
   const featuredRequestRef = useRef(0);
   const productsRequestRef = useRef(0);
   const searchRequestRef = useRef(0);
@@ -496,8 +498,8 @@ export default function HomeClient({
       requestedCategory;
     setSelectedCategory(matchedCategory);
     setSearchQuery("");
-    setCatalogLimit(Number.MAX_SAFE_INTEGER);
-  }, [categories, products]);
+    setCatalogLimit(CATALOG_PAGE_SIZE);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -513,11 +515,13 @@ export default function HomeClient({
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
+    setCatalogLimit(CATALOG_PAGE_SIZE);
     setSelectedCategory(null);
   };
 
   const handleCategorySelect = (category: string | null) => {
     setSelectedCategory(category);
+    setCatalogError(null);
     setSearchQuery("");
     setShowCatalogSection(Boolean(category));
     setCatalogLimit(CATALOG_PAGE_SIZE);
@@ -644,7 +648,7 @@ export default function HomeClient({
     setSelectedCategory(null);
     setSearchQuery("");
     setShowCatalogSection(true);
-    setCatalogLimit(Number.MAX_SAFE_INTEGER);
+    setCatalogLimit(CATALOG_PAGE_SIZE);
     if (hasMoreProducts && !isFetchingMore) {
       void fetchAllProducts();
     }
@@ -656,8 +660,9 @@ export default function HomeClient({
   const handleLoadMoreCatalog = () => {
     setShowCatalogSection(true);
     setCatalogLimit((value) => value + CATALOG_PAGE_SIZE);
-    if (hasMoreProducts && !isFetchingMore) {
-      void loadMoreProducts();
+    if (!isSearching && hasMoreProducts && !isFetchingMore && filteredCatalog.length < catalogLimit + CATALOG_PAGE_SIZE) {
+      if (selectedCategory) void fetchAllProducts();
+      else void loadMoreProducts();
     }
   };
 
@@ -665,6 +670,9 @@ export default function HomeClient({
     if (isFetchingMoreRef.current || !hasMoreProductsRef.current) {
       return;
     }
+    productsRequestRef.current += 1;
+    setIsLoadingProducts(false);
+    setCatalogError(null);
     isFetchingMoreRef.current = true;
     setIsFetchingMore(true);
     try {
@@ -674,10 +682,10 @@ export default function HomeClient({
         return;
       }
       setProductsApiBase(result.baseUrl);
-      setProducts((prev) => [...prev, ...result.normalized]);
+      setProducts((prev) => Array.from(new Map([...prev, ...result.normalized].map((product) => [product.id, product])).values()));
       setHasMoreProducts(result.data.length >= PRODUCTS_PAGE_SIZE);
-    } catch {
-      setHasMoreProducts(false);
+    } catch (error) {
+      setCatalogError(getFriendlyApiError(error, "No se pudieron cargar todos los productos. Reintenta."));
     } finally {
       isFetchingMoreRef.current = false;
       setIsFetchingMore(false);
@@ -691,6 +699,8 @@ export default function HomeClient({
     // Ignore an in-flight homepage refresh: it only contains the first page and
     // must not replace the complete list requested by a category.
     productsRequestRef.current += 1;
+    setIsLoadingProducts(false);
+    setCatalogError(null);
     isFetchingMoreRef.current = true;
     setIsFetchingMore(true);
     try {
@@ -710,7 +720,9 @@ export default function HomeClient({
         for (const product of result.normalized) {
           productsById.set(product.id, product);
         }
-        offset += result.normalized.length;
+        setProductsApiBase(baseUrl);
+        setProducts(Array.from(productsById.values()));
+        offset += result.data.length;
         if (result.data.length < BULK_PRODUCTS_PAGE_SIZE) {
           more = false;
         }
@@ -718,8 +730,8 @@ export default function HomeClient({
       setProductsApiBase(baseUrl);
       setProducts(Array.from(productsById.values()));
       setHasMoreProducts(false);
-    } catch {
-      setHasMoreProducts(false);
+    } catch (error) {
+      setCatalogError(getFriendlyApiError(error, "No se pudieron cargar todos los productos. Reintenta."));
     } finally {
       isFetchingMoreRef.current = false;
       setIsFetchingMore(false);
@@ -734,17 +746,7 @@ export default function HomeClient({
   ): Promise<{ data: T; baseUrl: string }> => {
     let lastError: unknown;
     await loadRuntimeConfig();
-    const host = typeof window !== "undefined" ? window.location.hostname : "";
-    const fallbackBase =
-      host === "localhost" || host === "127.0.0.1" ? `http://${host}:8000` : null;
-    const primaryBase = (productsApiBase || getApiBaseUrl()).trim();
-    const bases = Array.from(
-      new Set(
-        [primaryBase, getApiBaseUrl(), fallbackBase]
-          .map((value) => (value || "").trim())
-          .filter(Boolean)
-      )
-    );
+    const bases = [getApiBaseUrl()];
     const fetchFromBase = async (baseUrl: string) => {
       return fetchJson<T>(path, undefined, {
         attempts: STOREFRONT_FETCH_ATTEMPTS,
@@ -816,13 +818,7 @@ export default function HomeClient({
 
   useEffect(() => {
     let active = true;
-    if (Array.isArray(initialCategories)) {
-      setCategories(initialCategories);
-      setCategoriesLoaded(true);
-      return () => {
-        active = false;
-      };
-    }
+
     const loadCategories = async () => {
       try {
         const result = await fetchWithRetry<Category[]>("/categories");
@@ -831,9 +827,7 @@ export default function HomeClient({
         }
         setCategories(result.data);
       } catch {
-        if (active) {
-          setCategories([]);
-        }
+        // Keep the existing categories available if the refresh fails.
       } finally {
         if (active) {
           setCategoriesLoaded(true);
@@ -850,7 +844,6 @@ export default function HomeClient({
     let active = true;
     const requestId = featuredRequestRef.current + 1;
     featuredRequestRef.current = requestId;
-    let refreshTimer: number | null = null;
     const loadFeatured = async () => {
       try {
         if (!Array.isArray(initialFeatured)) {
@@ -864,50 +857,21 @@ export default function HomeClient({
           }
         }
         const result = await fetchWithRetry<Product[]>("/featured?limit=6");
-        if (!active || featuredRequestRef.current !== requestId || !Array.isArray(result.data) || result.data.length === 0) {
+        if (!active || featuredRequestRef.current !== requestId || !Array.isArray(result.data)) {
           return;
         }
         applyFeaturedResult(result);
       } catch {
-        if (!active || featuredRequestRef.current !== requestId) {
-          return;
-        }
-        if (featuredRetryTimer.current) {
-          window.clearTimeout(featuredRetryTimer.current);
-        }
-        featuredRetryTimer.current = window.setTimeout(() => {
-          void loadFeatured();
-        }, 2500);
+        // The request already retries; keep the snapshot without polling forever.
       } finally {
         if (active && featuredRequestRef.current === requestId) {
           setIsLoadingFeatured(false);
         }
       }
     };
-    if (Array.isArray(initialFeatured)) {
-      // The server-rendered data is already available; avoid an unnecessary
-      // second network request that only causes extra work and re-render churn.
-      return () => {
-        active = false;
-        if (refreshTimer) {
-          window.clearTimeout(refreshTimer);
-        }
-        if (featuredRetryTimer.current) {
-          window.clearTimeout(featuredRetryTimer.current);
-          featuredRetryTimer.current = null;
-        }
-      };
-    }
     void loadFeatured();
     return () => {
       active = false;
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
-      }
-      if (featuredRetryTimer.current) {
-        window.clearTimeout(featuredRetryTimer.current);
-        featuredRetryTimer.current = null;
-      }
     };
   }, [initialFeatured]);
 
@@ -926,7 +890,6 @@ export default function HomeClient({
     let active = true;
     const requestId = productsRequestRef.current + 1;
     productsRequestRef.current = requestId;
-    let refreshTimer: number | null = null;
     const loadProducts = async () => {
       try {
         if (!Array.isArray(initialProducts)) {
@@ -941,20 +904,14 @@ export default function HomeClient({
           }
         }
         const result = await fetchProductsPage(0);
-        if (!active || productsRequestRef.current !== requestId || !Array.isArray(result.data) || result.data.length === 0) {
+        if (!active || productsRequestRef.current !== requestId || !Array.isArray(result.data)) {
           return;
         }
         applyProductsResult(result);
       } catch {
-        if (!active || productsRequestRef.current !== requestId) {
-          return;
-        }
-        if (productsRetryTimer.current) {
-          window.clearTimeout(productsRetryTimer.current);
-        }
-        productsRetryTimer.current = window.setTimeout(() => {
-          void loadProducts();
-        }, 2500);
+        if (!active || productsRequestRef.current !== requestId) return;
+        setCatalogError("No se pudo actualizar el catalogo. Reintenta para ver los productos actuales.");
+        setHasMoreProducts(true);
       } finally {
         if (active && productsRequestRef.current === requestId) {
           isFetchingMoreRef.current = false;
@@ -963,30 +920,9 @@ export default function HomeClient({
         }
       }
     };
-    if (Array.isArray(initialProducts)) {
-      // Keep the first server-rendered page and avoid an extra refresh that
-      // adds render and network cost without improving the initial experience.
-      return () => {
-        active = false;
-        if (refreshTimer) {
-          window.clearTimeout(refreshTimer);
-        }
-        if (productsRetryTimer.current) {
-          window.clearTimeout(productsRetryTimer.current);
-          productsRetryTimer.current = null;
-        }
-      };
-    }
     void loadProducts();
     return () => {
       active = false;
-      if (refreshTimer) {
-        window.clearTimeout(refreshTimer);
-      }
-      if (productsRetryTimer.current) {
-        window.clearTimeout(productsRetryTimer.current);
-        productsRetryTimer.current = null;
-      }
     };
   }, [initialProducts]);
 
@@ -1275,6 +1211,7 @@ export default function HomeClient({
 
   useEffect(() => {
     if (!debouncedSearchQuery) {
+      setSearchError(null);
       setSearchResults(null);
       setIsLoadingSearch(false);
       return;
@@ -1283,19 +1220,26 @@ export default function HomeClient({
     const requestId = searchRequestRef.current + 1;
     searchRequestRef.current = requestId;
     setIsLoadingSearch(true);
+    setSearchError(null);
+    setSearchResults(null);
     const runSearch = async () => {
       try {
-        const result = await fetchProductsPage(0, debouncedSearchQuery, SEARCH_PAGE_SIZE);
-        if (!active || searchRequestRef.current !== requestId) {
-          return;
+        let offset = 0;
+        const found = new Map<number, Product>();
+        while (active && searchRequestRef.current === requestId) {
+          const result = await fetchProductsPage(offset, debouncedSearchQuery, SEARCH_PAGE_SIZE);
+          if (!active || searchRequestRef.current !== requestId) return;
+          for (const product of result.normalized) found.set(product.id, product);
+          setProductsApiBase(result.baseUrl);
+          setSearchResults(Array.from(found.values()));
+          if (result.data.length < SEARCH_PAGE_SIZE) break;
+          offset += result.data.length;
         }
-        setProductsApiBase(result.baseUrl);
-        setSearchResults(result.normalized);
       } catch {
         if (!active || searchRequestRef.current !== requestId) {
           return;
         }
-        setSearchResults([]);
+        setSearchError("No se pudo completar la busqueda. Reintenta.");
       } finally {
         if (active && searchRequestRef.current === requestId) {
           setIsLoadingSearch(false);
@@ -1306,7 +1250,9 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, searchRetry]);
+
+  const searchResultIds = useMemo(() => new Set((searchResults ?? []).map((product) => product.id)), [searchResults]);
 
   const matchesSearch = (product: Product) => {
     if (searchTokens.length === 0) {
@@ -1315,7 +1261,7 @@ export default function HomeClient({
     const haystack =
       productSearchIndex.get(product.id) ||
       buildSearchHaystack(product.name, product.category, product.badge);
-    return matchesSearchQuery(searchTokens.join(" "), haystack);
+    return searchResultIds.has(product.id) || matchesSearchQuery(searchTokens.join(" "), haystack);
   };
   const matchesSelectedCategory = (product: Product) => {
     if (!selectedCategory) {
@@ -1336,7 +1282,7 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(compareByNewest);
-  }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
+  }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex, searchResultIds]);
   const filteredProducts = useMemo(() => {
     const sourceMap = new Map<number, Product>();
     for (const product of products) {
@@ -1359,27 +1305,15 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(compareByCategoryThenName);
-  }, [products, featuredSource, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
+  }, [products, featuredSource, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex, searchResultIds]);
 
   useEffect(() => {
-    if (!debouncedSearchQuery || selectedCategory || isSearching || !hasMoreProducts || isFetchingMore) {
-      return;
+    if (selectedCategory && hasMoreProducts && !isFetchingMore && !isLoadingProducts && !catalogError) {
+      void fetchAllProducts();
     }
-    if (filteredProducts.length >= SEARCH_PAGE_SIZE) {
-      return;
-    }
-    void fetchAllProducts();
-  }, [debouncedSearchQuery, selectedCategory, isSearching, hasMoreProducts, isFetchingMore, filteredProducts.length]);
+  }, [selectedCategory, hasMoreProducts, isFetchingMore, isLoadingProducts, catalogError]);
 
-  const catalogSource = useMemo(() => {
-    const source = products.length > 0 ? products : featuredSource;
-    if (selectedCategory) {
-      return source;
-    }
-    const curated = source.filter((product) => product.isFeatured || product.isOffer);
-    const list = curated.length > 0 ? curated : source;
-    return list;
-  }, [products, featuredSource, selectedCategory]);
+  const catalogSource = products.length > 0 ? products : featuredSource;
 
   const filteredCatalog = useMemo(() => {
     return [...catalogSource]
@@ -1390,7 +1324,7 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(selectedCategory ? compareByNewest : compareByCategoryThenName);
-  }, [catalogSource, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex]);
+  }, [catalogSource, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex, searchResultIds]);
 
   const newestIds = useMemo(() => {
     return new Set(products.slice(0, 6).map((product) => product.id));
@@ -1793,19 +1727,9 @@ export default function HomeClient({
       return filteredFeatured[pos];
     });
   }, [filteredFeatured, featuredIndex]);
-  const catalogWithoutFeatured = useMemo(() => {
-    if (isSearching || selectedCategory) {
-      return filteredCatalog;
-    }
-    const featuredIds = new Set(featuredWindow.map((product) => product.id));
-    if (featuredIds.size === 0) {
-      return filteredCatalog;
-    }
-    return filteredCatalog.filter((product) => !featuredIds.has(product.id));
-  }, [filteredCatalog, featuredWindow, isSearching, selectedCategory]);
   const visibleCatalog = useMemo(
-    () => catalogWithoutFeatured.slice(0, catalogLimit),
-    [catalogWithoutFeatured, catalogLimit]
+    () => filteredCatalog.slice(0, catalogLimit),
+    [filteredCatalog, catalogLimit]
   );
 
   const toggleFeatured = async (product: Product) => {
@@ -1948,7 +1872,7 @@ export default function HomeClient({
                 style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
               />
             ))
-          ) : isLoadingProducts ? (
+          ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
             skeletonCards.slice(0, 4).map((card) => (
               <div key={`new-skeleton-${card}`} className="product-card product-skeleton" />
             ))
@@ -2061,7 +1985,7 @@ export default function HomeClient({
                   style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
                 />
               ))
-            ) : isLoadingProducts ? (
+            ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
               skeletonCards.slice(0, 4).map((card) => (
                 <div key={`discount-skeleton-${card}`} className="product-card product-skeleton" />
               ))
@@ -2096,7 +2020,7 @@ export default function HomeClient({
                 style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
               />
             ))
-          ) : isLoadingProducts ? (
+          ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
             skeletonCards.slice(0, 4).map((card) => (
               <div key={`offer-skeleton-${card}`} className="product-card product-skeleton" />
             ))
@@ -2156,12 +2080,21 @@ export default function HomeClient({
             )}
           </div>
 
+        {(isSearching ? searchError : catalogError) ? (
+          <div role="alert" className="empty-state">
+            <p>{isSearching ? searchError : catalogError}</p>
+            <button type="button" className="button button--ghost" disabled={isFetchingMore || isLoadingSearch}
+              onClick={() => { if (isSearching) setSearchRetry((value) => value + 1); else void fetchAllProducts(); }}>
+              Reintentar
+            </button>
+          </div>
+        ) : null}
         <div className="featured-layout">
           <div className="featured-main">
             <div className="featured-grid" id={isSearching ? "resultados" : "featured-grid"}>
               {isSearching ? (
                 filteredProducts.length > 0 ? (
-                  filteredProducts.map((product, index) => (
+                  filteredProducts.slice(0, catalogLimit).map((product, index) => (
                     <ProductCard
                       key={`search-${product.id}`}
                       product={applyBadge(product, "catalog")}
@@ -2173,7 +2106,7 @@ export default function HomeClient({
                       style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
                     />
                   ))
-                ) : isLoadingProducts ? (
+                ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
                   skeletonCards.map((card) => (
                     <div key={`search-skeleton-${card}`} className="product-card product-skeleton" />
                   ))
@@ -2184,7 +2117,7 @@ export default function HomeClient({
                 )
               ) : selectedCategory ? (
                 filteredCatalog.length > 0 ? (
-                  filteredCatalog.map((product, index) => (
+                  visibleCatalog.map((product, index) => (
                     <ProductCard
                       key={`category-${product.id}`}
                       product={applyBadge(product, "catalog")}
@@ -2196,7 +2129,7 @@ export default function HomeClient({
                       style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
                     />
                   ))
-                ) : isLoadingProducts ? (
+                ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
                   skeletonCards.map((card) => (
                     <div key={`category-skeleton-${card}`} className="product-card product-skeleton" />
                   ))
@@ -2232,8 +2165,7 @@ export default function HomeClient({
                 </div>
               )}
             </div>
-            {!selectedCategory &&
-            (filteredCatalog.length > visibleCatalog.length || hasMoreProducts) ? (
+            {(isSearching ? filteredProducts.length > catalogLimit : selectedCategory ? filteredCatalog.length > catalogLimit || hasMoreProducts : false) ? (
               <div className="section-actions">
                 <button
                   type="button"
@@ -2307,7 +2239,7 @@ export default function HomeClient({
                   style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
                 />
               ))
-            ) : isLoadingProducts ? (
+            ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
               skeletonCards.map((card) => (
                 <div key={`catalog-skeleton-${card}`} className="product-card product-skeleton" />
               ))

@@ -1,5 +1,19 @@
 # Pruebas del carrito
 
+## Catalogo y sesion del admin
+
+Crear el build con `npm run build` y servir `out` en `http://127.0.0.1:3010`
+(por ejemplo, `python -m http.server 3010 --bind 127.0.0.1 --directory out`).
+Ejecutar `node tests/catalog-admin.cjs`, con Playwright disponible o `PLAYWRIGHT_MODULE`
+apuntando a su modulo. `TEST_WEB_URL` permite cambiar la URL del servidor.
+
+La prueba usa 225 productos simulados y verifica categorias fuera de la primera
+pagina, recuperacion de errores, productos no destacados, busquedas de mas de 48
+resultados, renderizado inicial de 12 tarjetas y verificacion/expiracion de sesion.
+Todas las llamadas a la API estan interceptadas; no accede al admin productivo.
+
+## Pruebas unitarias del carrito
+
 Desde `usbshop-web/app/usbshop`:
 
 ```powershell

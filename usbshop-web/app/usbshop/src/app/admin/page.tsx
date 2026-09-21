@@ -109,14 +109,16 @@ const persistCachedSummary = (summary: Summary) => {
 export default function AdminDashboard() {
   const { user } = useAdminSession();
   const overviewQuery = useQuery({
-    queryKey: ['admin', 'reports', 'overview'],
+    queryKey: ['admin', 'dashboard', user?.id, user?.role],
     enabled: Boolean(user),
     placeholderData: () => {
       const summary = readCachedSummary();
       return summary ? { summary } : undefined;
     },
     queryFn: async (): Promise<OverviewResponse> => {
-      const res = await fetchApiResponse('/admin/reports/overview', { cache: 'no-store' });
+      let res = await fetchApiResponse('/admin/dashboard', { cache: 'no-store' });
+      // Keep the dashboard usable while the API deployment is catching up.
+      if (res.status === 404) res = await fetchApiResponse('/admin/reports/overview', { cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudo cargar el escritorio');
       const data = (await res.json()) as OverviewResponse;
       persistCachedSummary(data.summary);

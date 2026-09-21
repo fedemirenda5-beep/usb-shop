@@ -80,6 +80,23 @@ python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local -
 - `POST /sync/remote` (requiere `USB_SYNC_TOKEN` o `USB_SYNC_SECRET`)
 - `POST /orders` (si `USB_ORDER_SECRET` esta definido, requiere header `X-USB-ORDER-SECRET`)
 
+## Diagnostico de disponibilidad
+
+`GET /health` comprueba una consulta real a la base y que el esquema haya terminado
+de inicializarse. Devuelve HTTP 503 si cualquiera de esas condiciones falla; HTTP
+200 ya no indica solamente que el proceso esta encendido.
+
+Las respuestas de error interno conservan `X-Request-ID` y las cabeceras CORS para
+los origenes autorizados. Buscar ese identificador en los logs del servicio para
+obtener el traceback; la respuesta publica no expone detalles de la base.
+
+Pruebas aisladas (Python 3.10 o superior, desde esta carpeta):
+
+```powershell
+python -m unittest test_api_availability -v
+python -m py_compile main.py
+```
+
 ## Rotacion de secreto de autenticacion
 
 1. Desplegar una version que soporte hashes PBKDF2 y configurar `USB_LEGACY_AUTH_SECRET` con el secreto actual.

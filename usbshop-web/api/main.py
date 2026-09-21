@@ -760,8 +760,7 @@ _RUNTIME_SCHEMA_LOCK = threading.Lock()
 
 app = FastAPI(title="USB Shop API", version="1.0.0")
 
-app.add_middleware(
-    CORSMiddleware,
+_CORS_OPTIONS = dict(
     allow_origins=_allowed_origins(),
     allow_origin_regex=_allowed_origin_regex(),
     allow_credentials=True,
@@ -769,11 +768,14 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Server-Timing", "X-Request-ID"],
 )
+app.add_middleware(CORSMiddleware, **_CORS_OPTIONS)
+_CORS_POLICY = CORSMiddleware(app, **_CORS_OPTIONS)
 
 
 @app.middleware("http")
 async def request_timing_middleware(request: Request, call_next):
     request_id = uuid.uuid4().hex[:12]
+    request.state.request_id = request_id
     started_at = time.perf_counter()
     timing = {"request_id": request_id, "query_count": 0, "query_time_ms": 0.0}
     context_token = _REQUEST_DB_TIMING.set(timing)
@@ -837,12 +839,26 @@ def unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespons
     # Exception handlers run outside the original except block, so
     # LOGGER.exception() loses the traceback and logs "NoneType: None".
     LOGGER.error(
-        "Unhandled error on %s %s",
+        "Unhandled error request_id=%s on %s %s",
+        getattr(request.state, "request_id", "unknown"),
         request.method,
         request.url.path,
         exc_info=(type(exc), exc, exc.__traceback__),
     )
-    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+    response = JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
+    request_id = getattr(request.state, "request_id", None)
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+    # Starlette's unhandled-error handler runs outside CORSMiddleware. Apply
+    # the same origin policy so the browser can read a 500 instead of hiding it
+    # behind a CORS/network error.
+    origin = request.headers.get("origin")
+    if origin and _CORS_POLICY.is_allowed_origin(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Expose-Headers"] = "X-Request-ID"
+        response.headers.add_vary_header("Origin")
+    return response
 
 def _auth_secret() -> str:
     global AUTH_SECRET
@@ -3253,7 +3269,7 @@ def _argentina_datetime(value: Any) -> Optional[datetime]:
     if parsed is None:
         return None
     if _is_date_only_value(value):
-        return parsed
+        return parsed.replace(tzinfo=ARGENTINA_TZ)
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc).astimezone(ARGENTINA_TZ)
     return parsed.astimezone(ARGENTINA_TZ)
@@ -4540,6 +4556,17 @@ class AdminUserUpdatePayload(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
+    try:
+        conn = _connect()
+        try:
+            conn.execute("SELECT 1").fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        LOGGER.exception("Health check: base de datos no disponible")
+        raise HTTPException(status_code=503, detail="Base de datos no disponible") from None
+    if not _RUNTIME_SCHEMA_READY:
+        raise HTTPException(status_code=503, detail="Inicializacion de la base de datos incompleta")
     db_label = "postgres" if DB_IS_POSTGRES else str(DB_PATH)
     return {"status": "ok", "db": db_label}
 
@@ -6021,8 +6048,6 @@ def admin_list_products(
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
-        reserved_stock = _fetch_reserved_stock(conn)
-        consigned_stock = consignments.reserved_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
@@ -6058,8 +6083,9 @@ def admin_list_products(
         
         where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
         
-        rows = conn.execute(
-            f"""
+        offset_value = max(0, int(offset))
+        limit_value = max(1, int(limit))
+        query = f"""
             SELECT id, name, sku, barcode, price, price_list_1, price_list_2, cost, stock,
                    COALESCE(is_bundle, 0) AS is_bundle,
                    image_path, category_id, is_active, is_featured, is_offer,
@@ -6068,9 +6094,11 @@ def admin_list_products(
             FROM products
             {where_clause}
             ORDER BY LOWER(TRIM(name)) ASC, id ASC
-            """,
-            params,
-        ).fetchall()
+            """
+        if not q:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit_value, offset_value])
+        rows = conn.execute(query, params).fetchall()
         if q:
             scored_rows: list[tuple[int, Any]] = []
             for row in rows:
@@ -6091,9 +6119,8 @@ def admin_list_products(
                 )
             )
             rows = [row for _, row in scored_rows]
-        offset_value = max(0, int(offset))
-        limit_value = max(1, int(limit))
-        rows = rows[offset_value : offset_value + limit_value]
+        if q:
+            rows = rows[offset_value : offset_value + limit_value]
 
         if summary:
             return [
@@ -6106,6 +6133,10 @@ def admin_list_products(
                 for row in rows
             ]
 
+        consigned_stock = consignments.reserved_stock(conn)
+        reserved_stock = _fetch_reserved_web_order_stock(conn)
+        for product_id, quantity in consigned_stock.items():
+            reserved_stock[product_id] = reserved_stock.get(product_id, 0) + quantity
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
         imeis_map = _fetch_product_imeis(conn, product_ids, only_available=True)
@@ -10009,6 +10040,79 @@ def admin_cc_delete_movement(
         conn.close()
 
 
+@app.get("/admin/dashboard")
+def admin_dashboard(
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    role = str(_require_admin(session_token).get("role") or ROLE_STAFF).strip().lower()
+    cache_key = f"dashboard:{role}"
+    cached = _get_admin_overview_cache(cache_key)
+    if cached is not None:
+        return cached
+    _ensure_runtime_schema()
+    conn = _connect()
+    try:
+        inventory = conn.execute("""
+            SELECT COUNT(*) AS products, COALESCE(SUM(stock), 0) AS stock_units
+            FROM products WHERE deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+        """).fetchone()
+        sales = conn.execute("""
+            SELECT COUNT(*) AS sales_count, MAX(created_at) AS latest_invoice_at,
+                   COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(document_type, ''))) = 'NOTA_CREDITO'
+                       THEN -COALESCE(total, 0) ELSE COALESCE(total, 0) END), 0) AS sales_total,
+                   COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(document_type, ''))) = 'NOTA_CREDITO'
+                       THEN -COALESCE(special_discount, 0) ELSE COALESCE(special_discount, 0) END), 0) AS discounts
+            FROM invoices WHERE UPPER(TRIM(COALESCE(document_type, ''))) <> 'PRESUPUESTO'
+        """).fetchone()
+        customers = _scalar_number(conn.execute(
+            "SELECT COUNT(*) AS total FROM customers WHERE deleted_at IS NULL"
+        ).fetchone())
+        expenses = (_scalar_number(conn.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses"
+        ).fetchone()) if _has_table(conn, "expenses") else 0.0)
+        balance = _scalar_number(conn.execute("""
+            SELECT COALESCE(SUM(CASE WHEN UPPER(COALESCE(movement_type, '')) = 'DEBIT'
+                THEN COALESCE(amount, 0) ELSE -COALESCE(amount, 0) END), 0) AS total
+            FROM account_movements WHERE COALESCE(customer_id, 0) > 0
+        """ + _active_account_movements_clause(conn)).fetchone())
+        margin = None
+        if role == ROLE_ADMIN:
+            margin = _scalar_number(conn.execute("""
+                SELECT COALESCE(SUM(COALESCE(ii.quantity, 0) *
+                    CASE WHEN COALESCE(ii.unit_price, 0) > COALESCE(ii.cost_snapshot, p.cost, 0)
+                        THEN COALESCE(ii.unit_price, 0) - COALESCE(ii.cost_snapshot, p.cost, 0)
+                        ELSE 0 END *
+                    CASE WHEN UPPER(TRIM(COALESCE(i.document_type, ''))) = 'NOTA_CREDITO'
+                        THEN -1 ELSE 1 END), 0) AS total
+                FROM invoice_items ii LEFT JOIN invoices i ON i.id = ii.invoice_id
+                LEFT JOIN products p ON p.id = ii.product_id
+                    AND p.deleted_at IS NULL AND COALESCE(p.is_active, 1) = 1
+                WHERE UPPER(TRIM(COALESCE(i.document_type, ''))) <> 'PRESUPUESTO'
+            """).fetchone()) - float(sales["discounts"] or 0)
+        low_stock = [dict(row) for row in conn.execute("""
+            SELECT id, name, COALESCE(stock, 0) AS stock, COALESCE(reorder_point, 0) AS reorder_point
+            FROM products WHERE deleted_at IS NULL AND COALESCE(is_active, 1) = 1
+                AND COALESCE(stock, 0) <= CASE WHEN COALESCE(reorder_point, 0) > 0 THEN reorder_point ELSE 0 END
+            ORDER BY id LIMIT 20
+        """).fetchall()]
+        return _set_admin_overview_cache(cache_key, {
+            "summary": {
+                "products": int(inventory["products"] or 0),
+                "stock_units": int(inventory["stock_units"] or 0),
+                "active_customers": int(customers),
+                "sales_count": int(sales["sales_count"] or 0),
+                "sales_total": round(float(sales["sales_total"] or 0), 2),
+                "estimated_margin": round(margin, 2) if margin is not None else None,
+                "expenses_total": round(expenses, 2),
+                "cc_open_balance": round(balance, 2),
+                "latest_invoice_at": sales["latest_invoice_at"],
+            },
+            "low_stock": low_stock,
+        })
+    finally:
+        conn.close()
+
+
 @app.get("/admin/reports/overview")
 def admin_reports_overview(
     request: Request,
@@ -10112,34 +10216,12 @@ def admin_reports_overview(
                 """
             ).fetchall()
             purchase_total = (
-                float(
-                    (
-                        conn.execute(
-                            """
-                            SELECT COALESCE(SUM(total), 0)
-                            FROM purchases
-                            """
-                        ).fetchone()[0]
-                    )
-                    or 0
-                )
-                if _has_table(conn, "purchases")
-                else 0.0
+                _scalar_number(conn.execute("SELECT COALESCE(SUM(total), 0) AS total FROM purchases").fetchone())
+                if _has_table(conn, "purchases") else 0.0
             )
             expense_total = (
-                float(
-                    (
-                        conn.execute(
-                            """
-                            SELECT COALESCE(SUM(amount), 0)
-                            FROM expenses
-                            """
-                        ).fetchone()[0]
-                    )
-                    or 0
-                )
-                if _has_table(conn, "expenses")
-                else 0.0
+                _scalar_number(conn.execute("SELECT COALESCE(SUM(amount), 0) AS total FROM expenses").fetchone())
+                if _has_table(conn, "expenses") else 0.0
             )
             cc_open_balance = round(sum(float(row["balance"] or 0) for row in cc_balance_rows), 2)
             cash_on_hand = round(
@@ -10171,6 +10253,7 @@ def admin_reports_overview(
                     "sales_count": int(invoice_summary_row["sales_count"] or 0),
                     "sales_total": round(float(invoice_summary_row["sales_total"] or 0), 2),
                     "estimated_margin": None,
+                    "expenses_total": expense_total,
                     "operating_result": None,
                     "cc_open_balance": cc_open_balance,
                     "cash_on_hand": cash_on_hand,

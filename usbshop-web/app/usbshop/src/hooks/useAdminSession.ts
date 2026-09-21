@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ensureApiBaseUrl, getApiBaseUrl } from '@/lib/api';
+import { ADMIN_SESSION_RECHECK_EVENT, ensureApiBaseUrl, getApiBaseUrl } from '@/lib/api';
 
 interface AdminUser {
   id?: number | null;
@@ -68,7 +68,7 @@ const restoreSnapshot = (): SessionSnapshot => {
         : null;
     return {
       user,
-      isLoading: user ? false : true,
+      isLoading: true,
       error: null,
       isVerified: false,
     };
@@ -148,20 +148,6 @@ const isRetryableSessionError = (error: unknown) => {
     message.includes('timed out') ||
     message === 'failed to fetch' ||
     message.includes('networkerror')
-  );
-};
-
-const isConnectivitySessionError = (error: unknown) => {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message.trim().toLowerCase();
-  return (
-    message.includes('tardo demasiado') ||
-    message.includes('timed out') ||
-    message === 'failed to fetch' ||
-    message.includes('networkerror') ||
-    message.includes('no se pudo conectar con la api')
   );
 };
 
@@ -251,14 +237,13 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
   if (!force && sessionSnapshot.isVerified && !sessionSnapshot.error) {
     return sessionSnapshot.user;
   }
-  if (!force && sessionRequest) {
+  if (sessionRequest) {
     return sessionRequest;
   }
 
   updateSnapshot({
     isLoading: sessionSnapshot.user ? false : true,
     error: force ? null : sessionSnapshot.error,
-    isVerified: false,
   });
   sessionRequest = (async () => {
     try {
@@ -269,12 +254,11 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
     } catch (err) {
       lastSessionCheckAt = Date.now();
       const fallbackUser = sessionSnapshot.user;
-      const shouldKeepExistingSessionSilently = Boolean(fallbackUser) && isConnectivitySessionError(err);
       updateSnapshot({
         user: fallbackUser,
         isLoading: false,
-        error: shouldKeepExistingSessionSilently ? null : getFriendlySessionError(err, 'Error verificando sesion'),
-        isVerified: true,
+        error: getFriendlySessionError(err, 'Error verificando sesion'),
+        isVerified: false,
       });
       return fallbackUser;
     } finally {
@@ -295,6 +279,13 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
   const skipInitialCheck = options?.skipInitialCheck === true;
 
   useEffect(() => subscribe(setState), []);
+
+  useEffect(() => {
+    if (skipInitialCheck) return;
+    const recheck = () => { void ensureSessionLoaded(true); };
+    window.addEventListener(ADMIN_SESSION_RECHECK_EVENT, recheck);
+    return () => window.removeEventListener(ADMIN_SESSION_RECHECK_EVENT, recheck);
+  }, [skipInitialCheck]);
 
   useEffect(() => {
     if (skipInitialCheck && !sessionSnapshot.user && sessionSnapshot.isLoading) {

@@ -202,7 +202,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     };
   }, [user, isDashboardPage, isGenerateInvoicePage, router]);
 
-  if (isLoading) {
+  if (!isVerified && error) {
+    return (
+      <div className={styles.loading}>
+        <p role="alert">{error}</p>
+        <button type="button" onClick={() => void refreshSession()}>Reintentar conexion</button>
+      </div>
+    );
+  }
+
+  if (isLoading || !isVerified) {
     return (
       <div className={styles.loading}>
         <p>Cargando...</p>

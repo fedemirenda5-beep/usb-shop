@@ -61,11 +61,7 @@ const getRuntimeConfigUrl = (): string =>
 export const getApiBaseUrl = () => runtimeApiBaseUrl;
 export const getOrderSecret = () => runtimeOrderSecret;
 export const API_BASE_URL = DEFAULT_API_BASE_URL;
-
-const hasUsableApiBaseUrl = () => {
-  const baseUrl = (runtimeApiBaseUrl || "").trim();
-  return Boolean(baseUrl && baseUrl !== "/api");
-};
+export const ADMIN_SESSION_RECHECK_EVENT = 'usbshop:admin-session-recheck';
 
 export const setRuntimeApiBaseUrl = (nextBaseUrl: string) => {
   const trimmed = (nextBaseUrl || "").trim();
@@ -339,6 +335,9 @@ const fetchWithRetry = async (
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const response = await fetchWithTimeout(url, init, timeoutMs);
+      if (response.status === 401 && typeof window !== 'undefined' && new URL(url, window.location.origin).pathname.startsWith('/admin/')) {
+        window.dispatchEvent(new Event(ADMIN_SESSION_RECHECK_EVENT));
+      }
       if (response.status < 500 || !canRetry || attempt >= attempts) {
         return response;
       }
@@ -372,10 +371,6 @@ export const getFriendlyApiError = (error: unknown, fallback: string): string =>
 };
 
 export async function ensureApiBaseUrl(timeoutMs = 5000): Promise<void> {
-  if (hasUsableApiBaseUrl()) {
-    void loadRuntimeConfig();
-    return;
-  }
   await withTimeout(loadRuntimeConfig(), timeoutMs, "No se pudo cargar la configuracion");
 }
 

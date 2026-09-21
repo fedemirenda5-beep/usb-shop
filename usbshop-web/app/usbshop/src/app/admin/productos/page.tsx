@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -277,7 +277,13 @@ export default function ProductosPage() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [categoryError, setCategoryError] = useState('');
   const [categorySaving, setCategorySaving] = useState(false);
-  const deferredSearch = useDeferredValue(search);
+  const [deferredSearch, setDeferredSearch] = useState(search);
+  const productsController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setDeferredSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+  useEffect(() => () => productsController.current?.abort(), []);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const scannerAutoSubmitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scannerLastAutoSubmittedRef = useRef('');
@@ -298,6 +304,9 @@ export default function ProductosPage() {
   }, []);
 
   const loadProducts = async (targetPage = page) => {
+    productsController.current?.abort();
+    const controller = new AbortController();
+    productsController.current = controller;
     try {
       setLoading(true);
       setError('');
@@ -317,20 +326,22 @@ export default function ProductosPage() {
       }
 
       await loadRuntimeConfig();
-      const res = await fetchApiResponse(`/admin/products?${params.toString()}`);
+      const res = await fetchApiResponse(`/admin/products?${params.toString()}`, { signal: controller.signal });
 
       if (!res.ok) throw new Error('No se pudieron cargar los productos');
 
       const data = await res.json();
+      if (controller.signal.aborted) return;
       const nextProducts = Array.isArray(data) ? (data as Product[]) : [];
       setProducts(nextProducts);
       setHasMoreProducts(nextProducts.length === PAGE_SIZE);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setProducts([]);
       setHasMoreProducts(false);
       setError(getFriendlyApiError(err, 'Error cargando productos'));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
