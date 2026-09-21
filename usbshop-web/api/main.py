@@ -752,7 +752,7 @@ _REMOTE_THUMBNAIL_CACHE_TTL_SECONDS = max(
     300, int(os.getenv("USB_REMOTE_THUMBNAIL_CACHE_TTL", "21600") or "21600")
 )
 _REMOTE_THUMBNAIL_CACHE_MAX_ENTRIES = max(
-    1, int(os.getenv("USB_REMOTE_THUMBNAIL_CACHE_MAX_ENTRIES", "72") or "72")
+    1, int(os.getenv("USB_REMOTE_THUMBNAIL_CACHE_MAX_ENTRIES", "256") or "256")
 )
 _REMOTE_THUMBNAIL_CACHE_LOCK = threading.Lock()
 _REMOTE_THUMBNAIL_CACHE: dict[str, tuple[float, bytes, str]] = {}
@@ -6014,7 +6014,6 @@ def product_image(
     width, height, quality, normalized_format = _normalize_thumbnail_params(w, h, q, format)
     should_resize = bool(width or height)
     if image_value.startswith("http://") or image_value.startswith("https://"):
-        remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
         if should_resize and Image is not None and ImageOps is not None:
             try:
                 cache_key = _remote_thumbnail_cache_key(
@@ -6028,6 +6027,7 @@ def product_image(
                 if cached_thumbnail is not None:
                     content, media_type = cached_thumbnail
                 else:
+                    remote_bytes, _ = _fetch_remote_image_bytes(image_value)
                     content, media_type = _render_thumbnail_from_bytes(
                         remote_bytes,
                         width,
@@ -6043,6 +6043,7 @@ def product_image(
                 )
             except Exception:
                 logging.exception("No se pudo generar thumbnail remoto para %s", image_value)
+        remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
         return Response(
             content=remote_bytes,
             media_type=remote_media_type,

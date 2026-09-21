@@ -168,10 +168,6 @@ function ProductCard({
     ? "Sin stock"
     : product.badge ?? (product.flashOffer ? "Relampago" : product.isFeatured ? "Destacado" : undefined);
   const canView = Boolean(onView);
-  const preferProxyImage =
-    typeof window !== "undefined" &&
-    window.location.hostname !== "localhost" &&
-    window.location.hostname !== "127.0.0.1";
   const images = React.useMemo(() => {
     const list = (Array.isArray(product.imageUrls) ? product.imageUrls : [product.imageUrl])
       .map((value) => normalizeImageSrc(value))
@@ -186,8 +182,14 @@ function ProductCard({
   const [imageIndex, setImageIndex] = React.useState(0);
   const [imgSrc, setImgSrc] = React.useState<string | null>(() => images[0] ?? null);
   const [useRawImage, setUseRawImage] = React.useState(false);
-  const [proxySrc, setProxySrc] = React.useState<string | null>(null);
-  const [hasTriedProxy, setHasTriedProxy] = React.useState(false);
+  // Start with the same thumbnail URL on the first render and subsequent renders.
+  // Switching from the original in an effect used to start two downloads.
+  const [proxySrc, setProxySrc] = React.useState<string | null>(() =>
+    product.id && (!images[0] || isAbsoluteImageUrl(images[0]))
+      ? buildProxyImageSrc(product.id, images[0] ? 0 : undefined)
+      : null
+  );
+  const [hasTriedProxy, setHasTriedProxy] = React.useState(Boolean(proxySrc));
   const [failedImageIndexes, setFailedImageIndexes] = React.useState<Set<number>>(() => new Set());
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
@@ -237,7 +239,7 @@ function ProductCard({
           observer.disconnect();
         }
       },
-      { rootMargin: "240px 0px" }
+      { rootMargin: "600px 0px" }
     );
     observer.observe(node);
     return () => observer.disconnect();
@@ -274,7 +276,7 @@ function ProductCard({
     setImgAttempt(0);
     setImgFailed(false);
     setUseRawImage(false);
-    if (product.id && (!images[imageIndex] || (preferProxyImage && isAbsoluteImageUrl(images[imageIndex])))) {
+    if (product.id && (!images[imageIndex] || isAbsoluteImageUrl(images[imageIndex]))) {
       setProxySrc(buildProxyImageSrc(product.id, images[imageIndex] ? imageIndex : undefined));
       setHasTriedProxy(true);
     } else {
@@ -312,14 +314,6 @@ function ProductCard({
       setUseRawImage(true);
       setImgAttempt(0);
       setImgFailed(false);
-      return;
-    }
-    if (!proxySrc && !hasTriedProxy && preferProxyImage && product.id) {
-      setProxySrc(buildProxyImageSrc(product.id, imageIndex));
-      setHasTriedProxy(true);
-      setImgAttempt(0);
-      setImgFailed(false);
-      setUseRawImage(false);
       return;
     }
     if (!proxySrc && !hasTriedProxy && product.id) {
@@ -407,7 +401,9 @@ function ProductCard({
             src={displaySrc}
             alt={product.name}
             className="product-image"
-            loading={imagePriority === "high" ? "eager" : "lazy"}
+            // IntersectionObserver already defers distant cards. A second lazy
+            // gate here prevented nearby rows from starting their downloads.
+            loading="eager"
             decoding="async"
             fetchPriority={imagePriority}
             width={CARD_IMAGE_WIDTH}

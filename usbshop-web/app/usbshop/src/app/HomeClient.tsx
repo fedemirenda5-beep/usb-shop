@@ -95,8 +95,8 @@ const STOREFRONT_FETCH_TIMEOUT_MS = 15_000;
 const STOREFRONT_FETCH_ATTEMPTS = 1;
 const STOREFRONT_BASE_ATTEMPTS = 2;
 const STOREFRONT_RETRY_DELAY_MS = 250;
-const getCardImagePriority = (index: number): "high" | "auto" | "low" => {
-  if (index === 0) {
+const getCardImagePriority = (index: number, prioritizeRow = false): "high" | "auto" | "low" => {
+  if (index < (prioritizeRow ? 4 : 1)) {
     return "high";
   }
   if (index < 4) {
@@ -2100,7 +2100,7 @@ export default function HomeClient({
                       key={`search-${product.id}`}
                       product={applyBadge(product, "catalog")}
                       imageRefreshKey={imageRefreshKey}
-                      imagePriority={getCardImagePriority(index)}
+                      imagePriority={getCardImagePriority(index, true)}
                       inCart={cart[product.id]?.qty ?? 0}
                       onAdd={() => addItem(product)}
                       onView={() => handleOpenQuickView(product)}
@@ -2123,7 +2123,7 @@ export default function HomeClient({
                       key={`category-${product.id}`}
                       product={applyBadge(product, "catalog")}
                       imageRefreshKey={imageRefreshKey}
-                      imagePriority={getCardImagePriority(index)}
+                      imagePriority={getCardImagePriority(index, true)}
                       inCart={cart[product.id]?.qty ?? 0}
                       onAdd={() => addItem(product)}
                       onView={() => handleOpenQuickView(product)}
