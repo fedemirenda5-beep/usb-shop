@@ -112,6 +112,32 @@ const products = Array.from({ length: 225 }, (_, index) => ({
     assert.equal(await adminPage.evaluate(() => localStorage.getItem('usbshop_admin_session_v1')), null);
     console.log('PASS unavailable session retry and expired admin session redirect');
     await admin.close();
+
+    const editing = await browser.newContext();
+    const existing = { ...products[0], sku: 'EXISTING', category_id: null, is_featured: false,
+      is_active: true, stock: 7, cost: 100, price_list_1: 1000, image_urls: [] };
+    let saved = null;
+    await editing.route('**/*', async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/usbshop-config.json') return route.fulfill({ json: { apiBaseUrl: 'http://127.0.0.1:8000' } });
+      if (url.pathname === '/auth/me') return route.fulfill({ json: user });
+      if (url.pathname === '/admin/categories') return route.fulfill({ json: [] });
+      if (url.pathname === '/admin/products') return route.fulfill({ json: [existing] });
+      if (url.pathname === '/admin/products/1' && route.request().method() === 'PUT') {
+        saved = route.request().postDataJSON();
+        existing.is_featured = saved.is_featured;
+        return route.fulfill({ json: { id: 1, message: 'Producto actualizado' } });
+      }
+      if (url.origin !== base) return route.abort();
+      return route.continue();
+    });
+    const editor = await editing.newPage();
+    await editor.goto(`${base}/admin/productos/`);
+    await editor.getByTitle('Cambiar destacado', { exact: true }).click();
+    await editor.waitForFunction(() => document.querySelector('[title="Cambiar destacado"]')?.textContent === 'Si');
+    assert.deepEqual(saved, { is_featured: true }, 'highlight must not overwrite stock, prices or images');
+    console.log('PASS highlighting an existing product sends only the featured flag');
+    await editing.close();
   } finally {
     await browser.close();
   }

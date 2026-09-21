@@ -5532,6 +5532,9 @@ def featured_products(limit: int = 6) -> list[dict]:
         dedupe_source = "products"
         if base_conditions:
             dedupe_source += f" WHERE {' AND '.join(base_conditions)}"
+        activity_column = "p.updated_at" if has_updated_at else "p.id"
+        if has_updated_at and has_created_at:
+            activity_column = "COALESCE(p.updated_at, p.created_at)"
         query = f"""
             SELECT {", ".join(select_fields)}
             FROM products p
@@ -5542,16 +5545,25 @@ def featured_products(limit: int = 6) -> list[dict]:
             ) latest ON latest.id = p.id
             LEFT JOIN categories c ON c.id = p.category_id
             WHERE {' AND '.join(conditions)}
-            ORDER BY {"p.updated_at DESC" if has_updated_at else "p.id DESC"}
-            LIMIT ?
+            ORDER BY CASE WHEN {activity_column} IS NULL THEN 1 ELSE 0 END,
+                     {activity_column} DESC, p.id DESC
         """
-        rows = conn.execute(query, (limit,)).fetchall()
-        product_ids = [int(row["id"]) for row in rows]
-        images_map = _fetch_product_images(conn, product_ids)
+        rows = conn.execute(query).fetchall()
         bundle_items_map = _fetch_bundle_items_map(
             conn,
             [int(row["id"]) for row in rows if bool(row["is_bundle"])],
         )
+        available_stock = {
+            int(row["id"]): (
+                _bundle_available_stock(bundle_items_map.get(int(row["id"]), []), reserved_stock_by_product)
+                if bool(row["is_bundle"])
+                else max(0, int(row["stock"] or 0) - reserved_stock_by_product.get(int(row["id"]), 0))
+            ) for row in rows
+        }
+        # Sold-out items, including reservations and bundles, do not consume
+        # featured slots. Only load image metadata for the visible selection.
+        rows = [row for row in rows if available_stock[int(row["id"])] > 0][:min(100, max(1, int(limit)))]
+        images_map = _fetch_product_images(conn, [int(row["id"]) for row in rows])
     finally:
         conn.close()
 
@@ -5563,12 +5575,7 @@ def featured_products(limit: int = 6) -> list[dict]:
             "price": _storefront_price(row),
             "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
-            "stock": _bundle_available_stock(
-                bundle_items_map.get(int(row["id"]), []),
-                reserved_stock_by_product,
-            )
-            if bool(row["is_bundle"])
-            else max(0, int(row["stock"] or 0) - int(reserved_stock_by_product.get(int(row["id"]), 0) or 0)),
+            "stock": available_stock[int(row["id"])],
             "category": row["category"] or "General",
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -6700,7 +6707,10 @@ def admin_update_product(
         if next_is_bundle:
             _assert_bundle_components_valid(conn, product_id, bundle_items)
             next_imeis = []
-        if _product_requires_imei(conn, next_category_id, next_name):
+        inventory_changed = any(key in payload for key in (
+            "stock", "category_id", "name", "imeis", "is_bundle", "bundle_items"
+        ))
+        if inventory_changed and _product_requires_imei(conn, next_category_id, next_name):
             if next_stock > 0 and not next_imeis:
                 raise HTTPException(status_code=400, detail="Los celulares deben cargarse con al menos un IMEI")
             if len(next_imeis) < next_stock:

@@ -80,3 +80,56 @@ class ProductUpdateTests(unittest.TestCase):
             self.update({'stock': 2})
         self.assertEqual(error.exception.status_code, 400)
         self.assertEqual(self.product(), {'stock': 0, 'category_id': 1})
+
+    def test_existing_phone_can_be_featured_without_rewriting_legacy_inventory(self):
+        conn = main._connect()
+        try:
+            conn.execute('UPDATE products SET category_id = 1, stock = 3 WHERE id = 1')
+            conn.commit()
+        finally:
+            conn.close()
+        self.update({'is_featured': True}, dict_row=True)
+        self.assertEqual(self.product(), {'stock': 3, 'category_id': 1})
+        conn = main._connect()
+        try:
+            self.assertEqual(conn.execute('SELECT is_featured FROM products WHERE id = 1').fetchone()['is_featured'], 1)
+        finally:
+            conn.close()
+        with self.assertRaises(HTTPException):
+            self.update({'stock': 4})
+
+    def test_restocked_featured_product_returns_without_recreation(self):
+        conn = main._connect()
+        try:
+            conn.execute('UPDATE products SET is_active = 1, is_featured = 1 WHERE id = 1')
+            # More than six recently updated but sold-out highlights.
+            for product_id in range(2, 10):
+                conn.execute('''INSERT INTO products (id, name, sku, stock, price, is_active, is_featured, updated_at)
+                    VALUES (?, ?, ?, 0, 100, 1, 1, '2099-01-01')''',
+                    (product_id, f'Agotado {product_id}', f'AG-{product_id}'))
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(main.featured_products(), [])
+        self.update({'stock': 5})
+        self.assertEqual([p['id'] for p in main.featured_products()], [1])
+        self.update({'is_featured': False})
+        self.assertEqual(main.featured_products(), [])
+        self.update({'is_featured': True})
+        self.assertEqual([p['id'] for p in main.featured_products()], [1])
+
+    def test_new_highlight_promotes_old_product_and_skips_reserved_stock(self):
+        conn = main._connect()
+        try:
+            conn.execute("UPDATE products SET is_active = 1, stock = 5, updated_at = '2000-01-01' WHERE id = 1")
+            for product_id in range(2, 10):
+                conn.execute('''INSERT INTO products (id, name, sku, stock, price, is_active, is_featured, updated_at)
+                    VALUES (?, ?, ?, 1, 100, 1, 1, '2001-01-01')''',
+                    (product_id, f'Destacado {product_id}', f'D-{product_id}'))
+            conn.commit()
+        finally:
+            conn.close()
+        self.update({'is_featured': True})
+        self.assertEqual(main.featured_products(limit=1)[0]['id'], 1)
+        with patch.object(main, '_fetch_reserved_stock', return_value={1: 5, 9: 1}):
+            self.assertEqual(main.featured_products(limit=1)[0]['id'], 8)

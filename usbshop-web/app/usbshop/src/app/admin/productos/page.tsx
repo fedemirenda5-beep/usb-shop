@@ -616,64 +616,18 @@ export default function ProductosPage() {
 
   const toggleFeatured = async (product: Product) => {
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/products/${product.id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-          name: product.name,
-          sku: product.sku,
-          barcode: product.barcode || null,
-          price: product.price,
-          price_list_1: product.price_list_1 || 0,
-          price_list_2: product.price_list_2 || 0,
-          cost: product.cost,
-          stock: product.stock,
-          category_id: product.category_id,
-          image_path: product.image_path || '',
-          image_urls: Array.isArray(product.image_urls) ? product.image_urls : [],
-          is_offer: product.is_offer,
-          is_featured: !product.is_featured,
-          highlight_new_arrivals: product.highlight_new_arrivals,
-        }),
-      });
-
-      if (!res.ok) throw new Error('No se pudo actualizar');
-
-      await loadProducts();
+      await updateProduct(product, { is_featured: !product.is_featured });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error actualizando');
+      alert(getFriendlyApiError(err, 'No se pudo cambiar el destacado'));
     }
   };
 
-  const buildProductUpdatePayload = (product: Product, overrides: Partial<Product>) => ({
-    name: product.name,
-    sku: product.sku,
-    barcode: product.barcode || null,
-    price: product.price,
-    price_list_1: product.price_list_1 || 0,
-    price_list_2: product.price_list_2 || 0,
-    cost: product.cost,
-    stock: product.stock,
-    category_id: product.category_id,
-    image_path: product.image_path || '',
-    image_urls: Array.isArray(product.image_urls) ? product.image_urls : [],
-    is_offer: product.is_offer,
-    is_featured: product.is_featured,
-    highlight_new_arrivals: product.highlight_new_arrivals,
-    flash_offer_price: product.flash_offer_price || 0,
-    flash_offer_ends_at: product.flash_offer_ends_at || null,
-    ...overrides,
-  });
-
   const updateProduct = async (product: Product, overrides: Partial<Product>) => {
     await loadRuntimeConfig();
-    const res = await fetch(`${getApiBaseUrl()}/admin/products/${product.id}`, {
+    const res = await fetchApiResponse(`/admin/products/${product.id}`, {
       method: 'PUT',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildProductUpdatePayload(product, overrides)),
+      body: JSON.stringify(overrides),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || 'No se pudo actualizar el producto');
