@@ -18,8 +18,12 @@ export default function Footer() {
             <p>Tecnología para todos los días.</p>
           </div>
           <ul className="footer-brands-list" aria-label="Marcas del catálogo">
-            <li><Image src="/brands/samsung.svg" alt="Samsung" width={130} height={29} /></li>
-            <li><Image src="/brands/xiaomi.png" alt="Xiaomi" width={48} height={48} /><span aria-hidden="true">Xiaomi</span></li>
+            <li><Image className="footer-brand-samsung" src="/brands/samsung.svg" alt="Samsung" width={130} height={29} /></li>
+            <li><Image className="footer-brand-xiaomi" src="/brands/xiaomi.png" alt="Xiaomi" width={36} height={36} /><span aria-hidden="true">Xiaomi</span></li>
+            <li><Image className="footer-brand-iglufive" src="/brands/iglufive.jpg" alt="Iglufive" width={100} height={100} /></li>
+            <li><Image className="footer-brand-sandisk" src="/brands/sandisk.svg" alt="SanDisk" width={150} height={35} /></li>
+            <li><Image className="footer-brand-gtc" src="/brands/gtc.png" alt="GTC" width={120} height={120} /></li>
+            <li><Image className="footer-brand-time" src="/brands/time.webp" alt="Time" width={170} height={170} /></li>
           </ul>
         </section>
         <div className="footer-grid">

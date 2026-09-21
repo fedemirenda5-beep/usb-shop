@@ -82,12 +82,21 @@
 .storefront .empty-state { background: #f1f4ed; border: 1px dashed #cdd8c7; border-radius: 12px; color: #5b6c53; box-shadow: none; }
 .storefront .site-footer { margin: 64px -48px -32px; padding: 36px 48px 20px; border-top: 1px solid #dfe6db; background: #eff3eb; color: #2c3e2e; }
 .storefront .footer-inner { padding: 0; }
-.storefront .footer-brands { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid #d6e0cf; }
+.storefront .footer-brands { display: flex; flex-direction: column; align-items: stretch; gap: 20px; padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid #d6e0cf; }
 .storefront .footer-brands h3 { font-family: var(--font-head); font-size: 19px; font-weight: 500; letter-spacing: -.03em; }
 .storefront .footer-brands p { font-size: 12px; color: #65745b; margin-top: 5px; }
-.storefront .footer-brands-list { display: flex; align-items: center; gap: 48px; list-style: none; padding: 0; }
-.storefront .footer-brands-list li { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 500; }
-.storefront .footer-brands-list img { object-fit: contain; }
+.storefront .footer-brands-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; width: 100%; }
+.storefront .footer-brands-list li { display: flex; align-items: center; justify-content: center; gap: 8px; height: 108px; min-width: 0; overflow: hidden; background: #fff; border: 1px solid #dfe6db; border-radius: 12px; font-size: 19px; font-weight: 500; }
+.storefront .footer-brands-list img { object-fit: contain; height: auto; max-width: none; flex-shrink: 0; }
+/* Optical sizing compensates for the whitespace in the original brand files. */
+.storefront .footer-brands-list .footer-brand-samsung { width: 118px; }
+.storefront .footer-brands-list .footer-brand-xiaomi { width: 36px; }
+.storefront .footer-brands-list .footer-brand-iglufive { width: 100px; }
+.storefront .footer-brands-list .footer-brand-sandisk { width: 150px; }
+.storefront .footer-brands-list .footer-brand-gtc { width: 120px; }
+.storefront .footer-brands-list .footer-brand-time { width: 170px; }
+@media (max-width: 1100px) { .storefront .footer-brands-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 540px) { .storefront .footer-brands-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 .storefront .footer-grid { display: grid; grid-template-columns: 1.3fr 1fr 1.2fr 1fr; gap: 36px; }
 .storefront .footer-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .storefront .footer-brand__title { font-family: var(--font-head); font-size: 22px; font-weight: 600; }
@@ -146,8 +155,7 @@
   .storefront .product-buttons .button { width: 100%; min-height: 42px; }
   .storefront .site-footer { margin: 40px -16px -24px; padding: 28px 20px 96px; }
   .storefront .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 16px; }
-  .storefront .footer-brands { flex-direction: column; align-items: flex-start; gap: 20px; }
-  .storefront .footer-brands-list { flex-wrap: wrap; gap: 28px; }
+  .storefront .footer-brands { gap: 20px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .storefront *, .storefront *::before, .storefront *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
