@@ -19,6 +19,7 @@ export default function Footer() {
           </div>
           <ul className="footer-brands-list" aria-label="Marcas del catálogo">
             <li><Image className="footer-brand-samsung" src="/brands/samsung.svg" alt="Samsung" width={130} height={29} /></li>
+            <li><Image className="footer-brand-apple" src="/brands/apple.jpg" alt="Apple" width={200} height={146} /></li>
             <li><Image className="footer-brand-xiaomi" src="/brands/xiaomi.png" alt="Xiaomi" width={36} height={36} /><span aria-hidden="true">Xiaomi</span></li>
             <li><Image className="footer-brand-iglufive" src="/brands/iglufive.jpg" alt="Iglufive" width={100} height={100} /></li>
             <li><Image className="footer-brand-sandisk" src="/brands/sandisk.svg" alt="SanDisk" width={150} height={35} /></li>

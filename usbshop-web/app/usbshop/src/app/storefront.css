@@ -85,11 +85,12 @@
 .storefront .footer-brands { display: flex; flex-direction: column; align-items: stretch; gap: 20px; padding-bottom: 28px; margin-bottom: 28px; border-bottom: 1px solid #d6e0cf; }
 .storefront .footer-brands h3 { font-family: var(--font-head); font-size: 19px; font-weight: 500; letter-spacing: -.03em; }
 .storefront .footer-brands p { font-size: 12px; color: #65745b; margin-top: 5px; }
-.storefront .footer-brands-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; width: 100%; }
+.storefront .footer-brands-list { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; width: 100%; }
 .storefront .footer-brands-list li { display: flex; align-items: center; justify-content: center; gap: 8px; height: 108px; min-width: 0; overflow: hidden; background: #fff; border: 1px solid #dfe6db; border-radius: 12px; font-size: 19px; font-weight: 500; }
 .storefront .footer-brands-list img { object-fit: contain; height: auto; max-width: none; flex-shrink: 0; }
 /* Optical sizing compensates for the whitespace in the original brand files. */
 .storefront .footer-brands-list .footer-brand-samsung { width: 118px; }
+.storefront .footer-brands-list .footer-brand-apple { width: 200px; }
 .storefront .footer-brands-list .footer-brand-xiaomi { width: 36px; }
 .storefront .footer-brands-list .footer-brand-iglufive { width: 100px; }
 .storefront .footer-brands-list .footer-brand-sandisk { width: 150px; }

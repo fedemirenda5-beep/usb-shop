@@ -9,6 +9,7 @@ product brands; the strip does not claim an official distribution agreement.
 Retrieved 2026-09-18. Brand marks belong to their respective owners.
 
 Added from files supplied by the shop owner:
+- Apple: `apple logo.jfif` (copied as `apple.jpg`, original JPEG bytes).
 - Iglufive: `Logo iglufive.jfif` (copied as `iglufive.jpg`, original JPEG bytes).
 - SanDisk: `SanDisk-Logo.wine.svg` (copied as `sandisk.svg`).
 - GTC: `gtc.png`.
