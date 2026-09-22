@@ -83,7 +83,7 @@ export default function ShowcasePage() {
 
   return <main className={styles.page}>
     <header><h1>Vidriera</h1><p>Elegí hasta 8 destacados y ordenalos. En la tienda se muestran 4 por vez y rotan automáticamente.</p></header>
-    <div className={styles.info}>Novedades: productos creados en los últimos 14 días. Volvió a ingresar: productos repuestos desde stock cero en los últimos 7 días. Ambas secciones se actualizan solas.</div>
+    <div className={styles.info}>Novedades: los 4 ingresos más recientes con stock; si no alcanzan los de los últimos 14 días, se completa con los anteriores. Volvió a ingresar: productos repuestos desde stock cero en los últimos 7 días. Ambas secciones se actualizan solas.</div>
     {legacyCount > 0 && <p className={styles.warning}>Hay {legacyCount} productos con la marca anterior de destacado. Elegí hasta 8 y guardá tu primera Vidriera. Los anteriores se mantienen hasta que guardes; luego se reemplazan por tu selección.</p>}
     {error && <div role="alert" className={styles.warning}>{error} {!ready && <button onClick={() => setAttempt(value => value + 1)}>Reintentar</button>}</div>}
     {notice && <p role="status">{notice}</p>}

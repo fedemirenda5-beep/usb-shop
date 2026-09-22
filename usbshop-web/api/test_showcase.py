@@ -76,7 +76,7 @@ class ShowcaseTests(unittest.TestCase):
         self.sql('UPDATE products SET created_at=? WHERE id=3', ((now-timedelta(days=15)).isoformat(),))
         self.sql('UPDATE products SET created_at=? WHERE id=4', ((now+timedelta(days=1)).isoformat(),))
         self.sql('UPDATE storefront_products SET restocked_at=? WHERE product_id=1', ((now-timedelta(days=8)).isoformat(),))
-        self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [2])
+        self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [2, 3])
         self.assertEqual(main.storefront_collections()['restocked'], [])
         self.update({'stock': 0})
         self.update({'stock': 5})
@@ -85,7 +85,18 @@ class ShowcaseTests(unittest.TestCase):
         self.update({'stock': 6})
         self.assertEqual(self.sql('SELECT restocked_at FROM storefront_products WHERE product_id=1'), stamp)
         with patch.object(main, '_fetch_reserved_stock', return_value={1: 6, 2: 3}):
-            self.assertEqual(main.storefront_collections(), {'new_arrivals': [], 'restocked': []})
+            self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [3])
+            self.assertEqual(main.storefront_collections()['restocked'], [])
+
+    def test_new_arrivals_fill_four_with_older_available_products(self):
+        self.seed(7)
+        now = datetime.now(timezone.utc)
+        for product_id, days in [(2, 1), (3, 2), (4, 20), (5, 21), (6, 22), (7, 23)]:
+            self.sql('UPDATE products SET created_at=? WHERE id=?', ((now-timedelta(days=days)).isoformat(), product_id))
+        self.sql('UPDATE products SET stock=0 WHERE id=6')
+        self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [2, 3, 4, 5])
+        with patch.object(main, '_fetch_reserved_stock', return_value={4: 3}):
+            self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [2, 3, 5, 7])
 
     def test_new_creation_has_date_without_restock(self):
         product = main.admin_create_product(None, None, {'name': 'Cable nuevo', 'sku': 'CABLE', 'stock': 3})

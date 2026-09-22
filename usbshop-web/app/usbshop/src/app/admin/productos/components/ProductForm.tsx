@@ -855,7 +855,7 @@ export function ProductForm({
             <span>Es una oferta especial</span>
           </label>
 
-          <p>Novedades aparece automáticamente durante 14 días desde la creación. Las reposiciones se muestran durante 7 días.</p>
+          <p>Novedades muestra los 4 ingresos más recientes con stock. Las reposiciones se muestran durante 7 días.</p>
         </div>
 
         {formData.is_bundle ? (

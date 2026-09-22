@@ -1808,6 +1808,9 @@ export default function HomeClient({
         </svg>
       </a>
       <div className="hero-search hero-search--standalone">
+        <svg className="shop-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" strokeLinecap="round" />
+        </svg>
         <input
           type="search"
           aria-label="Buscar productos"
@@ -1835,6 +1838,7 @@ export default function HomeClient({
             <h2 className="section-title">
               Novedades
             </h2>
+            <p className="section-description">Los últimos ingresos para descubrir.</p>
           </div>
           {!isSearching && !selectedCategory ? (
             <button

@@ -5567,8 +5567,13 @@ def _storefront_collection(limit: int, kind: str) -> list[dict]:
             date_column = "p.created_at" if kind == "new" else "sf.restocked_at"
             date_expr = date_column if DB_IS_POSTGRES else f"julianday({date_column})"
             placeholder = "?" if DB_IS_POSTGRES else "julianday(?)"
-            conditions.append(f"{date_expr} >= {placeholder} AND {date_expr} <= {placeholder}")
-            query_params = [(now - timedelta(days=14 if kind == "new" else 7)).isoformat(), now.isoformat()]
+            # New arrivals always fill the row with the latest available dated
+            # products, even when fewer than four arrived in the past 14 days.
+            conditions.append(f"{date_expr} <= {placeholder}")
+            query_params = [now.isoformat()]
+            if kind == "restocked":
+                conditions.append(f"{date_expr} >= {placeholder}")
+                query_params.append((now - timedelta(days=7)).isoformat())
         base_conditions = []
         if has_deleted_at:
             base_conditions.append("deleted_at IS NULL")
