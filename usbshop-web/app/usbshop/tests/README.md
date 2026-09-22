@@ -23,6 +23,11 @@ compilar con `npm run build`, servir `out` localmente en el puerto 3012 y ejecut
 instalación existente y `TEST_WEB_URL` cambiar el servidor. Las peticiones de API
 están interceptadas: no se crean ventas reales.
 
+La prueba de IMEI también vuelve a escanear un equipo vendido desde el escritorio
+y desde un comprobante en preparación. Verifica el informe, la comparación con el
+cliente seleccionado y que consultar el equipo no lo agregue a otra venta ni borre
+el comprobante en preparación, incluso si la lista local de IMEI quedó desactualizada.
+
 ## Catalogo y sesion del admin
 
 Crear el build con `npm run build` y servir `out` en `http://127.0.0.1:3010`

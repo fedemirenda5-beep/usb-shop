@@ -8,6 +8,7 @@ import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '
 import styles from '../comprobantes/comprobantes.module.css';
 import { consignmentRequest, type Consignment, type ConsignmentDetail } from '@/lib/consignments';
 import { createOrderIdempotencyKey } from '@/lib/api';
+import { ImeiReportDialog, type ImeiLookupResponse } from '@/components/ImeiReport';
 
 type CustomerOption = {
   id: number;
@@ -71,24 +72,7 @@ type BudgetDraft = {
   }>;
 };
 type InvoiceFormItem = { product_id: string; quantity: string; unit_price: string; manual_price: boolean; imeis: string[] };
-type ImeiLookupResponse = {
-  found: boolean;
-  imei: string;
-  is_own: boolean;
-  status: 'available' | 'sold' | 'unknown';
-  product?: {
-    id?: number | null;
-    name?: string | null;
-    sku?: string | null;
-    category_id?: number | null;
-    category_name?: string | null;
-  };
-  sale?: {
-    invoice_id?: number | null;
-    sold_at?: string | null;
-    document_type?: string | null;
-  };
-};
+
 
 const money = (value: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 const CELULARES_COMMISSION_PERCENT = 5;
@@ -275,6 +259,7 @@ export default function GenerarComprobantePage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [imeiReport, setImeiReport] = useState<ImeiLookupResponse | null>(null);
   const [customerSearch, setCustomerSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
@@ -676,41 +661,6 @@ export default function GenerarComprobantePage() {
     return true;
   };
 
-  const isValidImeiCandidate = (value: string) => /^\d{14,17}$/.test(value.trim());
-
-  const assignImeiLocallyIfPossible = (scannedValue: string) => {
-    const normalized = scannedValue.trim();
-    if (!isValidImeiCandidate(normalized)) {
-      return false;
-    }
-    const pendingCellphoneIndexes = form.items
-      .map((item, index) => {
-        const product = productMap.get(Number(item.product_id));
-        if (!productRequiresImei(product)) {
-          return null;
-        }
-        return {
-          index,
-          product,
-          matchesAvailableList:
-            Array.isArray(product.imeis) && product.imeis.includes(normalized),
-        };
-      })
-      .filter(Boolean) as Array<{ index: number; product: ProductOption; matchesAvailableList: boolean }>;
-    const target = pendingCellphoneIndexes.find((item) => item.matchesAvailableList) || null;
-    if (!target) {
-      return false;
-    }
-    const wasAdded = commitImeiToInvoiceItem(target.index, normalized);
-    if (!wasAdded) {
-      setError(`El IMEI ${normalized} ya esta cargado en este comprobante`);
-      return true;
-    }
-    setImeiDrafts((current) => ({ ...current, [target.index]: '' }));
-    setError('');
-    return true;
-  };
-
   const clearScannerTimer = () => {
     if (scannerTimeoutRef.current) {
       clearTimeout(scannerTimeoutRef.current);
@@ -872,16 +822,16 @@ export default function GenerarComprobantePage() {
       if (!scannedValue) return;
       const probablyImei = /^\d{14,17}$/.test(scannedValue);
       if (probablyImei) {
-        if (form.order_id && assignImeiLocallyIfPossible(scannedValue)) {
-          return;
-        }
+        setImeiReport(null);
         try {
           const imeiLookup = await lookupImeiValue(scannedValue);
           if (imeiLookup.found && imeiLookup.is_own && imeiLookup.product?.id) {
+            if (imeiLookup.status === 'sold') {
+              setImeiReport(imeiLookup);
+              setError('');
+              if (form.customer_id && imeiLookup.sale?.customer_id && Number(form.customer_id) !== imeiLookup.sale.customer_id) return;
+            }
             if (imeiLookup.status === 'sold' && form.document_type !== 'NOTA_CREDITO') {
-              const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
-              const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
-              setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
               return;
             }
             const imeiProductId = Number(imeiLookup.product.id);
@@ -934,9 +884,6 @@ export default function GenerarComprobantePage() {
             return;
           }
         } catch (error) {
-          if (assignImeiLocallyIfPossible(scannedValue)) {
-            return;
-          }
           setError(getFriendlyApiError(error, 'No se pudo consultar el IMEI'));
           return;
         }
@@ -1120,22 +1067,18 @@ export default function GenerarComprobantePage() {
       setError('No se encontro el producto para cargar el IMEI');
       return;
     }
-    const availableImeis = Array.isArray(selectedProduct.imeis) ? selectedProduct.imeis : [];
-    if (availableImeis.includes(scannedValue) && form.document_type !== 'NOTA_CREDITO') {
-      const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
-      if (!wasAdded) {
-        setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
-        return;
-      }
-      setImeiDrafts((current) => ({ ...current, [index]: '' }));
-      setError('');
-      return;
-    }
+    setImeiReport(null);
     try {
       const imeiLookup = prefetchedLookup || (await lookupImeiValue(scannedValue));
       if (!imeiLookup.found || !imeiLookup.is_own || !imeiLookup.product?.id) {
         setError(`El IMEI ${scannedValue} no esta registrado como propio`);
         return;
+      }
+      if (imeiLookup.status === 'sold') {
+        setImeiReport(imeiLookup);
+        setError('');
+        if (form.document_type !== 'NOTA_CREDITO') return;
+        if (form.customer_id && imeiLookup.sale?.customer_id && Number(form.customer_id) !== imeiLookup.sale.customer_id) return;
       }
       if (
         Number(imeiLookup.product.id) !== productId &&
@@ -1149,12 +1092,6 @@ export default function GenerarComprobantePage() {
       }
       if (form.document_type === 'NOTA_CREDITO' && imeiLookup.status !== 'sold') {
         setError(`El IMEI ${scannedValue} no tiene una venta vigente para devolver`);
-        return;
-      }
-      if (imeiLookup.status === 'sold' && form.document_type !== 'NOTA_CREDITO') {
-        const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
-        const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
-        setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
         return;
       }
 
@@ -1266,6 +1203,7 @@ export default function GenerarComprobantePage() {
 
   return (
     <div className={styles.page}>
+      {imeiReport && <ImeiReportDialog result={imeiReport} customer={selectedCustomer} onClose={() => setImeiReport(null)} />}
       <section className={styles.header}>
         <div>
           <h1>Generar comprobante</h1>

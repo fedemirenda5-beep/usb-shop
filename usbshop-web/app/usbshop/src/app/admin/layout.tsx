@@ -9,6 +9,7 @@ import { ADMIN_LIMITS } from './adminConfig';
 import { NAV_MODULES } from './adminModules';
 import { canAccessAdminModule } from './adminPermissions';
 import styles from './admin.module.css';
+import { ImeiReportDialog, type ImeiLookupResponse } from '@/components/ImeiReport';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -44,6 +45,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [scannerPreviewError, setScannerPreviewError] = useState('');
   const [scannerPreviewProduct, setScannerPreviewProduct] = useState<ScannerProductPreview | null>(null);
+  const [imeiReport, setImeiReport] = useState<ImeiLookupResponse | null>(null);
+  const scannerRequestId = useRef(0);
   const scannerBufferRef = useRef('');
   const scannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentModule = getCurrentModule(pathname);
@@ -152,6 +155,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       if (isEditableTarget(event.target)) return;
 
       if (event.key === 'Escape') {
+        scannerRequestId.current += 1;
+        setImeiReport(null);
         setScannerPreviewError('');
         setScannerPreviewProduct(null);
         resetScannerBuffer();
@@ -162,10 +167,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         const scannedValue = scannerBufferRef.current.trim();
         resetScannerBuffer();
         if (!scannedValue) return;
+        const requestId = ++scannerRequestId.current;
         void (async () => {
           try {
             setScannerPreviewError('');
+            setImeiReport(null);
+            if (/^\d{14,17}$/.test(scannedValue)) {
+              const res = await fetchApiResponse(`/admin/imei-lookup?${new URLSearchParams({ q: scannedValue })}`);
+              if (!res.ok) throw new Error('No se pudo consultar el IMEI. Volvé a escanear para intentar nuevamente.');
+              const data = await res.json() as ImeiLookupResponse;
+              if (requestId !== scannerRequestId.current) return;
+              if (data.found) {
+                setScannerPreviewProduct(null);
+                setImeiReport(data);
+                return;
+              }
+            }
             const products = await loadScannerProducts(scannedValue);
+            if (requestId !== scannerRequestId.current) return;
             const matchedProduct = findScannerProduct(products, scannedValue);
             if (!matchedProduct) {
               setScannerPreviewProduct(null);
@@ -179,6 +198,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             setScannerPreviewProduct(null);
             router.push(`/admin/productos?edit=${matchedProduct.id}`);
           } catch (scanError) {
+            if (requestId !== scannerRequestId.current) return;
             setScannerPreviewProduct(null);
             setScannerPreviewError(getFriendlyApiError(scanError, 'No se pudo resolver el producto escaneado'));
           }
@@ -197,6 +217,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
+      scannerRequestId.current += 1;
       window.removeEventListener('keydown', handleKeyDown);
       resetScannerBuffer();
     };
@@ -229,6 +250,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className={styles.adminContainer}>
+      {imeiReport && <ImeiReportDialog result={imeiReport} onClose={() => { scannerRequestId.current += 1; setImeiReport(null); }} />}
       <button
         type="button"
         className={`${styles.sidebarBackdrop} ${sidebarOpen ? styles.sidebarBackdropVisible : ''}`}

@@ -14,21 +14,24 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
     let sold = false;
     let submitted = null;
+    let soldCustomer = 1;
+    let invoicePosts = 0;
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.pathname === '/usbshop-config.json') return route.fulfill({ json: { apiBaseUrl: 'http://127.0.0.1:8000' } });
       if (url.pathname === '/auth/me') return route.fulfill({ json: { id: 1, username: 'test', role: 'admin' } });
       if (url.pathname === '/admin/categories') return route.fulfill({ json: [{ id: 1, name: 'Celulares' }] });
       if (url.pathname === '/admin/products') return route.fulfill({ json: [product] });
+      if (url.pathname === '/admin/dashboard') return route.fulfill({ json: { summary: { products: 1, active_customers: 2, stock_units: 2, sales_count: 1, sales_total: 1000, estimated_margin: 0, expenses_total: 0, cc_open_balance: 0 } } });
       if (url.pathname === '/admin/backoffice-customers') return route.fulfill({ json: [{ id: 1, name: 'Cliente Uno', phone: '1122334455', sale_mode: 'CONTADO' }] });
       if (url.pathname === '/admin/sellers') return route.fulfill({ json: [{ id: 1, name: 'Vendedor', is_active: true, commission_percent: 0 }] });
       if (url.pathname === '/admin/imei-lookup') return route.fulfill({ json: url.searchParams.get('q') !== imei ? { found: false, imei: url.searchParams.get('q'), status: 'unknown' } : {
         found: true, imei, is_own: true, status: sold ? 'sold' : 'available', product,
-        sale: sold ? { invoice_id: 10, sold_at: invoice.created_at, customer_name: invoice.customer_name, customer_phone: invoice.customer_phone } : {},
+        sale: sold ? { invoice_id: 10, sold_at: invoice.created_at, customer_id: soldCustomer, customer_name: soldCustomer === 1 ? invoice.customer_name : 'Cliente Dos', customer_phone: invoice.customer_phone } : {},
         warranty: sold ? warranty : null, history: sold ? [invoice] : [],
       } });
       if (url.pathname === '/admin/invoices') {
-        if (route.request().method() === 'POST') { submitted = route.request().postDataJSON(); sold = true; return route.fulfill({ json: { id: 10 } }); }
+        if (route.request().method() === 'POST') { invoicePosts++; submitted = route.request().postDataJSON(); sold = true; return route.fulfill({ json: { id: 10 } }); }
         return route.fulfill({ json: sold ? [invoice] : [] });
       }
       if (url.pathname === '/admin/invoices/10') return route.fulfill({ json: detail });
@@ -92,5 +95,47 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
     assert.equal(await page.getByText('1122334455', { exact: true }).count(), 0);
     assert.deepEqual(errors, []);
     console.log('PASS lookup shows sale and warranty, works on mobile and clears stale results');
+
+    await page.goto(`${base}/admin/`);
+    await page.getByRole('heading', { name: 'Escritorio', exact: true }).waitFor();
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.type(imei);
+    await page.keyboard.press('Enter');
+    const report = page.getByRole('dialog', { name: 'Informe del equipo escaneado' });
+    await report.waitFor();
+    await report.getByRole('heading', { name: 'Samsung A16', exact: true }).waitFor();
+    await report.getByRole('heading', { name: 'Garantía comercial: Vigente' }).waitFor();
+    assert.match(await report.innerText(), /Cliente Uno/);
+    assert.match(await report.innerText(), /22\/09\/2026/);
+    assert.equal(await report.getByRole('link', { name: 'Ver comprobante #10' }).getAttribute('target'), '_blank');
+    assert.equal(await report.evaluate(node => node.scrollWidth <= node.clientWidth), true, 'mobile report must not overflow');
+    await report.getByRole('button', { name: 'Cerrar informe' }).click();
+    assert.match(page.url(), /\/admin\/$/);
+    assert.equal(invoicePosts, 1);
+    console.log('PASS general scanner opens a read-only mobile report without navigating away');
+
+    await page.setViewportSize({ width: 1366, height: 900 });
+    await page.goto(`${base}/admin/generar-comprobante/`);
+    await page.getByPlaceholder('Buscar cliente por nombre, mail, telefono o CUIT').fill('Cliente');
+    await page.getByRole('button').filter({ hasText: 'Cliente Uno' }).click();
+    await page.getByPlaceholder('Buscar por nombre, SKU, codigo o ID').fill('Samsung');
+    await page.getByRole('button', { name: 'Agregar', exact: true }).first().click();
+    soldCustomer = 2;
+    // Product options still advertise this IMEI as available: the lookup must win.
+    await page.getByPlaceholder('Escanear IMEI 1').fill(imei);
+    await page.getByPlaceholder('Escanear IMEI 1').press('Enter');
+    await report.getByRole('status').filter({ hasText: 'no a Cliente Uno' }).waitFor();
+    await report.getByRole('button', { name: 'Cerrar informe' }).click();
+    await page.getByText('IMEIs cargados: 0/1', { exact: true }).waitFor();
+    soldCustomer = 1;
+    await page.getByPlaceholder('Buscar por nombre, SKU, codigo o ID').fill(imei);
+    await page.getByPlaceholder('Buscar por nombre, SKU, codigo o ID').press('Enter');
+    await report.getByRole('status').filter({ hasText: 'Este equipo corresponde al cliente seleccionado' }).waitFor();
+    await page.keyboard.press('Escape');
+    await report.waitFor({ state: 'detached' });
+    await page.getByText('IMEIs cargados: 0/1', { exact: true }).waitFor();
+    assert.equal(invoicePosts, 1, 'consulting a sold phone must not create another sale or return');
+    assert.deepEqual(errors, []);
+    console.log('PASS sold-device report compares customers and preserves invoice draft without assigning sold IMEI');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
