@@ -1,5 +1,16 @@
 # Pruebas del carrito
 
+## Acceso móvil al admin
+
+`node --test tests/api-recovery.test.cjs` verifica reintentos de lectura/login,
+errores de red de Safari, cancelaciones y que las ventas no se repitan automáticamente.
+
+Después de compilar, servir `out` en el puerto 3012 y ejecutar
+`node tests/admin-mobile-session.cjs` con Playwright disponible. Acepta
+`PLAYWRIGHT_MODULE` y `TEST_WEB_URL`. Simula una pantalla móvil en Chromium,
+login lento, almacenamiento bloqueado, cookies rechazadas, cortes temporales,
+recuperación de conexión y vencimiento real de sesión. No usa cuentas reales.
+
 ## IMEI y garantías
 
 La API se verifica con `python -m unittest test_imei_tracking`, desde `usbshop-web/api`

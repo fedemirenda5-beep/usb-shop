@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ADMIN_SESSION_RECHECK_EVENT, ensureApiBaseUrl, getApiBaseUrl } from '@/lib/api';
+import { ADMIN_SESSION_RECHECK_EVENT, fetchAuthResponse, getFriendlyApiError } from '@/lib/api';
 
 interface AdminUser {
   id?: number | null;
@@ -19,12 +19,8 @@ type SessionSnapshot = {
 
 const SESSION_STORAGE_KEY = 'usbshop_admin_session_v1';
 const LEGACY_SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
-const SESSION_REQUEST_TIMEOUT_MS = 15000;
-const LOGIN_REQUEST_TIMEOUT_MS = 8000;
-const LOGIN_REQUEST_ATTEMPTS = 1;
 const SESSION_REVALIDATE_INTERVAL_MS = 2 * 60 * 1000;
-const SESSION_REQUEST_ATTEMPTS = 2;
-const SESSION_RETRY_DELAY_MS = 700;
+const SESSION_RECOVERY_DELAYS = [5000, 15000, 30000];
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -82,100 +78,18 @@ const restoreSnapshot = (): SessionSnapshot => {
   }
 };
 
-const getFriendlySessionError = (err: unknown, fallback: string) => {
-  if (!(err instanceof Error)) {
-    return fallback;
-  }
-  const message = err.message.trim();
-  if (!message) {
-    return fallback;
-  }
-  if (message === 'Failed to fetch' || message.includes('NetworkError')) {
-    return 'No se pudo conectar con la API. Revisa la conexion e intenta nuevamente.';
-  }
-  if (message.includes('timed out') || message.includes('tardo demasiado')) {
-    return 'No se pudo completar la solicitud. Revisa tu conexion e intenta nuevamente.';
-  }
-  return message;
-};
-
-const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
-  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-};
-
-const wait = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
-  const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error('La solicitud tardo demasiado');
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutHandle);
-  }
-};
-
-const isRetryableSessionError = (error: unknown) => {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message.trim().toLowerCase();
-  return (
-    message.includes('tardo demasiado') ||
-    message.includes('timed out') ||
-    message === 'failed to fetch' ||
-    message.includes('networkerror')
-  );
-};
-
-const fetchWithRetry = async (
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-  attempts = SESSION_REQUEST_ATTEMPTS
-): Promise<Response> => {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await fetchWithTimeout(url, init, timeoutMs);
-    } catch (error) {
-      lastError = error;
-      if (attempt >= attempts || !isRetryableSessionError(error)) {
-        throw error;
-      }
-      await wait(SESSION_RETRY_DELAY_MS * attempt);
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error('No se pudo verificar la sesion');
-};
-
 let sessionSnapshot: SessionSnapshot = restoreSnapshot();
 let sessionRequest: Promise<AdminUser | null> | null = null;
 let lastSessionCheckAt = 0;
+let sessionVersion = 0;
+let recoveryAttempt = 0;
+let recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 const listeners = new Set<(snapshot: SessionSnapshot) => void>();
+
+const clearRecoveryTimer = () => {
+  if (recoveryTimer) clearTimeout(recoveryTimer);
+  recoveryTimer = null;
+};
 
 const emitSnapshot = () => {
   listeners.forEach((listener) => listener(sessionSnapshot));
@@ -218,10 +132,7 @@ const subscribe = (listener: (snapshot: SessionSnapshot) => void) => {
 };
 
 const fetchSession = async (): Promise<AdminUser | null> => {
-  await ensureApiBaseUrl();
-  const res = await fetchWithRetry(`${getApiBaseUrl()}/auth/me`, {
-    credentials: 'include',
-  }, SESSION_REQUEST_TIMEOUT_MS);
+  const res = await fetchAuthResponse('/auth/me');
 
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
@@ -241,6 +152,9 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
     return sessionRequest;
   }
 
+  clearRecoveryTimer();
+  const version = sessionVersion;
+  const wasVerified = sessionSnapshot.isVerified && Boolean(sessionSnapshot.user);
   updateSnapshot({
     isLoading: sessionSnapshot.user ? false : true,
     error: force ? null : sessionSnapshot.error,
@@ -248,21 +162,34 @@ const ensureSessionLoaded = async (force = false): Promise<AdminUser | null> => 
   sessionRequest = (async () => {
     try {
       const user = await fetchSession();
+      if (version !== sessionVersion) return sessionSnapshot.user;
       lastSessionCheckAt = Date.now();
+      recoveryAttempt = 0;
       updateSnapshot({ user, isLoading: false, error: null, isVerified: true });
       return user;
     } catch (err) {
+      if (version !== sessionVersion) return sessionSnapshot.user;
       lastSessionCheckAt = Date.now();
       const fallbackUser = sessionSnapshot.user;
       updateSnapshot({
         user: fallbackUser,
         isLoading: false,
-        error: getFriendlySessionError(err, 'Error verificando sesion'),
-        isVerified: false,
+        error: getFriendlyApiError(err, 'Error verificando sesion'),
+        // Keep an already verified, mounted editor during a temporary outage.
+        // Stored users still require verification on every fresh page load.
+        isVerified: wasVerified,
       });
+      if (recoveryAttempt < SESSION_RECOVERY_DELAYS.length) {
+        recoveryTimer = setTimeout(() => {
+          recoveryTimer = null;
+          if (version === sessionVersion && listeners.size && navigator.onLine && document.visibilityState === 'visible') {
+            void ensureSessionLoaded(true);
+          }
+        }, SESSION_RECOVERY_DELAYS[recoveryAttempt++]);
+      }
       return fallbackUser;
     } finally {
-      sessionRequest = null;
+      if (version === sessionVersion) sessionRequest = null;
     }
   })();
 
@@ -307,7 +234,7 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
 
     const revalidateSession = () => {
       const now = Date.now();
-      if (sessionRequest || now - lastSessionCheckAt < SESSION_REVALIDATE_INTERVAL_MS) {
+      if (sessionRequest || (!sessionSnapshot.error && now - lastSessionCheckAt < SESSION_REVALIDATE_INTERVAL_MS)) {
         return;
       }
       void ensureSessionLoaded(true);
@@ -318,65 +245,78 @@ export function useAdminSession(options?: UseAdminSessionOptions) {
         revalidateSession();
       }
     };
+    const handleOnline = () => {
+      recoveryAttempt = 0;
+      void ensureSessionLoaded(true);
+    };
 
     window.addEventListener('focus', revalidateSession);
+    window.addEventListener('online', handleOnline);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('focus', revalidateSession);
+      window.removeEventListener('online', handleOnline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [skipInitialCheck]);
 
   const login = useCallback(async (username: string, password: string) => {
+    const version = ++sessionVersion;
+    sessionRequest = null;
+    clearRecoveryTimer();
     updateSnapshot({ isLoading: true, error: null });
     try {
-      await ensureApiBaseUrl();
-      const res = await fetchWithRetry(
-        `${getApiBaseUrl()}/auth/login`,
+      const res = await fetchAuthResponse(
+        '/auth/login',
         {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
-        },
-        LOGIN_REQUEST_TIMEOUT_MS,
-        LOGIN_REQUEST_ATTEMPTS
+        }
       );
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({ detail: 'Error desconocido' }));
-        throw new Error(errData.detail || 'Credenciales invalidas');
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || (res.status >= 500 ? 'El servidor está temporalmente ocupado. Volvé a intentar.' : 'No se pudo iniciar sesión'));
       }
 
-      const data = (await res.json()) as AdminUser;
+      // Confirm that the browser actually accepted the session cookie.
+      const data = await fetchSession();
+      if (version !== sessionVersion) return false;
+      if (!data) throw new Error('El navegador no pudo mantener la sesión. Abrí https://www.usbshop.com.ar/login en Chrome o Safari y permití las cookies del sitio.');
+      lastSessionCheckAt = Date.now();
+      recoveryAttempt = 0;
       updateSnapshot({ user: data, isLoading: false, error: null, isVerified: true });
       return true;
     } catch (err) {
-      const message = getFriendlySessionError(err, 'Error de login');
+      if (version !== sessionVersion) return false;
+      const message = getFriendlyApiError(err, 'Error de login');
       updateSnapshot({ user: null, isLoading: false, error: message, isVerified: true });
       return false;
     }
   }, []);
 
   const logout = useCallback(async () => {
+    const version = ++sessionVersion;
+    sessionRequest = null;
+    clearRecoveryTimer();
+    updateSnapshot({ user: null, isLoading: false, error: null, isVerified: true });
     try {
-      await ensureApiBaseUrl();
-      await fetch(`${getApiBaseUrl()}/auth/logout`, {
+      await fetchAuthResponse('/auth/logout', {
         method: 'POST',
         credentials: 'include',
       });
     } catch (err) {
       console.error('Error during logout:', err);
     } finally {
-      sessionSnapshot = { user: null, isLoading: false, error: null, isVerified: true };
-      persistSnapshot(sessionSnapshot);
-      emitSnapshot();
-      router.push('/login');
+      if (version === sessionVersion) router.push('/login');
     }
   }, [router]);
 
   const refreshSession = useCallback(async () => {
+    recoveryAttempt = 0;
     return ensureSessionLoaded(true);
   }, []);
 

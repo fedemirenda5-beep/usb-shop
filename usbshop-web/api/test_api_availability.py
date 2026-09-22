@@ -9,6 +9,13 @@ import main
 
 
 class AvailabilityTests(unittest.TestCase):
+    def test_authentication_failures_are_not_cached(self):
+        for path in ['/auth/me', '/admin/products']:
+            messages = self.request(path)
+            response = next(item for item in messages if item['type'] == 'http.response.start')
+            self.assertEqual(response['status'], 401)
+            self.assertEqual(dict(response['headers'])[b'cache-control'], b'no-store')
+
     def request(self, path):
         async def run():
             messages = []

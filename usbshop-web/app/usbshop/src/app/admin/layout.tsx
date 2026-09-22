@@ -402,6 +402,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </button>
               </section>
             ) : null}
+            {error && <div role="status" className={styles.sessionConnectionNotice}>
+              La conexión se interrumpió. Estamos intentando recuperarla; lo que estabas completando sigue en pantalla.
+              <button type="button" onClick={() => void refreshSession()}>Reintentar conexión</button>
+            </div>}
             {children}
           </div>
         </main>

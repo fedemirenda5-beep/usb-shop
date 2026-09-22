@@ -15,12 +15,20 @@ type LoginUserOption = {
 const LAST_LOGIN_USERNAME_KEY = 'usbshop_last_login_username';
 const LOGIN_USERS_CACHE_KEY = 'usbshop_login_users_v1';
 
+const readPreference = (key: string) => {
+  try { return window.localStorage.getItem(key) || ''; } catch { return ''; }
+};
+const savePreference = (key: string, value: string) => {
+  try { window.localStorage.setItem(key, value); } catch { /* Login also works without browser storage. */ }
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const { login, error } = useAdminSession({ skipInitialCheck: true });
   const [userOptions, setUserOptions] = useState<LoginUserOption[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [slowConnection, setSlowConnection] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -48,8 +56,8 @@ export default function LoginPage() {
     setUserOptions(options);
     setHasCachedUsers(options.length > 0);
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(LOGIN_USERS_CACHE_KEY, JSON.stringify(options));
-      const savedUsername = window.localStorage.getItem(LAST_LOGIN_USERNAME_KEY)?.trim() || '';
+      savePreference(LOGIN_USERS_CACHE_KEY, JSON.stringify(options));
+      const savedUsername = readPreference(LAST_LOGIN_USERNAME_KEY).trim();
       applySuggestedUsername(options, savedUsername);
     } else {
       applySuggestedUsername(options);
@@ -71,19 +79,19 @@ export default function LoginPage() {
     if (typeof window === 'undefined' || !username.trim()) {
       return;
     }
-    window.localStorage.setItem(LAST_LOGIN_USERNAME_KEY, username.trim());
+    savePreference(LAST_LOGIN_USERNAME_KEY, username.trim());
   }, [username]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
-    const savedUsername = window.localStorage.getItem(LAST_LOGIN_USERNAME_KEY)?.trim() || '';
+    const savedUsername = readPreference(LAST_LOGIN_USERNAME_KEY).trim();
     if (savedUsername) {
       setUsername((current) => current || savedUsername);
     }
     try {
-      const rawCachedUsers = window.localStorage.getItem(LOGIN_USERS_CACHE_KEY);
+      const rawCachedUsers = readPreference(LOGIN_USERS_CACHE_KEY);
       if (!rawCachedUsers) {
         return;
       }
@@ -121,11 +129,11 @@ export default function LoginPage() {
         const fallbackMessage = err instanceof Error ? err.message : 'No se pudo cargar la lista de usuarios';
         const cachedAvailable =
           hasCachedUsers ||
-          (typeof window !== 'undefined' && Boolean(window.localStorage.getItem(LOGIN_USERS_CACHE_KEY)));
+          (typeof window !== 'undefined' && Boolean(readPreference(LOGIN_USERS_CACHE_KEY)));
         if (cachedAvailable) {
           setLocalNotice('Se usó la lista guardada. Puedes continuar con tu nombre de usuario y contraseña.');
         } else {
-          setLocalError(fallbackMessage);
+          setLocalNotice('Podés ingresar escribiendo tu usuario y contraseña aunque la lista de usuarios no haya cargado.');
         }
       } finally {
         setUsersLoading(false);
@@ -135,6 +143,13 @@ export default function LoginPage() {
   }, []);
 
   const selectedUser = userOptions.find((option) => option.username === username) || null;
+
+  useEffect(() => {
+    setSlowConnection(false);
+    if (!submitting) return;
+    const timer = setTimeout(() => setSlowConnection(true), 6000);
+    return () => clearTimeout(timer);
+  }, [submitting]);
 
   const handleUsernameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') {
@@ -235,8 +250,9 @@ export default function LoginPage() {
             />
           </div>
 
-          {(localError || error) && <div className={styles.error}>{localError || error}</div>}
+          {(localError || error) && <div role="alert" className={styles.error}>{localError || error}</div>}
           {localNotice ? <div className={styles.notice}>{localNotice}</div> : null}
+          {submitting && slowConnection && <div role="status" className={styles.notice}>Seguimos intentando conectar. No hace falta volver a tocar Ingresar.</div>}
 
           <button type="submit" disabled={submitting || !username.trim() || !password.trim()} className={styles.button}>
             {submitting ? 'Ingresando...' : 'Ingresar'}
@@ -260,7 +276,7 @@ export default function LoginPage() {
                     const nextOptions = Array.isArray(data) ? data : [];
                     hydrateUserOptions(nextOptions);
                   } catch (retryError) {
-                    setLocalError(retryError instanceof Error ? retryError.message : 'No se pudo cargar la lista de usuarios');
+                    setLocalNotice('La lista de usuarios no está disponible. Podés escribir tu usuario y contraseña para ingresar.');
                   } finally {
                     setUsersLoading(false);
                   }

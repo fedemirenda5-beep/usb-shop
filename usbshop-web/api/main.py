@@ -789,6 +789,8 @@ async def request_timing_middleware(request: Request, call_next):
         query_time_ms = float(timing["query_time_ms"])
         if response is not None:
             response.headers["X-Request-ID"] = request_id
+            if request.url.path.startswith('/auth/') or request.url.path.startswith('/admin/'):
+                response.headers["Cache-Control"] = "no-store"
             response.headers["Server-Timing"] = f'app;dur={elapsed_ms:.1f}, db;dur={query_time_ms:.1f}'
         if elapsed_ms >= SLOW_REQUEST_THRESHOLD_MS:
             LOGGER.warning(

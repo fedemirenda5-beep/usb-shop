@@ -319,6 +319,8 @@ const isRetryableApiError = (error: unknown) => {
     message.includes("demoro demasiado") ||
     message.includes("timed out") ||
     message === "failed to fetch" ||
+    message === "load failed" ||
+    message === "the network connection was lost." ||
     message.includes("networkerror")
   );
 };
@@ -327,11 +329,12 @@ const fetchWithRetry = async (
   url: string,
   init: RequestInit,
   timeoutMs: number,
-  attempts = DEFAULT_API_RETRY_ATTEMPTS
+  attempts = DEFAULT_API_RETRY_ATTEMPTS,
+  retryLogin = false
 ): Promise<Response> => {
   let lastError: unknown;
   const method = (init.method || "GET").toUpperCase();
-  const canRetry = RETRYABLE_HTTP_METHODS.has(method);
+  const canRetry = RETRYABLE_HTTP_METHODS.has(method) || retryLogin;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const response = await fetchWithTimeout(url, init, timeoutMs);
@@ -344,7 +347,7 @@ const fetchWithRetry = async (
       await wait(DEFAULT_API_RETRY_DELAY_MS * attempt);
     } catch (error) {
       lastError = error;
-      if (attempt >= attempts || !canRetry || !isRetryableApiError(error)) {
+      if (init.signal?.aborted || attempt >= attempts || !canRetry || !isRetryableApiError(error)) {
         throw error;
       }
       await wait(DEFAULT_API_RETRY_DELAY_MS * attempt);
@@ -361,8 +364,8 @@ export const getFriendlyApiError = (error: unknown, fallback: string): string =>
   if (!message) {
     return fallback;
   }
-  if (message === "Failed to fetch" || message.includes("NetworkError")) {
-    return "No se pudo conectar con la API. Revisa la conexion e intenta nuevamente.";
+  if (isRetryableApiError(error)) {
+    return "La conexión con el servidor se interrumpió o está demorando. Volvé a intentar cuando tengas conexión.";
   }
   if (message.includes("demoro demasiado") || message.includes("timed out")) {
     return "No se pudo completar la solicitud. Revisa tu conexion e intenta nuevamente.";
@@ -372,6 +375,14 @@ export const getFriendlyApiError = (error: unknown, fallback: string): string =>
 
 export async function ensureApiBaseUrl(timeoutMs = 5000): Promise<void> {
   await withTimeout(loadRuntimeConfig(), timeoutMs, "No se pudo cargar la configuracion");
+}
+
+// Login can safely be repeated after a lost response; sales and other writes cannot.
+export async function fetchAuthResponse(path: '/auth/me' | '/auth/login' | '/auth/logout', init: RequestInit = {}): Promise<Response> {
+  await ensureApiBaseUrl();
+  return fetchWithRetry(`${getApiBaseUrl()}${path}`, {
+    ...init, credentials: 'include', cache: 'no-store',
+  }, 30_000, 2, path === '/auth/login');
 }
 
 export async function fetchApiResponse(path: string, init?: RequestInit, timeoutMs = DEFAULT_API_TIMEOUT_MS): Promise<Response> {
