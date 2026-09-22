@@ -1,6 +1,7 @@
 export type AdminModuleId =
   | 'dashboard'
   | 'productos'
+  | 'imeis'
   | 'vidriera'
   | 'pedidos'
   | 'clientes'
@@ -23,6 +24,13 @@ export type AdminModule = {
 };
 
 export const ADMIN_MODULES: AdminModule[] = [
+  {
+    id: 'imeis',
+    title: 'IMEI y garantías',
+    href: '/admin/imeis',
+    navLabel: 'IMEI y garantías',
+    dashboardLabel: 'Consultar equipo, cliente, venta y garantía por IMEI',
+  },
   {
     id: 'dashboard',
     title: 'Dashboard',

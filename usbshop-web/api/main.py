@@ -1772,6 +1772,28 @@ def _ensure_invoice_items_cost_snapshot_column(conn: DBConn) -> None:
     _invalidate_table_cache("invoice_items")
 
 
+def _ensure_imei_id_default(conn: DBConn, table_name: str) -> None:
+    """Upgrade IMEI tables imported with a plain INTEGER PRIMARY KEY on PG."""
+    if not DB_IS_POSTGRES:
+        return
+    if table_name not in {"product_imeis", "invoice_item_imeis"}:
+        raise ValueError("Unsupported IMEI table")
+    column = conn.execute(
+        """SELECT column_default, is_identity FROM information_schema.columns
+           WHERE table_schema = current_schema() AND table_name = ? AND column_name = 'id'""",
+        (table_name,),
+    ).fetchone()
+    if column is None or column["column_default"] or column["is_identity"] == "YES":
+        return
+    # ALTER TABLE holds its lock until commit, so existing IDs cannot race the
+    # sequence initialization. Do not reset working sequences on later reads.
+    sequence = f"{table_name}_id_seq"
+    conn.execute(f"CREATE SEQUENCE IF NOT EXISTS {sequence}")
+    conn.execute(f"ALTER TABLE {table_name} ALTER COLUMN id SET DEFAULT nextval('{sequence}')")
+    conn.execute(f"ALTER SEQUENCE {sequence} OWNED BY {table_name}.id")
+    conn.execute(f"SELECT setval('{sequence}', COALESCE(MAX(id), 0) + 1, false) FROM {table_name}")
+
+
 def _ensure_invoice_item_imeis_table(conn: DBConn) -> None:
     if DB_IS_POSTGRES:
         conn.execute(
@@ -1816,6 +1838,8 @@ def _ensure_invoice_item_imeis_table(conn: DBConn) -> None:
         conn.execute(
             f"ALTER TABLE invoice_item_imeis ADD COLUMN {column_name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
         )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_invoice_item_imeis_imei ON invoice_item_imeis(imei)")
+    _ensure_imei_id_default(conn, "invoice_item_imeis")
     _invalidate_table_cache("invoice_item_imeis")
 
 
@@ -2012,6 +2036,7 @@ def _ensure_product_imeis_table(conn: DBConn) -> None:
             f"ALTER TABLE product_imeis ADD COLUMN {column_name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
         )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_product_imeis_sold_invoice_id ON product_imeis(sold_invoice_id)")
+    _ensure_imei_id_default(conn, "product_imeis")
     conn.commit()
     _invalidate_table_cache("product_imeis")
 
@@ -2021,10 +2046,12 @@ def _fetch_product_imeis(
     product_ids: list[int],
     *,
     only_available: bool = False,
+    ensure_schema: bool = True,
 ) -> dict[int, list[str]]:
     if not product_ids:
         return {}
-    _ensure_product_imeis_table(conn)
+    if ensure_schema:
+        _ensure_product_imeis_table(conn)
     placeholders = ", ".join(["?"] * len(product_ids))
     filters = [f"product_id IN ({placeholders})"]
     params: list[Any] = list(product_ids)
@@ -2050,7 +2077,7 @@ def _fetch_product_imeis(
 
 
 def _replace_product_imeis(conn: DBConn, product_id: int, imeis: list[str]) -> None:
-    _ensure_product_imeis_table(conn)
+    # Callers ensure the schema before opening the inventory transaction.
     normalized_imeis = _normalize_imei_list(imeis)
     if not normalized_imeis:
         existing_rows = conn.execute(
@@ -2089,7 +2116,12 @@ def _replace_product_imeis(conn: DBConn, product_id: int, imeis: list[str]) -> N
 
     for imei in normalized_imeis:
         if imei in existing_by_imei:
+            existing = existing_by_imei[imei]
+            if existing["sold_invoice_id"] is not None:
+                raise HTTPException(400, f"El IMEI {imei} ya fue vendido; registra su devolución antes de ingresarlo nuevamente")
             continue
+        if not re.fullmatch(r"[0-9]{15}", imei):
+            raise HTTPException(400, "Los IMEI nuevos deben tener 15 dígitos")
         conn.execute(
             "INSERT INTO product_imeis (product_id, imei) VALUES (?, ?)",
             (product_id, imei),
@@ -2116,24 +2148,15 @@ def _store_invoice_item_imeis(
     normalized_imeis = _normalize_imei_list(imeis)
     if invoice_item_id <= 0 or invoice_id <= 0 or product_id <= 0 or not normalized_imeis:
         return
-    try:
-        _ensure_invoice_item_imeis_table(conn)
-        for imei in normalized_imeis:
-            conn.execute(
-                """
-                INSERT INTO invoice_item_imeis (invoice_item_id, invoice_id, product_id, imei)
-                VALUES (?, ?, ?, ?)
-                """,
-                (invoice_item_id, invoice_id, product_id, imei),
-            )
-    except Exception:
-        LOGGER.exception(
-            "No se pudieron guardar IMEIs auxiliares del item de comprobante. "
-            "invoice_id=%s invoice_item_id=%s product_id=%s imeis=%s",
-            invoice_id,
-            invoice_item_id,
-            product_id,
-            ",".join(normalized_imeis),
+    # The invoice and its IMEIs must commit together. Schema is ensured before
+    # the invoice transaction; a write failure must roll back the whole sale.
+    for imei in normalized_imeis:
+        conn.execute(
+            """
+            INSERT INTO invoice_item_imeis (invoice_item_id, invoice_id, product_id, imei)
+            VALUES (?, ?, ?, ?)
+            """,
+            (invoice_item_id, invoice_id, product_id, imei),
         )
 
 
@@ -3757,6 +3780,9 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("due_date", "TEXT", "TIMESTAMP"),
         ("notes", "TEXT", "TEXT"),
         ("payment_method", "TEXT", "TEXT"),
+        ("warranty_days", "INTEGER", "INTEGER"),
+        ("customer_name_snapshot", "TEXT", "TEXT"),
+        ("customer_phone_snapshot", "TEXT", "TEXT"),
     ],
     "invoice_items": [
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
@@ -4469,8 +4495,10 @@ def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
     primary_key = columns[0]
     placeholders = ", ".join(["?"] * len(columns))
     update_columns = [name for name in columns if name != primary_key]
+    immutable_sale_fields = {"warranty_days", "customer_name_snapshot", "customer_phone_snapshot"} if table_name == "invoices" else set()
     updates = ", ".join(
-        f"{name} = {'EXCLUDED' if DB_IS_POSTGRES else 'excluded'}.{name}"
+        f"{name} = COALESCE({table_name}.{name}, excluded.{name})" if name in immutable_sale_fields
+        else f"{name} = excluded.{name}"
         for name in update_columns
     )
     sql = (
@@ -6413,6 +6441,24 @@ def admin_create_product(
         conn.close()
 
 
+def _imei_warranty(sold_at: Any, days: Any) -> dict:
+    if days is None or not sold_at:
+        return {"status": "unknown", "days": None, "expires_at": None}
+    try:
+        start = datetime.fromisoformat(str(sold_at).replace("Z", "+00:00"))
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        expires = start + timedelta(days=int(days))
+    except (ValueError, TypeError, OverflowError):
+        return {"status": "unknown", "days": None, "expires_at": None}
+    now = datetime.now(timezone.utc)
+    return {
+        "status": "active" if start <= now <= expires else "not_started" if now < start else "expired",
+        "days": int(days),
+        "expires_at": expires.isoformat(),
+    }
+
+
 @app.get("/admin/imei-lookup")
 def admin_imei_lookup(
     request: Request,
@@ -6426,18 +6472,25 @@ def admin_imei_lookup(
 
     conn = _connect()
     try:
+        _ensure_syncable_tables(conn)
         _ensure_product_imeis_table(conn)
+        _ensure_invoice_item_imeis_table(conn)
+        conn.commit()
         row = conn.execute(
             """
             SELECT pi.imei, pi.product_id, pi.sold_invoice_id, pi.sold_at,
                    p.name AS product_name, p.sku, p.category_id,
                    c.name AS category_name,
                    i.created_at AS invoice_created_at,
-                   i.document_type AS invoice_document_type
+                   i.document_type AS invoice_document_type, i.warranty_days,
+                   i.customer_id,
+                   COALESCE(i.customer_name_snapshot, cu.name) AS customer_name,
+                   COALESCE(i.customer_phone_snapshot, cu.phone) AS customer_phone
             FROM product_imeis pi
             LEFT JOIN products p ON p.id = pi.product_id
             LEFT JOIN categories c ON c.id = p.category_id
             LEFT JOIN invoices i ON i.id = pi.sold_invoice_id
+            LEFT JOIN customers cu ON cu.id = i.customer_id
             WHERE pi.imei = ?
             LIMIT 1
             """,
@@ -6452,6 +6505,18 @@ def admin_imei_lookup(
             }
         sold_invoice_id = int(row["sold_invoice_id"]) if row["sold_invoice_id"] is not None else None
         sold_at = row["sold_at"] or row["invoice_created_at"]
+        history_rows = conn.execute(
+            """
+            SELECT DISTINCT i.id, i.created_at, i.document_type, i.customer_id,
+                   COALESCE(i.customer_name_snapshot, c.name) AS customer_name,
+                   COALESCE(i.customer_phone_snapshot, c.phone) AS customer_phone
+            FROM invoice_item_imeis ii
+            JOIN invoices i ON i.id = ii.invoice_id
+            LEFT JOIN customers c ON c.id = i.customer_id
+            WHERE ii.imei = ? AND i.document_type IN ('FACTURA', 'NOTA_CREDITO')
+            ORDER BY i.created_at DESC, i.id DESC
+            """, (imei,),
+        ).fetchall()
         return {
             "found": True,
             "imei": imei,
@@ -6468,7 +6533,12 @@ def admin_imei_lookup(
                 "invoice_id": sold_invoice_id,
                 "sold_at": sold_at,
                 "document_type": row["invoice_document_type"],
+                "customer_id": row["customer_id"],
+                "customer_name": row["customer_name"],
+                "customer_phone": row["customer_phone"],
             },
+            "warranty": _imei_warranty(sold_at, row["warranty_days"]) if sold_invoice_id else None,
+            "history": [dict(entry) for entry in history_rows],
         }
     finally:
         conn.close()
@@ -6767,7 +6837,7 @@ def admin_update_product(
         next_imeis = (
             _normalize_imei_list(payload.get("imeis") or [])
             if "imeis" in payload
-            else _fetch_product_imeis(conn, [product_id], only_available=False).get(product_id, [])
+            else _fetch_product_imeis(conn, [product_id], only_available=True, ensure_schema=False).get(product_id, [])
         )
         bundle_items = (
             _normalize_bundle_items(payload.get("bundle_items") or [])
@@ -9005,7 +9075,7 @@ def admin_create_invoice(
             raise HTTPException(status_code=400, detail="Cliente requerido")
         customer = conn.execute(
             """
-            SELECT id, sale_mode
+            SELECT id, sale_mode, name, phone
             FROM customers
             WHERE id = ? AND COALESCE(is_active, 1) = 1 AND deleted_at IS NULL
             """,
@@ -9080,6 +9150,8 @@ def admin_create_invoice(
                     raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
                 expanded_items = _allocate_bundle_components(bundle_items, quantity, unit_price, price_list)
                 for expanded in expanded_items:
+                    if document_type in {"FACTURA", "NOTA_CREDITO"} and _product_requires_imei(conn, expanded.get("category_id"), expanded.get("product_name")):
+                        raise HTTPException(400, "Para registrar los IMEI, agrega los celulares del combo por separado al comprobante")
                     subtotal_total += float(expanded["subtotal"])
                     normalized_items.append(expanded)
             else:
@@ -9087,6 +9159,11 @@ def admin_create_invoice(
                 if document_type == "FACTURA" and current_stock < quantity:
                     raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
                 requires_imei = _product_requires_imei(conn, product["category_id"] if isinstance(product, dict) else product[7], product["name"] if isinstance(product, dict) else product[1])
+                if document_type in {"FACTURA", "NOTA_CREDITO"} and requires_imei and len(item_imeis) != quantity:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Escanea un IMEI por unidad de {product['name']} antes de emitir ({len(item_imeis)}/{quantity})",
+                    )
                 if len(item_imeis) > quantity:
                     raise HTTPException(
                         status_code=400,
@@ -9102,6 +9179,7 @@ def admin_create_invoice(
                     {
                         "product_id": product_id,
                         "category_id": product["category_id"] if isinstance(product, dict) else product[7],
+                        "product_name": product["name"],
                         "quantity": quantity,
                         "unit_price": unit_price,
                         "cost_snapshot": round(float(product["cost"] or 0), 2),
@@ -9172,8 +9250,9 @@ def admin_create_invoice(
         insert_invoice_sql = """
             INSERT INTO invoices (
                 customer_id, total, special_discount, created_at, seller_id, document_type, commission_amount,
-                sale_mode, price_list, external_ref, due_date, notes, payment_method
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                sale_mode, price_list, external_ref, due_date, notes, payment_method,
+                warranty_days, customer_name_snapshot, customer_phone_snapshot
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         insert_invoice_params = (
             customer_id,
@@ -9189,6 +9268,9 @@ def admin_create_invoice(
             due_date,
             notes,
             payment_method,
+            30 if document_type == "FACTURA" and includes_cellphones else None,
+            customer["name"],
+            customer["phone"],
         )
         if DB_IS_POSTGRES:
             invoice_row = conn.execute(f"{insert_invoice_sql} RETURNING id", insert_invoice_params).fetchone()
@@ -9263,6 +9345,15 @@ def admin_create_invoice(
                     [invoice_id, created_at, item["product_id"], *item["imeis"]],
                 )
             if document_type == "NOTA_CREDITO" and item["imeis"]:
+                for imei in item["imeis"]:
+                    original_sale = conn.execute(
+                        """SELECT i.customer_id FROM product_imeis pi
+                           JOIN invoices i ON i.id = pi.sold_invoice_id
+                           WHERE pi.product_id = ? AND pi.imei = ?""",
+                        (item["product_id"], imei),
+                    ).fetchone()
+                    if original_sale is None or int(original_sale["customer_id"] or 0) != customer_id:
+                        raise HTTPException(400, f"El IMEI {imei} no tiene una venta vigente para este cliente")
                 conn.execute(
                     f"""
                     UPDATE product_imeis
@@ -9346,7 +9437,9 @@ def admin_invoice_detail(
             """
             SELECT i.id, i.customer_id, i.total, i.special_discount, i.created_at, i.seller_id, i.document_type,
                    i.commission_amount, i.sale_mode, i.price_list, i.external_ref, i.due_date,
-                   i.notes, i.payment_method, c.name AS customer_name, c.email AS customer_email, c.phone AS customer_phone,
+                   i.notes, i.payment_method, i.warranty_days,
+                   COALESCE(i.customer_name_snapshot, c.name) AS customer_name, c.email AS customer_email,
+                   COALESCE(i.customer_phone_snapshot, c.phone) AS customer_phone,
                    c.sale_mode AS customer_sale_mode, c.locality, c.address, c.tax_condition, c.cuit,
                    s.name AS seller_name, s.commission_percent AS seller_commission_percent
             FROM invoices i
@@ -9444,6 +9537,7 @@ def admin_invoice_detail(
                 "id": int(invoice["id"]),
                 "customer_id": int(invoice["customer_id"]) if invoice["customer_id"] is not None else None,
                 "customer_name": invoice["customer_name"] or "Sin cliente",
+                "warranty": _imei_warranty(invoice["created_at"], invoice["warranty_days"]),
                 "customer_email": invoice["customer_email"],
                 "customer_phone": invoice["customer_phone"],
                 "customer_sale_mode": invoice["customer_sale_mode"],
@@ -9599,7 +9693,7 @@ def admin_confirm_invoice(
 
         items = conn.execute(
             """
-            SELECT ii.product_id, ii.quantity, p.name AS product_name, p.stock
+            SELECT ii.product_id, ii.quantity, p.name AS product_name, p.stock, p.category_id
             FROM invoice_items ii
             LEFT JOIN products p ON p.id = ii.product_id
             WHERE ii.invoice_id = ?
@@ -9615,6 +9709,8 @@ def admin_confirm_invoice(
             quantity = int(item["quantity"] or 0)
             current_stock = int(item["stock"] or 0)
             product_name = item["product_name"] or f"Producto {product_id}"
+            if _product_requires_imei(conn, item["category_id"], product_name):
+                raise HTTPException(400, "Este presupuesto contiene celulares. Usa Escanear IMEIs y emitir para registrar cada equipo")
             if product_id <= 0 or quantity <= 0:
                 raise HTTPException(status_code=400, detail="El presupuesto tiene items invalidos")
             if current_stock < quantity:
@@ -9741,6 +9837,11 @@ def admin_delete_invoice(
             (invoice_id,),
         ).fetchall()
         deleted_document_type = str(invoice["document_type"] or "").strip().upper()
+        if deleted_document_type in {"FACTURA", "NOTA_CREDITO"} and (
+            conn.execute("SELECT id FROM invoice_item_imeis WHERE invoice_id = ? LIMIT 1", (invoice_id,)).fetchone()
+            or conn.execute("SELECT id FROM product_imeis WHERE sold_invoice_id = ? LIMIT 1", (invoice_id,)).fetchone()
+        ):
+            raise HTTPException(400, "No se puede borrar un comprobante con IMEI: debe conservarse la trazabilidad. Para devolver un equipo, emiti una nota de credito con su IMEI")
         blocking_movements = []
         for row in cc_movements:
             movement_type = str(row["movement_type"] or "").strip().upper()

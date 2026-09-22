@@ -223,6 +223,17 @@ export function ProductForm({
 }: ProductFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
+  const [imeiScan, setImeiScan] = useState('');
+  const [imeiScanMessage, setImeiScanMessage] = useState('');
+  const addScannedImei = () => {
+    const imei = imeiScan.replace(/\D/g, '');
+    if (!/^[0-9]{15}$/.test(imei)) { setImeiScanMessage('El IMEI debe tener 15 dígitos.'); return; }
+    const existing = parseImeiValues(formData.imeis);
+    if (existing.includes(imei)) { setImeiScanMessage('Este IMEI ya está cargado.'); return; }
+    setFormData(current => ({ ...current, imeis: [...parseImeiValues(current.imeis), imei].join('\n') }));
+    setImeiScan('');
+    setImeiScanMessage(`IMEI ${imei} agregado. Revisá que el stock coincida con la cantidad de equipos.`);
+  };
   const [imageInputs, setImageInputs] = useState<string[]>(() => buildInitialImages(initialData));
   const [selectedImageFiles, setSelectedImageFiles] = useState<Array<File | null>>(() =>
     Array.from({ length: MAX_PRODUCT_IMAGES }, () => null)
@@ -622,6 +633,13 @@ export function ProductForm({
 
         {isCellphonesCategory ? (
           <div className={styles.field}>
+            <label htmlFor="imei-scan">Escanear IMEI de ingreso</label>
+            <input id="imei-scan" inputMode="numeric" autoComplete="off" value={imeiScan} disabled={loading}
+              placeholder="Escaneá el IMEI y presioná Enter"
+              onChange={event => setImeiScan(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addScannedImei(); } }} />
+            <button type="button" onClick={addScannedImei} disabled={loading}>Agregar IMEI</button>
+            <p role="status" className={styles.help}>{imeiScanMessage}</p>
             <label htmlFor="imeis">IMEIs *</label>
             <textarea
               id="imeis"
@@ -635,7 +653,7 @@ export function ProductForm({
               required={isCellphonesCategory && parsedStock > 0}
             />
             <p className={styles.help}>
-              Solo para celulares. Carga un IMEI por linea. Si el stock es {Math.max(0, Number.isFinite(parsedStock) ? parsedStock : 0)}, tenes que ingresar esa misma cantidad para guardarlo.
+              {parseImeiValues(formData.imeis).length} IMEIs cargados / {Math.max(0, Number.isFinite(parsedStock) ? parsedStock : 0)} equipos en stock. Registrá un IMEI por equipo; usá ese mismo número al venderlo. Si tiene dos IMEI, cargá solo el principal.
             </p>
           </div>
         ) : null}

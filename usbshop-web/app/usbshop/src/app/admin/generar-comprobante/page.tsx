@@ -627,7 +627,7 @@ export default function GenerarComprobantePage() {
   };
 
   const pendingOrderCellphoneImeiItems = useMemo(() => {
-    if (form.document_type !== 'FACTURA') return [];
+    if (!['FACTURA', 'NOTA_CREDITO'].includes(form.document_type)) return [];
     return form.items
       .map((item, index) => {
         const product = productMap.get(Number(item.product_id));
@@ -654,11 +654,10 @@ export default function GenerarComprobantePage() {
   const canSubmitWithoutCustomer = Boolean(form.order_id) && !['NOTA_CREDITO', 'CONSIGNACION'].includes(form.document_type);
 
   const commitImeiToInvoiceItem = (index: number, scannedValue: string) => {
-    let wasAdded = true;
+    if (form.items.some(item => item.imeis.includes(scannedValue))) return false;
     setForm((current) => {
       const duplicateInInvoice = current.items.some((item) => item.imeis.includes(scannedValue));
       if (duplicateInInvoice) {
-        wasAdded = false;
         return current;
       }
       return {
@@ -674,7 +673,7 @@ export default function GenerarComprobantePage() {
         }),
       };
     });
-    return wasAdded;
+    return true;
   };
 
   const isValidImeiCandidate = (value: string) => /^\d{14,17}$/.test(value.trim());
@@ -879,7 +878,7 @@ export default function GenerarComprobantePage() {
         try {
           const imeiLookup = await lookupImeiValue(scannedValue);
           if (imeiLookup.found && imeiLookup.is_own && imeiLookup.product?.id) {
-            if (imeiLookup.status === 'sold') {
+            if (imeiLookup.status === 'sold' && form.document_type !== 'NOTA_CREDITO') {
               const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
               const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
               setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
@@ -1122,7 +1121,7 @@ export default function GenerarComprobantePage() {
       return;
     }
     const availableImeis = Array.isArray(selectedProduct.imeis) ? selectedProduct.imeis : [];
-    if (availableImeis.includes(scannedValue)) {
+    if (availableImeis.includes(scannedValue) && form.document_type !== 'NOTA_CREDITO') {
       const wasAdded = commitImeiToInvoiceItem(index, scannedValue);
       if (!wasAdded) {
         setError(`El IMEI ${scannedValue} ya esta cargado en este comprobante`);
@@ -1148,7 +1147,11 @@ export default function GenerarComprobantePage() {
         setError(`El IMEI ${scannedValue} no pertenece al producto ${selectedProduct.name}`);
         return;
       }
-      if (imeiLookup.status === 'sold') {
+      if (form.document_type === 'NOTA_CREDITO' && imeiLookup.status !== 'sold') {
+        setError(`El IMEI ${scannedValue} no tiene una venta vigente para devolver`);
+        return;
+      }
+      if (imeiLookup.status === 'sold' && form.document_type !== 'NOTA_CREDITO') {
         const soldAt = imeiLookup.sale?.sold_at ? ` el ${String(imeiLookup.sale.sold_at).slice(0, 10)}` : '';
         const soldInvoice = imeiLookup.sale?.invoice_id ? ` en comprobante #${imeiLookup.sale.invoice_id}` : '';
         setError(`El IMEI ${scannedValue} ya fue vendido${soldAt}${soldInvoice}`);
@@ -1174,10 +1177,11 @@ export default function GenerarComprobantePage() {
       setError('Selecciona una consignacion del cliente antes de emitir');
       return;
     }
-    invoiceSubmitting.current = true;
     if (hasPendingOrderCellphoneImeis) {
-      setError('');
+      setError('Escanea un IMEI por cada celular antes de emitir. Quedará registrado para el cliente y para consultar su garantía.');
+      return;
     }
+    invoiceSubmitting.current = true;
     try {
       setCreating(true);
       setError('');
@@ -1600,7 +1604,7 @@ export default function GenerarComprobantePage() {
               </div>
               {hasPendingOrderCellphoneImeis ? (
                 <div className={styles.orderDraftInfo}>
-                  Hay celulares pendientes de IMEI. Si los cargas ahora, tambien van a salir en el comprobante.
+                  Faltan IMEIs. Escaneá un IMEI por cada celular para poder emitir y dejar registrado el equipo en el comprobante.
                 </div>
               ) : null}
               <div className={styles.tableWrap}>
@@ -1628,11 +1632,17 @@ export default function GenerarComprobantePage() {
                                 ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
                                 : 'Producto no encontrado'}
                             </div>
-                            {productRequiresImei(selectedProduct) && form.document_type === 'FACTURA' ? (
+                            {productRequiresImei(selectedProduct) && ['FACTURA', 'NOTA_CREDITO'].includes(form.document_type) ? (
                               <>
                                 <div className={styles.itemMeta}>
                                   IMEIs cargados: {item.imeis.length}/{Math.max(0, Number(item.quantity || 0))}
                                 </div>
+                                {item.imeis.map(imei => <div key={imei} className={styles.imeiRowEditor}>
+                                  <strong>{imei}</strong>
+                                  <button type="button" className={styles.secondaryButton} aria-label={`Quitar IMEI ${imei}`}
+                                    onClick={() => setForm(current => ({ ...current, items: current.items.map((line, lineIndex) =>
+                                      lineIndex === index ? { ...line, imeis: line.imeis.filter(value => value !== imei) } : line) }))}>Quitar</button>
+                                </div>)}
                                 <div className={styles.imeiRowEditor}>
                                   <input
                                     type="text"

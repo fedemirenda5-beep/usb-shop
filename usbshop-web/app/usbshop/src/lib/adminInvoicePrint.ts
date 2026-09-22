@@ -18,6 +18,7 @@ type InvoicePrintDetail = {
     cuit?: string | null;
     seller_name?: string | null;
     special_discount?: number | null;
+    warranty?: { days: number | null; expires_at: string | null };
   };
   items: Array<{
     id: number;
@@ -71,6 +72,7 @@ const buildPrintableHtml = (detail: InvoicePrintDetail, logoUrl: string) => {
             <div class="imei-list">
               <span>${escapeHtml(item.imeis.length === 1 ? 'IMEI asignado' : 'IMEIs asignados')}</span>
               ${item.imeis.map((imei) => `<strong>${escapeHtml(imei)}</strong>`).join('')}
+              ${detail.invoice.warranty?.expires_at ? `<span>Garantía comercial: ${escapeHtml(detail.invoice.warranty.days)} días. Vence: ${escapeHtml(formatDate(detail.invoice.warranty.expires_at))}</span>` : ''}
             </div>
           `
         : '';

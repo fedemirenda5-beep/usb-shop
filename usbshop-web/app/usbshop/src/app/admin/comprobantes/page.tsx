@@ -44,6 +44,7 @@ type InvoiceDetail = {
     seller_commission_percent?: number | null;
     special_discount?: number | null;
     web_order_id?: number | null;
+    warranty?: { days: number | null; expires_at: string | null };
   };
   items: Array<{
     id: number;
@@ -758,8 +759,9 @@ export default function ComprobantesPage() {
                                   <div className={styles.invoiceImeis}>
                                     <span>{item.imeis.length === 1 ? 'IMEI asignado' : 'IMEIs asignados'}</span>
                                     {item.imeis.map((imei) => (
-                                      <strong key={`${item.id}-${imei}`}>{imei}</strong>
+                                      <Link key={`${item.id}-${imei}`} href={`/admin/imeis?q=${encodeURIComponent(imei)}`}>{imei}</Link>
                                     ))}
+                                    {detail.invoice.warranty?.expires_at && <span>Garantía comercial: {detail.invoice.warranty.days} días. Vence: {formatDate(detail.invoice.warranty.expires_at)}</span>}
                                   </div>
                                 ) : null}
                               </td>

@@ -1,5 +1,17 @@
 # Pruebas del carrito
 
+## IMEI y garantías
+
+La API se verifica con `python -m unittest test_imei_tracking`, desde `usbshop-web/api`
+y usando su entorno virtual. Las pruebas crean una base descartable y cubren venta,
+duplicados, concurrencia, devolución, reventa, rollback, cliente histórico y garantía.
+
+Para probar ingreso por lector, venta obligatoria con IMEI, consulta y vista móvil,
+compilar con `npm run build`, servir `out` localmente en el puerto 3012 y ejecutar
+`node tests/imeis.cjs`. Requiere Playwright; `PLAYWRIGHT_MODULE` permite indicar una
+instalación existente y `TEST_WEB_URL` cambiar el servidor. Las peticiones de API
+están interceptadas: no se crean ventas reales.
+
 ## Catalogo y sesion del admin
 
 Crear el build con `npm run build` y servir `out` en `http://127.0.0.1:3010`

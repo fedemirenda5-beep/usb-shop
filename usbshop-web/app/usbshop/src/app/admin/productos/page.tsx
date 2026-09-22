@@ -1424,7 +1424,7 @@ export default function ProductosPage() {
                     <div className={styles.trackingImeiList}>
                       {trackingData.imeis.map((imei) => (
                         <div key={imei.imei} className={styles.trackingImeiItem}>
-                          <strong>{imei.imei}</strong>
+                          <Link href={`/admin/imeis?q=${encodeURIComponent(imei.imei)}`}>{imei.imei}</Link>
                           <span>
                             {imei.status === 'sold'
                               ? `Vendido${imei.sold_invoice_id ? ` en #${imei.sold_invoice_id}` : ''}${imei.sold_at ? ` el ${formatArgentinaDateTime(imei.sold_at)}` : ''}`
