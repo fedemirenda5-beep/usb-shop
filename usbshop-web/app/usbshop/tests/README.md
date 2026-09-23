@@ -2,6 +2,17 @@
 
 ## Acceso móvil al admin
 
+`node tests/admin-loading.cjs` verifica la carga inicial del escritorio a 1366 y
+390 px: no debe descargar módulos sin abrir, y debe permitir navegar a IMEIs.
+Usa sesión y datos simulados, el build servido en el puerto 3012 y Playwright.
+Acepta `PLAYWRIGHT_MODULE` y `TEST_WEB_URL`.
+
+Medición del 23/09/2026 con el mismo navegador y API simulada: la versión publicada
+hizo 49 solicitudes en escritorio y 47 en móvil; la corrección local hizo 23 en
+ambos. Se eliminaron 26 y 24 descargas anticipadas de rutas y scripts de otros
+módulos. Esta medición aísla el frontend: no mide las consultas privadas reales
+ni demuestra por sí sola la causa de todas las demoras de acceso.
+
 `node --test tests/api-recovery.test.cjs` verifica reintentos de lectura/login,
 errores de red de Safari, cancelaciones y que las ventas no se repitan automáticamente.
 
@@ -27,6 +38,23 @@ La prueba de IMEI también vuelve a escanear un equipo vendido desde el escritor
 y desde un comprobante en preparación. Verifica el informe, la comparación con el
 cliente seleccionado y que consultar el equipo no lo agregue a otra venta ni borre
 el comprobante en preparación, incluso si la lista local de IMEI quedó desactualizada.
+
+### Devolución de un equipo por IMEI
+
+`node tests/imeis.cjs` también verifica que **Devolver al stock** abra una nota
+de crédito en otra pestaña, conserve el comprobante en preparación y precargue
+un solo equipo con el cliente, vendedor, precio y descuento proporcional de la
+venta original. Abrir la devolución no modifica el stock: requiere emitir la
+nota de crédito. La prueba comprueba además el motivo registrado y el bloqueo
+de enlaces cuya venta ya no está vigente.
+
+`python -m unittest test_imei_tracking` cubre la reposición de una sola unidad,
+el rechazo de una segunda devolución y el rechazo de una devolución antigua
+después de revender el equipo, sin alterar la nueva venta ni su stock.
+
+Validado localmente el 23/09/2026: 22 pruebas de API, flujo de navegador
+`tests/imeis.cjs`, build del frontend y compilación de `main.py` correctos.
+Las pruebas utilizan una base descartable o respuestas simuladas.
 
 ## Catalogo y sesion del admin
 

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ImeiReturnLink } from '@/components/ImeiReport';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
@@ -82,6 +83,7 @@ export default function ImeisPage() {
             <div><dt>Comprobante</dt><dd><Link href={`/admin/comprobantes?invoice=${result.sale?.invoice_id}`}>Ver comprobante #{result.sale?.invoice_id}</Link></dd></div>
           </dl> : <p>Este IMEI está disponible y no tiene una venta vigente.</p>}
           <Link href={`/admin/productos?edit=${result.product?.id}`}>Ver producto</Link>
+          {result.status === 'sold' && result.sale?.invoice_id && <ImeiReturnLink imei={result.imei} invoiceId={result.sale.invoice_id} />}
         </article>
         {result.status === 'sold' && <article className={styles.card}>
           <h2>Garantía comercial: {warrantyLabel}</h2>

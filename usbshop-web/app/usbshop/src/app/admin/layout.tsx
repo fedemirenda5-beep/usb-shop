@@ -259,7 +259,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       />
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.open : ''}`}>
         <div className={styles.sidebarHeader}>
-          <Link href="/admin" className={styles.brandBlock}>
+          <Link href="/admin" prefetch={false} className={styles.brandBlock}>
             <div className={styles.brandLogoFrame}>
               <img src="/logo-small.jpeg" alt="USB Shop" className={styles.brandLogo} />
             </div>
@@ -280,6 +280,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <nav className={styles.sidebarNav}>
           <Link
             href="/admin"
+            prefetch={false}
             className={`${styles.navItem} ${pathname === '/admin' ? styles.navItemActive : ''}`}
             onClick={() => {
               if (typeof window !== 'undefined' && window.innerWidth <= 768) {
@@ -293,6 +294,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <Link
               key={module.id}
               href={module.href}
+              prefetch={false}
               className={`${styles.navItem} ${
                 pathname === module.href || pathname?.startsWith(`${module.href}/`) ? styles.navItemActive : ''
               }`}
@@ -364,6 +366,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <Link
                 key={module.id}
                 href={module.href}
+                prefetch={false}
                 className={`${styles.mobileQuickLink} ${
                   pathname === module.href || pathname?.startsWith(`${module.href}/`) ? styles.mobileQuickLinkActive : ''
                 }`}

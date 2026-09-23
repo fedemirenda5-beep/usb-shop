@@ -18,6 +18,12 @@ export type ImeiLookupResponse = {
 
 type ReportProps = { result: ImeiLookupResponse; customer?: { id: number; name: string } };
 
+export function ImeiReturnLink({ imei, invoiceId }: { imei: string; invoiceId: number }) {
+  return <p><Link href={`/admin/generar-comprobante?return_imei=${encodeURIComponent(imei)}&return_invoice_id=${invoiceId}`}
+    target="_blank" rel="noopener noreferrer">Devolver al stock</Link><br />
+    <small>Abre una nota de crédito para este equipo. Revisá el motivo y confirmá para reponer el stock y registrar la devolución.</small></p>;
+}
+
 export function ImeiReport({ result, customer }: ReportProps) {
   const sold = result.status === 'sold';
   const warranty = result.warranty;
@@ -45,6 +51,7 @@ export function ImeiReport({ result, customer }: ReportProps) {
         <div><dt>Fecha de venta</dt><dd>{formatArgentinaDateTime(result.sale?.sold_at)}</dd></div>
         <div><dt>Comprobante de venta</dt><dd>{result.sale?.invoice_id ? <Link href={`/admin/comprobantes?invoice=${result.sale.invoice_id}`} target="_blank" rel="noopener noreferrer">Ver comprobante #{result.sale.invoice_id}</Link> : 'Sin comprobante disponible'}</dd></div>
       </dl>
+      {result.sale?.invoice_id && <ImeiReturnLink imei={result.imei} invoiceId={result.sale.invoice_id} />}
       <h3>Garantía comercial: {warrantyLabel}</h3>
       {warranty?.expires_at ? <p>{warranty.days} días desde la venta. Vence: <strong>{formatArgentinaDateTime(warranty.expires_at)}</strong>.</p>
         : <p>El comprobante no tiene un plazo de garantía guardado. Revisá las condiciones originales.</p>}

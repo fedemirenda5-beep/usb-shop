@@ -31,7 +31,7 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
         warranty: sold ? warranty : null, history: sold ? [invoice] : [],
       } });
       if (url.pathname === '/admin/invoices') {
-        if (route.request().method() === 'POST') { invoicePosts++; submitted = route.request().postDataJSON(); sold = true; return route.fulfill({ json: { id: 10 } }); }
+        if (route.request().method() === 'POST') { invoicePosts++; submitted = route.request().postDataJSON(); sold = submitted.document_type !== 'NOTA_CREDITO'; return route.fulfill({ json: { id: 10 } }); }
         return route.fulfill({ json: sold ? [invoice] : [] });
       }
       if (url.pathname === '/admin/invoices/10') return route.fulfill({ json: detail });
@@ -137,5 +137,45 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
     assert.equal(invoicePosts, 1, 'consulting a sold phone must not create another sale or return');
     assert.deepEqual(errors, []);
     console.log('PASS sold-device report compares customers and preserves invoice draft without assigning sold IMEI');
+
+    // A multi-device sale with a discount must return just the scanned unit at its original price.
+    detail.invoice.seller_id = 1;
+    detail.invoice.special_discount = 100;
+    detail.items[0].quantity = 2;
+    detail.items[0].imeis.push('356789012345679');
+    await page.getByPlaceholder('Buscar por nombre, SKU, codigo o ID').fill(imei);
+    await page.getByPlaceholder('Buscar por nombre, SKU, codigo o ID').press('Enter');
+    await report.waitFor();
+    const returnPopupPromise = page.waitForEvent('popup');
+    await report.getByRole('link', { name: 'Devolver al stock', exact: true }).click();
+    const returnPage = await returnPopupPromise;
+    returnPage.on('pageerror', error => errors.push(error.message));
+    await returnPage.getByLabel('Motivo de devolución').selectOption({ label: 'Facturado por error' });
+    await returnPage.getByText('IMEIs cargados: 1/1', { exact: true }).waitFor();
+    assert.equal(await returnPage.getByLabel(/^Vendedor/).inputValue(), '1');
+    assert.equal(invoicePosts, 1, 'opening the return must not change stock');
+    await returnPage.getByRole('button', { name: 'Emitir nota de crédito', exact: true }).click();
+    await returnPage.waitForURL(/created=10/);
+    assert.equal(submitted.document_type, 'NOTA_CREDITO');
+    assert.equal(submitted.expected_sale_invoice_id, 10);
+    assert.equal(submitted.customer_id, 1);
+    assert.equal(submitted.items.length, 1);
+    assert.equal(submitted.items[0].quantity, 1);
+    assert.equal(submitted.items[0].unit_price, 1000);
+    assert.deepEqual(submitted.items[0].imeis, [imei]);
+    assert.equal(submitted.special_discount, 50);
+    assert.match(submitted.notes, /Facturado por error.*Venta original #10/);
+    await report.getByRole('button', { name: 'Cerrar informe' }).click();
+    await page.getByText('IMEIs cargados: 0/1', { exact: true }).waitFor();
+    await returnPage.goto(`${base}/admin/imeis/?q=${imei}`);
+    await returnPage.getByText('Disponible', { exact: true }).waitFor();
+    assert.equal(await returnPage.getByRole('link', { name: 'Devolver al stock', exact: true }).count(), 0);
+    await returnPage.goto(`${base}/admin/generar-comprobante/?return_imei=${imei}&return_invoice_id=10`);
+    await returnPage.getByText(/Este equipo ya no tiene esa venta vigente/).waitFor();
+    assert.equal(await returnPage.getByRole('button', { name: 'Emitir nota de crédito', exact: true }).count(), 0);
+    assert.equal(invoicePosts, 2);
+    assert.deepEqual(errors, []);
+    await returnPage.close();
+    console.log('PASS return preloads one IMEI and original discount, preserves draft, requires confirmation and rejects stale links');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

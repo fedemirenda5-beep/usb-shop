@@ -247,7 +247,7 @@ export default function AdminDashboard() {
 
       <div className={styles.statsGrid}>
         {visibleSections.map((section) => (
-          <Link key={section.href} href={section.href} className={styles.statCard}>
+          <Link key={section.href} href={section.href} prefetch={false} className={styles.statCard}>
             <div className={styles.statContent}>
               <span className={styles.statEyebrow}>Panel</span>
               <h3>{section.title}</h3>

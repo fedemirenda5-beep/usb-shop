@@ -8979,6 +8979,13 @@ def admin_create_invoice(
         raise HTTPException(status_code=400, detail="Agrega items al comprobante")
 
     document_type = str(payload.get("document_type") or "FACTURA").strip().upper() or "FACTURA"
+    expected_sale_invoice_id = int(payload.get("expected_sale_invoice_id") or 0)
+    if expected_sale_invoice_id and (
+        document_type != "NOTA_CREDITO" or len(items) != 1
+        or int(items[0].get("quantity") or 0) != 1
+        or not isinstance(items[0].get("imeis"), list) or len(items[0]["imeis"]) != 1
+    ):
+        raise HTTPException(400, "La devolución por IMEI debe ser una nota de crédito de un solo equipo")
     if document_type not in {"FACTURA", "NOTA_CREDITO", "PRESUPUESTO"}:
         raise HTTPException(status_code=400, detail="Tipo de comprobante invalido")
     sale_mode_input = str(payload.get("sale_mode") or "").strip().upper() or None
@@ -9349,13 +9356,15 @@ def admin_create_invoice(
             if document_type == "NOTA_CREDITO" and item["imeis"]:
                 for imei in item["imeis"]:
                     original_sale = conn.execute(
-                        """SELECT i.customer_id FROM product_imeis pi
+                        """SELECT i.customer_id, i.id AS invoice_id FROM product_imeis pi
                            JOIN invoices i ON i.id = pi.sold_invoice_id
                            WHERE pi.product_id = ? AND pi.imei = ?""",
                         (item["product_id"], imei),
                     ).fetchone()
                     if original_sale is None or int(original_sale["customer_id"] or 0) != customer_id:
                         raise HTTPException(400, f"El IMEI {imei} no tiene una venta vigente para este cliente")
+                    if expected_sale_invoice_id and int(original_sale["invoice_id"]) != expected_sale_invoice_id:
+                        raise HTTPException(409, "La venta del equipo cambió. Volvé a consultar el IMEI antes de devolverlo")
                 conn.execute(
                     f"""
                     UPDATE product_imeis

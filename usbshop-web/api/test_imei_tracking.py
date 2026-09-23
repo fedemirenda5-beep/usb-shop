@@ -135,6 +135,32 @@ class ImeiTrackingTests(unittest.TestCase):
             main.admin_update_product(1, None, None, {'stock': 3, 'imeis': self.imeis})
         self.assertEqual(self.sql('SELECT stock FROM products WHERE id=1')[0]['stock'], 2)
 
+    def test_scanned_return_restock_once_and_reject_stale_sale_after_resale(self):
+        first = self.sell()
+        returned = self.sell(kind='NOTA_CREDITO', expected_sale_invoice_id=first['id'],
+                             notes='Facturado por error. Venta original #' + str(first['id']))
+        self.assertEqual(self.sql('SELECT stock FROM products WHERE id=1')[0]['stock'], 3)
+        self.assertEqual(self.lookup()['status'], 'available')
+        with self.assertRaises(HTTPException):
+            self.sell(kind='NOTA_CREDITO', expected_sale_invoice_id=first['id'])
+        second = self.sell()
+        with self.assertRaises(HTTPException) as error:
+            self.sell(kind='NOTA_CREDITO', expected_sale_invoice_id=first['id'])
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertEqual(self.lookup()['sale']['invoice_id'], second['id'])
+        self.assertEqual(self.sql('SELECT stock FROM products WHERE id=1')[0]['stock'], 2)
+        self.assertEqual(len(self.sql('SELECT id FROM invoices')), 3)
+        self.assertIn(returned['id'], [entry['id'] for entry in self.lookup()['history']])
+
+    def test_scanned_return_must_be_credit_for_one_device(self):
+        sale = self.sell()
+        with self.assertRaises(HTTPException):
+            self.sell(imeis=self.imeis[1:2], expected_sale_invoice_id=sale['id'])
+        with self.assertRaises(HTTPException):
+            self.sell(kind='NOTA_CREDITO', quantity=2, imeis=self.imeis[:2], expected_sale_invoice_id=sale['id'])
+        self.assertEqual(len(self.sql('SELECT id FROM invoices')), 1)
+        self.assertEqual(self.sql('SELECT stock FROM products WHERE id=1')[0]['stock'], 2)
+
     def test_receiving_rejects_invalid_and_other_product_imei_atomically(self):
         for imeis in ([*self.imeis[:2], '123'],):
             with self.assertRaises(HTTPException):

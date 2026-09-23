@@ -245,6 +245,11 @@ export default function GenerarComprobantePage() {
   const orderIdParam = Number(searchParams?.get('order_id') || 0);
   const budgetInvoiceIdParam = Number(searchParams?.get('budget_invoice_id') || 0);
   const customerIdParam = Number(searchParams?.get('customer_id') || 0);
+  const returnImei = searchParams?.get('return_imei') || '';
+  const returnInvoiceId = Number(searchParams?.get('return_invoice_id') || 0);
+  const [returnReady, setReturnReady] = useState(false);
+  const [returnError, setReturnError] = useState('');
+  const [returnReason, setReturnReason] = useState('Devolución del cliente');
   const [consignmentId, setConsignmentId] = useState(Number(searchParams?.get('consignment_id') || 0));
   const [consignmentOptions, setConsignmentOptions] = useState<Consignment[]>([]);
   const [consignmentDetail, setConsignmentDetail] = useState<ConsignmentDetail | null>(null);
@@ -393,7 +398,7 @@ export default function GenerarComprobantePage() {
   }, []);
 
   useEffect(() => {
-    if (!orderIdParam || budgetInvoiceIdParam) return;
+    if (!orderIdParam || budgetInvoiceIdParam || returnImei) return;
     const prefill = async () => {
       try {
         const res = await fetchApiResponse(`/admin/orders/${orderIdParam}`);
@@ -429,10 +434,10 @@ export default function GenerarComprobantePage() {
       }
     };
     void prefill();
-  }, [orderIdParam, budgetInvoiceIdParam]);
+  }, [orderIdParam, budgetInvoiceIdParam, returnImei]);
 
   useEffect(() => {
-    if (!budgetInvoiceIdParam) return;
+    if (!budgetInvoiceIdParam || returnImei) return;
     const prefillBudget = async () => {
       try {
         const res = await fetchApiResponse(`/admin/invoices/${budgetInvoiceIdParam}`);
@@ -479,10 +484,10 @@ export default function GenerarComprobantePage() {
       }
     };
     void prefillBudget();
-  }, [budgetInvoiceIdParam]);
+  }, [budgetInvoiceIdParam, returnImei]);
 
   useEffect(() => {
-    if (!customerIdParam || orderIdParam || budgetInvoiceIdParam) return;
+    if (!customerIdParam || orderIdParam || budgetInvoiceIdParam || returnImei) return;
     void (async () => {
       try {
         const matchedCustomers = await fetchCustomersByIds([customerIdParam]);
@@ -500,7 +505,52 @@ export default function GenerarComprobantePage() {
         setError(getFriendlyApiError(err, 'No se pudo cargar el cliente'));
       }
     })();
-  }, [customerIdParam, orderIdParam, budgetInvoiceIdParam]);
+  }, [customerIdParam, orderIdParam, budgetInvoiceIdParam, returnImei]);
+
+  useEffect(() => {
+    if (!returnImei) return;
+    let active = true;
+    setReturnReady(false);
+    setReturnError('');
+    void (async () => {
+      try {
+        const lookupRes = await fetchApiResponse(`/admin/imei-lookup?${new URLSearchParams({ q: returnImei })}`);
+        if (!lookupRes.ok) throw new Error('No se pudo consultar el equipo para devolver');
+        const lookup = await lookupRes.json() as ImeiLookupResponse;
+        if (!lookup.found || lookup.status !== 'sold' || lookup.sale?.invoice_id !== returnInvoiceId) {
+          throw new Error('Este equipo ya no tiene esa venta vigente. Volvé a consultar el IMEI.');
+        }
+        const res = await fetchApiResponse(`/admin/invoices/${returnInvoiceId}`);
+        if (!res.ok) throw new Error('No se pudo cargar la venta original');
+        const draft = await res.json() as BudgetDraft;
+        const original = draft.items.find(item => item.product_id === lookup.product?.id && item.imeis?.includes(returnImei));
+        if (!original || !draft.invoice.customer_id || draft.invoice.document_type !== 'FACTURA') {
+          throw new Error('No se pudo identificar el equipo y el cliente en la venta original');
+        }
+        const [matchedCustomers] = await Promise.all([
+          fetchCustomersByIds([draft.invoice.customer_id]),
+          fetchProductsByIds([Number(original.product_id)]),
+        ]);
+        const subtotal = draft.items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+        const discountPercent = subtotal > 0 ? Number(draft.invoice.special_discount || 0) / subtotal * 100 : 0;
+        if (!active) return;
+        setConsignmentId(0);
+        setForm({
+          order_id: '', customer_id: String(draft.invoice.customer_id), document_type: 'NOTA_CREDITO',
+          sale_mode: draft.invoice.sale_mode || 'CONTADO', seller_id: String(draft.invoice.seller_id || ''),
+          price_list: String(draft.invoice.price_list || 0), payment_method: draft.invoice.payment_method || 'EFECTIVO',
+          created_at: nowInputValue(), due_date: '', notes: '', special_discount_percent: String(discountPercent),
+          items: [{ product_id: String(original.product_id), quantity: '1', unit_price: String(original.unit_price), manual_price: true, imeis: [returnImei] }],
+        });
+        setCustomerSearch(draft.invoice.customer_name);
+        setCustomerOptions(matchedCustomers);
+        setReturnReady(true);
+      } catch (err) {
+        if (active) setReturnError(getFriendlyApiError(err, 'No se pudo preparar la devolución'));
+      }
+    })();
+    return () => { active = false; };
+  }, [returnImei, returnInvoiceId]);
 
   useEffect(() => {
     const normalized = customerSearch.trim();
@@ -1110,6 +1160,11 @@ export default function GenerarComprobantePage() {
   const submitInvoice = async (event: React.FormEvent) => {
     event.preventDefault();
     if (invoiceSubmitting.current) return;
+    if (returnImei && (!returnReady || form.document_type !== 'NOTA_CREDITO' || form.items.length !== 1
+      || Number(form.items[0].quantity) !== 1 || form.items[0].imeis.length !== 1 || form.items[0].imeis[0] !== returnImei)) {
+      setError('Esta devolución debe contener únicamente el equipo consultado, con su IMEI y cantidad 1.');
+      return;
+    }
     if (form.document_type === 'FACTURA' && consignmentId && (!consignmentDetail || consignmentDetail.customer_id !== Number(form.customer_id))) {
       setError('Selecciona una consignacion del cliente antes de emitir');
       return;
@@ -1142,6 +1197,7 @@ export default function GenerarComprobantePage() {
         return;
       }
       const payload = {
+        expected_sale_invoice_id: returnImei ? returnInvoiceId : null,
         consignment_id: form.document_type === 'FACTURA' && !form.order_id ? consignmentId || null : null,
         order_id: form.order_id ? Number(form.order_id) : null,
         customer_id: Number(form.customer_id),
@@ -1152,7 +1208,7 @@ export default function GenerarComprobantePage() {
         payment_method: form.payment_method || null,
         created_at: formatInputDateTime(form.created_at),
         due_date: form.due_date || null,
-        notes: form.notes || null,
+        notes: returnImei ? `${returnReason}. Venta original #${returnInvoiceId}. IMEI ${returnImei}. ${form.notes}`.trim() : form.notes || null,
         special_discount: specialDiscount,
         items: form.items.map((item) => ({
           product_id: Number(item.product_id),
@@ -1212,7 +1268,16 @@ export default function GenerarComprobantePage() {
       </section>
       {loading ? <div className={styles.empty}>Cargando formulario...</div> : null}
       {error ? <div className={styles.error}>{error}</div> : null}
-      {!loading ? (
+      {returnError && <div role="alert" className={styles.error}>{returnError}</div>}
+      {returnImei && !returnReady && !returnError && <p role="status">Preparando devolución del equipo...</p>}
+      {returnImei && returnReady && <div className={styles.modelNote}>
+        <p>Devolver al stock el IMEI {returnImei}, vendido en el comprobante #{returnInvoiceId}. Se repone una unidad al emitir la nota de crédito y se conserva la venta original en el historial.</p>
+        <label>Motivo de devolución <select value={returnReason} onChange={event => setReturnReason(event.target.value)}>
+          <option>Devolución del cliente</option><option>Facturado por error</option>
+        </select></label>
+        <p>Confirmá que recibiste el equipo y que está apto para volver al stock disponible. Revisá el importe y la forma de pago antes de emitir.</p>
+      </div>}
+      {!loading && (!returnImei || returnReady) ? (
         <section className={styles.createPanel}>
           <div className={styles.createHeader}>
             <div>
@@ -1279,7 +1344,7 @@ export default function GenerarComprobantePage() {
               </label>
               <label>
                 Tipo de comprobante
-                <select value={form.document_type} onChange={(e) => setForm((current) => ({ ...current, document_type: e.target.value }))}>
+                <select disabled={Boolean(returnImei)} value={form.document_type} onChange={(e) => setForm((current) => ({ ...current, document_type: e.target.value }))}>
                   <option value="FACTURA">Factura</option>
                   <option value="NOTA_CREDITO">Nota de crédito</option>
                   <option value="PRESUPUESTO">Presupuesto</option>
@@ -1682,7 +1747,7 @@ export default function GenerarComprobantePage() {
               </div>
             </div>
             <div className={styles.formActions}>
-              <button type="button" className={styles.secondaryButton} onClick={() => {
+              <button type="button" disabled={Boolean(returnImei)} className={styles.secondaryButton} onClick={() => {
                 setScannedDraft(null);
                 setProductSearch('');
                 setSearchQuantities({});
