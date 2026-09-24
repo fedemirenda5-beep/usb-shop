@@ -29,6 +29,7 @@ type Product = {
   originalPrice?: number | null;
   category: string;
   stock: number;
+  soldCount?: number;
   created_at?: string | null;
   updated_at?: string | null;
   badge?: string;
@@ -1786,7 +1787,6 @@ export default function HomeClient({
 
   return (
     <main className="page storefront">
-      <div className="shop-announcement">Tecnología para vos y tu negocio <span>Atención directa por WhatsApp</span></div>
       <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} showTrust={false} />
       <nav className="shop-nav" aria-label="Navegación de la tienda">
         <button type="button" onClick={handleViewFullCatalog}>Todos los productos</button>

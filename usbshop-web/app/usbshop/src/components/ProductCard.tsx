@@ -9,6 +9,7 @@ type CardProps = {
     originalPrice?: number | null;
     category: string;
     stock?: number;
+    soldCount?: number;
     badge?: string;
     imageUrl?: string | null;
     imageUrls?: string[] | null;
@@ -163,6 +164,8 @@ function ProductCard({
 }: CardProps) {
   const stock = Number.isFinite(product.stock) ? Number(product.stock) : 0;
   const isOut = stock <= 0;
+  const soldCount = Number.isFinite(product.soldCount) ? Math.max(0, Math.floor(product.soldCount!)) : 0;
+  const soldLabel = `${soldCount.toLocaleString("es-AR")} ${soldCount === 1 ? "vendido" : "vendidos"}`;
   const hasDiscount = Boolean(product.originalPrice && product.originalPrice > product.price);
   const badge = isOut
     ? "Sin stock"
@@ -405,7 +408,7 @@ function ProductCard({
         }}
         role={canView ? "button" : undefined}
         tabIndex={canView ? 0 : undefined}
-        aria-label={canView ? `Ver detalles de ${product.name}` : undefined}
+        aria-label={canView ? `Ver detalles de ${product.name}${soldCount > 0 ? `, ${soldLabel}` : ""}` : undefined}
         aria-busy={imagePending}
       >
         {imagePending && <div className="product-image-loading" role="status" aria-label="Cargando foto" />}
@@ -460,6 +463,14 @@ function ProductCard({
             <div className="product-image-fallback-meta">{fallbackMeta}</div>
           </div>
         )}
+        {soldCount > 0 ? (
+          <span className="product-sold-count" title="Unidades facturadas, descontando devoluciones">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <path d="m3 11 4-4 3 2 3-6M9 3h4v4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {soldLabel}
+          </span>
+        ) : null}
         {hasMultipleImages ? (
           <div className="product-carousel">
             <button
@@ -549,6 +560,7 @@ const areCardPropsEqual = (prev: CardProps, next: CardProps) => {
     prev.product.originalPrice === next.product.originalPrice &&
     prev.product.category === next.product.category &&
     prev.product.stock === next.product.stock &&
+    prev.product.soldCount === next.product.soldCount &&
     prev.product.badge === next.product.badge &&
     prev.product.imageUrl === next.product.imageUrl &&
     prev.product.description === next.product.description &&

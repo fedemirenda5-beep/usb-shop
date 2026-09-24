@@ -4953,6 +4953,7 @@ def list_products(
             rows = rows[offset_value : offset_value + limit_value]
         product_ids = [int(row["id"]) for row in rows]
         images_map = _fetch_product_images(conn, product_ids)
+        sold_counts = _fetch_product_sold_counts(conn, product_ids)
         bundle_items_map = _fetch_bundle_items_map(
             conn,
             [int(row["id"]) for row in rows if bool(row["is_bundle"])],
@@ -4968,6 +4969,7 @@ def list_products(
             "sku": row["sku"],
             "price": _storefront_price(row),
             "originalPrice": _base_price(row),
+            "soldCount": sold_counts.get(int(row["id"]), 0),
             "flashOffer": _flash_offer_payload(row),
             "cost": float(row["cost"] or 0),
             "stock": _bundle_available_stock(
@@ -5538,6 +5540,28 @@ def storefront_collections() -> dict:
     }
 
 
+def _fetch_product_sold_counts(conn: DBConn, product_ids: list[int]) -> dict[int, int]:
+    """Net invoiced units, batched for the visible products (no pending orders)."""
+    if not product_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in product_ids)
+    rows = conn.execute(
+        f"""SELECT ii.product_id, i.document_type, SUM(ii.quantity) AS quantity
+            FROM invoice_items ii
+            JOIN invoices i ON i.id = ii.invoice_id
+            WHERE ii.product_id IN ({placeholders})
+            GROUP BY ii.product_id, i.document_type""",
+        product_ids,
+    ).fetchall()
+    counts: dict[int, int] = {}
+    for row in rows:
+        product_id = int(row["product_id"])
+        counts[product_id] = counts.get(product_id, 0) - (
+            _product_document_stock_effect(row["document_type"]) * int(row["quantity"] or 0)
+        )
+    return {product_id: max(0, quantity) for product_id, quantity in counts.items()}
+
+
 def _storefront_collection(limit: int, kind: str) -> list[dict]:
     conn = _connect()
     try:
@@ -5654,6 +5678,7 @@ def _storefront_collection(limit: int, kind: str) -> list[dict]:
         # featured slots. Only load image metadata for the visible selection.
         rows = [row for row in rows if available_stock[int(row["id"])] > 0][:min(100, max(1, int(limit)))]
         images_map = _fetch_product_images(conn, [int(row["id"]) for row in rows])
+        sold_counts = _fetch_product_sold_counts(conn, [int(row["id"]) for row in rows])
     finally:
         conn.close()
 
@@ -5666,6 +5691,7 @@ def _storefront_collection(limit: int, kind: str) -> list[dict]:
             "originalPrice": _base_price(row),
             "flashOffer": _flash_offer_payload(row),
             "stock": available_stock[int(row["id"])],
+            "soldCount": sold_counts.get(int(row["id"]), 0),
             "category": row["category"] or "General",
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],

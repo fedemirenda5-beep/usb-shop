@@ -7,6 +7,7 @@ type Product = {
   originalPrice?: number | null;
   category: string;
   stock: number;
+  soldCount?: number;
   created_at?: string | null;
   updated_at?: string | null;
   badge?: string;

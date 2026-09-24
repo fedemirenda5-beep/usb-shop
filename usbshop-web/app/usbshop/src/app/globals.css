@@ -2520,6 +2520,30 @@ a:focus-visible {
   border-radius: 16px;
 }
 
+.product-sold-count {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 20px);
+  padding: 5px 8px;
+  border: 1px solid #e6dfed;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .95);
+  color: #554466;
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+  pointer-events: none;
+}
+.product-sold-count svg { width: 13px; height: 13px; flex-shrink: 0; color: #7c24d9; }
+
 .product-carousel {
   position: absolute;
   inset: 0;
