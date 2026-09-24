@@ -27,7 +27,11 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       if (url.pathname === '/products') return route.fulfill({ json: Number(url.searchParams.get('offset')) > 0 ? [] : products });
       if (url.pathname === '/categories') return route.fulfill({ json: [{ id: 1, name: 'Cargadores', product_count: 24 }] });
       if (url.pathname === '/featured') return route.fulfill({ json: [] });
-      if (url.pathname === '/storefront/collections') return route.fulfill({ json: { new_arrivals: noveltyMode ? products.slice(-2) : [], restocked: [] } });
+      if (url.pathname === '/storefront/collections') return route.fulfill({ json: { new_arrivals: noveltyMode ? [
+        { ...products[22], id: 900123, imageUrls: [products[22].imageUrl, 'https://images.invalid/second-photo.jpg'] },
+        { ...products[23], id: 900124 },
+        { ...products[0], id: 900025, name: 'Foto demorada', imageUrl: 'http://127.0.0.1:8000/products/900025/image' },
+      ] : [], restocked: [] } });
       if (url.hostname === 'images.invalid') {
         originals.push(url.href);
         return route.fulfill({ contentType: 'image/png', body: pixel });
@@ -35,8 +39,8 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
       const match = url.pathname.match(/^\/products\/(\d+)\/image$/);
       if (match) {
         const id = Number(match[1]);
-        if (noveltyMode && id === 900024) return route.fulfill({ status: 503, body: 'unavailable' });
-        if (noveltyMode && id === 900023) await slowImage;
+        if (noveltyMode && id === 900124) return route.fulfill({ status: 503, body: 'unavailable' });
+        if (noveltyMode && (id === 900123 || id === 900025)) await slowImage;
         if (id >= 900001) {
           imageRequests.push({ id, url });
           if (firstRow.has(id)) {
@@ -67,14 +71,23 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
     await page.goto(base, { waitUntil: 'domcontentloaded' });
     await page.locator('#novedades').getByRole('heading', { name: 'Novedades', exact: true }).waitFor();
     const delayed = page.locator('#novedades .product-card').filter({ hasText: 'Cargador 23' });
-    await delayed.getByRole('status').filter({ hasText: 'Cargando imagen' }).waitFor();
+    assert.equal(await page.locator('.shop-intro').count(), 0, 'large banner is removed');
+    await delayed.getByRole('status', { name: 'Cargando foto' }).waitFor({ state: 'attached' });
+    assert.equal(await page.getByText('Cargando imagen', { exact: false }).count(), 0);
     await page.waitForFunction(() => [...document.querySelectorAll('#novedades img')].some(image => image.src.includes('original-24.jpg') && image.complete && image.naturalWidth > 0));
     assert(originals.some(url => url.includes('original-24.jpg')), 'failed thumbnail should recover using the original');
-    releaseSlowImage();
+    await page.waitForFunction(() => [...document.querySelectorAll('#novedades img')].some(image => image.src.includes('original-23.jpg') && image.complete && image.naturalWidth > 0), null, { timeout: 5000 });
     await delayed.getByRole('status').waitFor({ state: 'detached' });
+    const stalled = page.locator('#novedades .product-card').filter({ hasText: 'Foto demorada' });
+    await stalled.locator('.product-media[aria-busy="false"]').waitFor({ timeout: 12000 });
+    await stalled.getByText('Foto no disponible', { exact: true }).waitFor();
+    assert(!originals.some(url => url.includes('second-photo')), 'no automatic carousel downloads while browsing');
+    releaseSlowImage();
     assert.equal(await page.locator('#novedades .product-image-loading').count(), 0);
     assert.equal(await page.locator('#novedades img').evaluateAll(images => images.every(image => image.complete && image.naturalWidth > 0)), true);
-    console.log('PASS Novedades title, visible loading status and original-image recovery after thumbnail failure');
+    await delayed.getByRole('button', { name: 'Imagen siguiente', exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll('#novedades img')].some(image => image.src.includes('/900123/image?') && new URL(image.src).searchParams.get('i') === '1' && image.complete && image.naturalWidth > 0));
+    console.log('PASS banner removed, slow/failed thumbnail recovery, bounded loading and manual carousel');
     await context.close();
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

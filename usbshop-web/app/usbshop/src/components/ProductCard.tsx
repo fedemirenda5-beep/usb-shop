@@ -178,7 +178,7 @@ function ProductCard({
     () => getFallbackLabel(product.category || product.name),
     [product.category, product.name]
   );
-  const fallbackMeta = product.category?.trim() || "Producto sin foto";
+  const fallbackMeta = "Foto no disponible";
   const [imageIndex, setImageIndex] = React.useState(0);
   const [imgSrc, setImgSrc] = React.useState<string | null>(() => images[0] ?? null);
   const [useRawImage, setUseRawImage] = React.useState(false);
@@ -194,8 +194,6 @@ function ProductCard({
   const mediaRef = React.useRef<HTMLDivElement | null>(null);
   const [shouldLoadImage, setShouldLoadImage] = React.useState(imagePriority === "high");
   const hasMultipleImages = images.length > 1;
-  const [isCarouselPaused, setIsCarouselPaused] = React.useState(false);
-  const [allowCarouselAutoplay, setAllowCarouselAutoplay] = React.useState(false);
   const optimizedImgSrc = React.useMemo(() => {
     if (!imgSrc) {
       return null;
@@ -248,22 +246,6 @@ function ProductCard({
   }, [imagePriority, shouldLoadImage]);
 
   React.useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      setAllowCarouselAutoplay(false);
-      return;
-    }
-    const mediaQuery = window.matchMedia("(pointer: fine)");
-    const updateAutoplay = () => setAllowCarouselAutoplay(mediaQuery.matches);
-    updateAutoplay();
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", updateAutoplay);
-      return () => mediaQuery.removeEventListener("change", updateAutoplay);
-    }
-    mediaQuery.addListener(updateAutoplay);
-    return () => mediaQuery.removeListener(updateAutoplay);
-  }, []);
-
-  React.useEffect(() => {
     setImageIndex(0);
   }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
 
@@ -302,28 +284,34 @@ function ProductCard({
   }, [displaySrc, canRenderImage]);
 
   React.useEffect(() => {
-    if (!imagePending || !canUseOriginal) return;
+    if (!imagePending || !canUseOriginal || !imgSrc) return;
+    // Give the small thumbnail a head start, then race the original without
+    // cancelling a thumbnail that may still finish first.
+    const originalSrc = appendRefreshKey(imgSrc, imageRefreshKey);
+    let original: HTMLImageElement | null = null;
     const timer = window.setTimeout(() => {
-      setProxySrc(null);
-      setUseRawImage(true);
-      setHasTriedProxy(true);
-      setImgAttempt(0);
-    }, 8000);
-    return () => window.clearTimeout(timer);
-  }, [displaySrc, imagePending, canUseOriginal]);
-
-  const shouldAutoplayCarousel =
-    allowCarouselAutoplay && hasMultipleImages && shouldLoadImage && imagePriority !== "low" && !isCarouselPaused;
+      original = new Image();
+      original.onload = () => {
+        setProxySrc(null);
+        setUseRawImage(true);
+        setHasTriedProxy(true);
+        setImgAttempt(0);
+        setLoadedSrc(originalSrc);
+      };
+      original.src = originalSrc;
+    }, 1500);
+    return () => {
+      window.clearTimeout(timer);
+      if (original) original.onload = null;
+    };
+  }, [displaySrc, imagePending, canUseOriginal, imgSrc, imageRefreshKey]);
 
   React.useEffect(() => {
-    if (!shouldAutoplayCarousel) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      setImageIndex((prev) => (prev + 1) % images.length);
-    }, 4200);
-    return () => window.clearInterval(timer);
-  }, [shouldAutoplayCarousel, images.length]);
+    if (!imagePending) return;
+    // A stalled server must not leave a card permanently busy.
+    const timer = window.setTimeout(() => setImgFailed(true), 10000);
+    return () => window.clearTimeout(timer);
+  }, [displaySrc, imagePending]);
 
   const handleImageError = () => {
     const activeSrc = proxySrc ?? imgSrc;
@@ -406,10 +394,6 @@ function ProductCard({
         ref={mediaRef}
         className={`product-media ${images.length > 0 ? "has-image" : ""}${canView ? " can-view" : ""}`}
         onClick={handleView}
-        onMouseEnter={() => setIsCarouselPaused(true)}
-        onMouseLeave={() => setIsCarouselPaused(false)}
-        onTouchStart={() => setIsCarouselPaused(true)}
-        onTouchEnd={() => setIsCarouselPaused(false)}
         onKeyDown={(event) => {
           if (!canView) {
             return;
@@ -424,7 +408,7 @@ function ProductCard({
         aria-label={canView ? `Ver detalles de ${product.name}` : undefined}
         aria-busy={imagePending}
       >
-        {imagePending && <div className="product-image-loading" role="status">Cargando imagen…</div>}
+        {imagePending && <div className="product-image-loading" role="status" aria-label="Cargando foto" />}
         {displaySrc && !imgFailed && canRenderImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -477,7 +461,7 @@ function ProductCard({
           </div>
         )}
         {hasMultipleImages ? (
-          <div className="product-carousel" aria-hidden="true">
+          <div className="product-carousel">
             <button
               type="button"
               className="product-carousel-btn product-carousel-btn--prev"
