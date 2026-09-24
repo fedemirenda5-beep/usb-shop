@@ -20,11 +20,28 @@
 .storefront .navbar { padding: 22px 0 18px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .storefront .navbar-top { gap: 24px; }
 .storefront .logo-badge { width: 48px; height: 48px; border-radius: 12px; box-shadow: none; }
-.storefront .logo-text h1 { font-size: 29px; letter-spacing: -.06em; color: var(--purple); text-shadow: none; }
-.storefront .logo-accent { color: var(--lime-deep); text-shadow: none; }
+.storefront .logo-text h1,
+.storefront .footer-brand__title {
+  font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -.045em;
+  line-height: 1.15;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--purple);
+  background: none;
+  text-shadow: none;
+}
+.storefront .logo-accent {
+  color: var(--lime);
+  letter-spacing: -.055em;
+  -webkit-text-stroke: .35px #668d0b;
+  text-shadow: none;
+}
 .storefront .logo-text p { color: var(--shop-muted); font-size: 11px; letter-spacing: 0; }
 .storefront .cart-pill { background: #fff; border: 1px solid var(--border); color: var(--shop-ink); box-shadow: none; border-radius: 12px; min-height: 46px; }
-.storefront .logo-text h1::after { background: linear-gradient(90deg, var(--lime), var(--purple)); box-shadow: none; }
+.storefront .logo-text h1::after { display: none; }
 .storefront .cart-basket-shape, .storefront .cart-handle-shape { stroke: var(--purple); }
 .storefront .cart-wheel-shape { fill: var(--purple); }
 .storefront .cart-box-shape { fill: var(--lime); stroke: var(--lime-deep); }
@@ -104,7 +121,7 @@
 @media (max-width: 540px) { .storefront .footer-brands-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 .storefront .footer-grid { display: grid; grid-template-columns: 1.3fr 1fr 1.2fr 1fr; gap: 36px; }
 .storefront .footer-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.storefront .footer-brand__title { font-family: var(--font-head); font-size: 22px; font-weight: 600; }
+.storefront .footer-brand__title { font-size: 25px; }
 .storefront .footer-brand__tag { font-size: 10px; color: var(--shop-muted); }
 .storefront .footer-title { margin-bottom: 12px; font-weight: 600; }
 .storefront .footer-list, .storefront .footer-links { list-style: none; padding: 0; }
@@ -113,7 +130,6 @@
 .storefront .footer-bottom { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 20px; border-top: 1px solid; }
 .storefront .footer-text, .storefront .footer-muted, .storefront .footer-list, .storefront .footer-link, .storefront .footer-bottom { color: var(--shop-muted); font-size: 11px; line-height: 1.9; }
 .storefront .footer-title { color: var(--shop-ink); font-size: 12px; }
-.storefront .footer-brand__title { color: var(--shop-ink); }
 .storefront .footer-bottom { border-color: var(--border); margin-top: 28px; }
 .storefront .whatsapp-float { box-shadow: 0 6px 18px #25432225; }
 .storefront :is(button, a, input):focus-visible { outline: 3px solid var(--purple); outline-offset: 4px; }
@@ -128,7 +144,7 @@
   .storefront .navbar { padding: 16px 0; }
   .storefront .navbar-top { display: flex; flex-wrap: wrap; gap: 12px; }
   .storefront .navbar-brand { flex: 1; }
-  .storefront .logo-text h1 { font-size: 25px; }
+  .storefront .logo-text h1 { font-size: 28px; }
   .storefront .logo-text p { display: none; }
   .storefront .logo-badge { width: 36px; height: 36px; }
   .storefront .cart-pill { padding: 8px 10px; min-height: 40px; gap: 6px; font-size: 11px; }
