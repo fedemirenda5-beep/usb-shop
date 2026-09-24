@@ -4,6 +4,7 @@ import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
+import StorefrontIntro from "@/components/StorefrontIntro";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
 import CartDrawer from "@/components/CartDrawer";
@@ -1764,6 +1765,7 @@ export default function HomeClient({
         <button
           type="button"
           className={`category-chip ${selectedCategory ? "" : "is-active"}`}
+          aria-pressed={!selectedCategory}
           onClick={() => handleCategorySelect(null)}
         >
           Todas
@@ -1773,6 +1775,7 @@ export default function HomeClient({
             key={category}
             type="button"
             className={`category-chip ${selectedCategory === category ? "is-active" : ""}`}
+            aria-pressed={selectedCategory === category}
             onClick={() => handleCategorySelect(category)}
           >
             {category}
@@ -1814,7 +1817,7 @@ export default function HomeClient({
         <input
           type="search"
           aria-label="Buscar productos"
-          placeholder="Buscar productos por nombre o categoria..."
+          placeholder="¿Qué estás buscando hoy?"
           value={searchQuery}
           onChange={(event) => handleSearchChange(event.target.value)}
           onKeyDown={(event) => {
@@ -1828,6 +1831,8 @@ export default function HomeClient({
           Buscar
         </button>
       </div>
+
+      {!isSearching && !selectedCategory ? <StorefrontIntro onBrowse={handleViewFullCatalog} /> : null}
 
       {categoryStrip}
 
