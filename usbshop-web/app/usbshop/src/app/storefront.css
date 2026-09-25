@@ -19,7 +19,32 @@
 .storefront .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .storefront .navbar { padding: 22px 0 18px; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .storefront .navbar-top { gap: 24px; }
-.storefront .logo-badge { width: 48px; height: 48px; border-radius: 12px; box-shadow: none; }
+.storefront .logo-badge {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #0b0714;
+  box-shadow: none;
+  overflow: hidden;
+}
+/* Enlarge the artwork, not the header: the source includes a wide white margin. */
+.storefront .logo-badge img {
+  transform: scale(1.3);
+  transform-origin: center;
+  object-fit: contain;
+}
+.storefront .logo-badge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1.5px solid;
+  border-color: var(--lime) var(--purple) var(--purple) var(--lime);
+  border-radius: inherit;
+  pointer-events: none;
+}
 .storefront .logo-text h1,
 .storefront .footer-brand__title {
   font-family: "Space Grotesk", "Segoe UI", sans-serif;
