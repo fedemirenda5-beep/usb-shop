@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 type NavItem = {
   label: string;
@@ -14,6 +14,7 @@ type NavbarProps = {
   onCartClick?: () => void;
   navItems?: NavItem[];
   showTrust?: boolean;
+  children?: ReactNode;
 };
 
 type CampaignTheme =
@@ -203,6 +204,7 @@ export default function Navbar({
   cartTotal = 0,
   onCartClick,
   showTrust = true,
+  children,
 }: NavbarProps) {
   const [campaignBanner, setCampaignBanner] = useState<CampaignBanner | null>(null);
   const cartIsFull = cartCount > 0;
@@ -268,6 +270,7 @@ export default function Navbar({
             </div>
           </Link>
         </div>
+        {children}
         {showTrust && campaignBanner ? (
           <Link
             href={campaignBanner.href}

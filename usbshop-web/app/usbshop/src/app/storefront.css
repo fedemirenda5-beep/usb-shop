@@ -26,7 +26,7 @@
   flex-shrink: 0;
   border: 0;
   border-radius: 12px;
-  background: #0b0714;
+  background: transparent;
   box-shadow: none;
   overflow: hidden;
 }
@@ -37,13 +37,7 @@
   object-fit: contain;
 }
 .storefront .logo-badge::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: 1.5px solid;
-  border-color: var(--lime) var(--purple) var(--purple) var(--lime);
-  border-radius: inherit;
-  pointer-events: none;
+  content: none;
 }
 .storefront .logo-text h1,
 .storefront .footer-brand__title {
@@ -201,6 +195,48 @@
   .storefront .footer-brands { gap: 20px; }
 }
 .storefront :is(#catalogo, #novedades, #ofertas, #destacados, #category-strip) { scroll-margin-top: 24px; }
+
+/* Keep the home page focused on merchandise from the first screen. */
+.storefront--home .navbar { padding: 14px 0; }
+.storefront--home .navbar-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 32px; }
+.storefront--home .logo { gap: 10px; }
+.storefront--home .logo-text h1 { font-size: 27px; }
+.storefront--home .logo-text p { display: none; }
+.storefront--home .hero-search--standalone { width: 100%; max-width: 640px; justify-self: center; margin: 0; padding: 4px; border-radius: 10px; }
+.storefront--home .hero-search--standalone input { padding: 8px; }
+.storefront--home .hero-search--standalone .button { min-height: 38px; padding: 8px 18px; }
+.storefront--home .shop-nav { padding: 10px 0; gap: 26px; }
+.storefront--home .category-strip { padding: 10px 0 0; }
+.storefront--home .category-strip-list { flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding: 4px 3px 8px; scrollbar-width: thin; scrollbar-color: #d5c9df transparent; }
+.storefront--home .category-strip .category-chip { flex: 0 0 auto; white-space: nowrap; min-height: 36px; padding: 8px 14px; border-color: transparent; background: transparent; border-radius: 6px; font-weight: 500; }
+.storefront--home .category-strip .category-chip:hover { background: #eee8f4; }
+.storefront--home .category-strip .category-chip.is-active { background: var(--shop-purple-deep); border-color: var(--shop-purple-deep); color: #fff; }
+.storefront--home .section { margin-top: 28px; gap: 12px; }
+.storefront--home .category-strip + .section { margin-top: 12px; }
+.storefront--home .section-header { padding-bottom: 0; min-height: 38px; }
+.storefront--home .section-title { font-size: clamp(20px, 2vw, 25px); }
+.storefront--home #novedades .section-header .button { min-height: 36px; padding: 8px 0 8px 12px; background: transparent; border: 0; color: var(--purple); }
+.storefront--home .product-grid, .storefront--home .featured-grid { gap: 16px; }
+.storefront--home .product-card { padding: 12px; gap: 10px; border-radius: 12px; box-shadow: none; }
+.storefront--home .product-media, .storefront--home .product-media.has-image { background: #fff; border-radius: 8px; }
+.storefront--home .product-image { padding: 6px; }
+.storefront--home .product-description { display: none; }
+.storefront--home .product-price { margin-top: 6px; }
+@media (max-width: 760px) {
+  .storefront--home .navbar { padding: 10px 0; }
+  .storefront--home .navbar-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .storefront--home .hero-search--standalone { grid-column: 1 / -1; grid-row: 2; max-width: none; }
+  .storefront--home .cart-pill { grid-column: 2; grid-row: 1; }
+  .storefront--home .logo-text h1 { font-size: 25px; }
+  .storefront--home .shop-nav { gap: 22px; padding: 9px 0; }
+  .storefront--home .category-strip { padding-top: 6px; }
+  .storefront--home .category-strip .category-chip { min-height: 40px; padding: 9px 12px; }
+  .storefront--home .category-strip + .section { margin-top: 8px; }
+  .storefront--home .section-header { gap: 8px; }
+  .storefront--home .product-grid, .storefront--home .featured-grid { gap: 10px; }
+  .storefront--home .product-card { padding: 9px; gap: 8px; }
+  .storefront--home .product-price { font-size: 22px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .storefront *, .storefront *::before, .storefront *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

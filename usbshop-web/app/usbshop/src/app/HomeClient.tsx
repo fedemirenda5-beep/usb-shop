@@ -1768,13 +1768,7 @@ export default function HomeClient({
 
   const categoryStrip = (
     <div className="category-strip category-strip--hero" id="category-strip">
-      <div className="category-strip-header">
-        <div className="category-strip-title">Explorá por categoría</div>
-        <div className="category-strip-meta">
-          Encontrá lo que va con vos
-        </div>
-      </div>
-      <div className="category-strip-list">
+      <div className="category-strip-list" role="group" aria-label="Filtrar por rubro">
         <button
           type="button"
           className={`category-chip ${selectedCategory ? "" : "is-active"}`}
@@ -1799,8 +1793,30 @@ export default function HomeClient({
   );
 
   return (
-    <main className="page storefront">
-      <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} showTrust={false} />
+    <main className="page storefront storefront--home">
+      <Navbar cartCount={totalItems} cartTotal={total} onCartClick={handleOpenCart} showTrust={false}>
+        <div className="hero-search hero-search--standalone">
+          <svg className="shop-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" strokeLinecap="round" />
+          </svg>
+          <input
+            type="search"
+            aria-label="Buscar productos"
+            placeholder="¿Qué estás buscando hoy?"
+            value={searchQuery}
+            onChange={(event) => handleSearchChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleSearchSubmit();
+              }
+            }}
+          />
+          <button type="button" className="button button--lime" onClick={handleSearchSubmit}>
+            Buscar
+          </button>
+        </div>
+      </Navbar>
       <nav className="shop-nav" aria-label="Navegación de la tienda">
         <button type="button" onClick={handleViewFullCatalog}>Todos los productos</button>
         <a href="/#novedades">Novedades</a>
@@ -1822,27 +1838,7 @@ export default function HomeClient({
           />
         </svg>
       </a>
-      <div className="hero-search hero-search--standalone">
-        <svg className="shop-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-          <circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" strokeLinecap="round" />
-        </svg>
-        <input
-          type="search"
-          aria-label="Buscar productos"
-          placeholder="¿Qué estás buscando hoy?"
-          value={searchQuery}
-          onChange={(event) => handleSearchChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              handleSearchSubmit();
-            }
-          }}
-        />
-        <button type="button" className="button button--lime" onClick={handleSearchSubmit}>
-          Buscar
-        </button>
-      </div>
+
 
       {categoryStrip}
 
@@ -1853,7 +1849,6 @@ export default function HomeClient({
             <h2 className="section-title">
               Novedades
             </h2>
-            <p className="section-description">Los últimos ingresos para descubrir.</p>
           </div>
           {!isSearching && !selectedCategory ? (
             <button
@@ -1861,7 +1856,7 @@ export default function HomeClient({
               className="button button--ghost"
               onClick={handleViewFullCatalog}
             >
-              Ver catalogo completo
+              Ver todo →
             </button>
           ) : null}
         </div>
