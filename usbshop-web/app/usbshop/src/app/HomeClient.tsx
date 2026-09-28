@@ -109,6 +109,7 @@ const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v10";
 const FEATURED_CACHE_KEY = "usbshop_featured_cache_v10";
+const COLLECTIONS_CACHE_KEY = "usbshop_collections_cache_v1";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const NEW_ARRIVAL_PIN_WINDOW_DAYS = 21;
 const NEW_ARRIVAL_PIN_WINDOW_MS = NEW_ARRIVAL_PIN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -783,12 +784,24 @@ export default function HomeClient({
     let active = true;
     setCollectionsLoading(true);
     setCollectionsError(false);
-    fetchWithRetry<{ new_arrivals: Product[]; restocked: Product[] }>("/storefront/collections")
+    const refresh = async () => {
+      await loadRuntimeConfig();
+      if (!active) return;
+      const cached = loadCachedList<Product[][]>(COLLECTIONS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
+      if (cached?.baseUrl === getApiBaseUrl() && cached.data.length === 2 && cached.data.every(Array.isArray)) {
+        setNewArrivals(cached.data[0].map((item: Product) => normalizeProduct(item, cached.baseUrl)));
+        setRestocked(cached.data[1].map((item: Product) => normalizeProduct(item, cached.baseUrl)));
+        setCollectionsLoading(false);
+      }
+      return fetchWithRetry<{ new_arrivals: Product[]; restocked: Product[] }>("/storefront/collections")
       .then(({ data, baseUrl }) => {
         if (!active) return;
         setNewArrivals(data.new_arrivals.map(item => normalizeProduct(item, baseUrl)));
         setRestocked(data.restocked.map(item => normalizeProduct(item, baseUrl)));
-      })
+        saveCachedList(COLLECTIONS_CACHE_KEY, [data.new_arrivals, data.restocked], baseUrl);
+      });
+    };
+    refresh()
       .catch(() => { if (active) setCollectionsError(true); })
       .finally(() => { if (active) setCollectionsLoading(false); });
     return () => { active = false; };

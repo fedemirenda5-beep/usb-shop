@@ -104,6 +104,34 @@ class ShowcaseTests(unittest.TestCase):
         self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [product['id']])
         self.assertEqual(main.storefront_collections()['restocked'], [])
 
+    def test_collections_bound_catalog_reads_and_share_reservations(self):
+        self.seed(200)
+        execute = main.DBConn.execute
+        fetched = []
+
+        def track(conn, query, params=None):
+            cursor = execute(conn, query, params)
+            if 'LEFT JOIN storefront_products sf' not in query:
+                return cursor
+            rows = cursor.fetchall()
+            fetched.append(len(rows))
+            from types import SimpleNamespace
+            return SimpleNamespace(fetchall=lambda: rows)
+
+        with patch.object(main.DBConn, 'execute', track), patch.object(
+            main, '_fetch_reserved_stock', return_value={}
+        ) as reservations:
+            result = main.storefront_collections()
+        self.assertEqual(len(result['new_arrivals']), 4)
+        self.assertEqual(fetched[0], 16)
+        self.assertTrue(all(count <= 16 for count in fetched))
+        reservations.assert_called_once()
+
+    def test_collections_continue_past_reserved_batch(self):
+        self.seed(40)
+        with patch.object(main, '_fetch_reserved_stock', return_value={i: 3 for i in range(20, 41)}):
+            self.assertEqual([p['id'] for p in main.storefront_collections()['new_arrivals']], [19, 18, 17, 16])
+
     def test_sync_preserves_order_and_tracks_zero_to_available(self):
         self.seed(3)
         main.admin_save_showcase({'product_ids': [1, 3]}, None)

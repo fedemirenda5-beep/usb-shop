@@ -5534,10 +5534,16 @@ def featured_products(limit: int = 8) -> list[dict]:
 
 @app.get("/storefront/collections")
 def storefront_collections() -> dict:
-    return {
-        "new_arrivals": _storefront_collection(4, "new"),
-        "restocked": _storefront_collection(4, "restocked"),
-    }
+    conn = _connect()
+    try:
+        _ensure_product_bundle_support(conn)
+        reserved = _fetch_reserved_stock(conn)
+        return {
+            "new_arrivals": _storefront_collection(4, "new", conn, reserved),
+            "restocked": _storefront_collection(4, "restocked", conn, reserved),
+        }
+    finally:
+        conn.close()
 
 
 def _fetch_product_sold_counts(conn: DBConn, product_ids: list[int]) -> dict[int, int]:
@@ -5562,11 +5568,14 @@ def _fetch_product_sold_counts(conn: DBConn, product_ids: list[int]) -> dict[int
     return {product_id: max(0, quantity) for product_id, quantity in counts.items()}
 
 
-def _storefront_collection(limit: int, kind: str) -> list[dict]:
-    conn = _connect()
+def _storefront_collection(limit: int, kind: str, conn: Optional[DBConn] = None,
+                           reserved_stock_by_product: Optional[dict[int, int]] = None) -> list[dict]:
+    owns_connection = conn is None
+    conn = conn if conn is not None else _connect()
     try:
         _ensure_product_bundle_support(conn)
-        reserved_stock_by_product = _fetch_reserved_stock(conn)
+        if reserved_stock_by_product is None:
+            reserved_stock_by_product = _fetch_reserved_stock(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_created_at = _has_column(conn, "products", "created_at")
@@ -5602,7 +5611,7 @@ def _storefront_collection(limit: int, kind: str) -> list[dict]:
             if highlight_new_arrivals_enabled
             else "NULL AS highlight_new_arrivals"
         )
-        curated = storefront.configured(conn)
+        curated = kind == "featured" and storefront.configured(conn)
         select_fields.append("sf.restocked_at")
         conditions = []
         query_params = []
@@ -5610,6 +5619,7 @@ def _storefront_collection(limit: int, kind: str) -> list[dict]:
             conditions.append("p.deleted_at IS NULL")
         if has_is_active:
             conditions.append("p.is_active = 1")
+        conditions.append("(COALESCE(p.is_bundle, 0) = 1 OR p.stock > 0)")
         if kind == "featured":
             conditions.append("sf.position IS NOT NULL" if curated else "p.is_featured = 1")
         elif kind == "new":
@@ -5662,25 +5672,38 @@ def _storefront_collection(limit: int, kind: str) -> list[dict]:
             WHERE {' AND '.join(conditions)}
             ORDER BY {order}
         """
-        rows = conn.execute(query, query_params).fetchall()
-        bundle_items_map = _fetch_bundle_items_map(
-            conn,
-            [int(row["id"]) for row in rows if bool(row["is_bundle"])],
-        )
-        available_stock = {
-            int(row["id"]): (
-                _bundle_available_stock(bundle_items_map.get(int(row["id"]), []), reserved_stock_by_product)
-                if bool(row["is_bundle"])
-                else max(0, int(row["stock"] or 0) - reserved_stock_by_product.get(int(row["id"]), 0))
-            ) for row in rows
-        }
-        # Sold-out items, including reservations and bundles, do not consume
-        # featured slots. Only load image metadata for the visible selection.
-        rows = [row for row in rows if available_stock[int(row["id"])] > 0][:min(100, max(1, int(limit)))]
+        # Fetch small batches until the row is full. Reservations and unavailable
+        # bundles must not hide later available products or require the full catalog.
+        target = min(100, max(1, int(limit)))
+        batch_size = max(16, target)
+        offset = 0
+        rows = []
+        available_stock = {}
+        while len(rows) < target:
+            candidates = conn.execute(query + " LIMIT ? OFFSET ?", [*query_params, batch_size, offset]).fetchall()
+            bundle_items_map = _fetch_bundle_items_map(
+                conn, [int(row["id"]) for row in candidates if bool(row["is_bundle"])],
+            )
+            for row in candidates:
+                product_id = int(row["id"])
+                stock = (
+                    _bundle_available_stock(bundle_items_map.get(product_id, []), reserved_stock_by_product)
+                    if bool(row["is_bundle"])
+                    else max(0, int(row["stock"] or 0) - reserved_stock_by_product.get(product_id, 0))
+                )
+                if stock > 0:
+                    available_stock[product_id] = stock
+                    rows.append(row)
+                    if len(rows) == target:
+                        break
+            if len(candidates) < batch_size:
+                break
+            offset += batch_size
         images_map = _fetch_product_images(conn, [int(row["id"]) for row in rows])
         sold_counts = _fetch_product_sold_counts(conn, [int(row["id"]) for row in rows])
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()
 
     return [
         {
