@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { consignmentRequest, type Consignment, type ConsignmentDetail } from '@/lib/consignments';
 import { createOrderIdempotencyKey } from '@/lib/api';
 import { formatArgentinaDateTime } from '@/lib/datetime';
+import { openAdminConsignmentPrint } from '@/lib/adminConsignmentPrint';
 import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './consignaciones.module.css';
 
@@ -139,6 +140,27 @@ export default function ConsignacionesPage() {
     </header>
     {error && <div className={styles.error} role="alert">{error}</div>}
     {notice && <div className={styles.notice} role="status">{notice}</div>}
+    {detail && <section className={styles.panel}>
+      <h2>Entrega #{detail.id} · {detail.customer_name}</h2>
+      <div><button type="button" className={styles.primary} disabled={busy} onClick={() => {
+        setError('');
+        try { openAdminConsignmentPrint(detail); }
+        catch (err) { setError((err as Error).message); }
+      }}>Imprimir comprobante</button></div>
+      <p>{detail.notes}</p>
+      <p>Pendientes en poder del cliente: <strong>{detail.pending}</strong></p>
+      {detail.pending > 0 && <div><Link className={styles.action} href={`/admin/generar-comprobante?customer_id=${detail.customer_id}&consignment_id=${detail.id}`}>Emitir venta de esta consignación</Link></div>}
+      <form onSubmit={(event) => { event.preventDefault(); void save('return'); }}>
+        <div className={styles.tableWrap}><table><thead><tr><th>Producto</th><th>Entregadas</th><th>Vendidas</th><th>Devueltas</th><th>Pendientes</th><th>Devolver ahora</th></tr></thead><tbody>{detail.items.map((item) => <tr key={item.product_id}>
+          <td>{item.name}<br /><small>{item.sku}</small></td><td>{item.delivered}</td><td>{item.sold}</td><td>{item.returned}</td><td>{item.pending}</td><td><input aria-label={`Devolver ${item.name}`} type="number" min="0" max={item.pending} step="1" disabled={busy || !item.pending} value={returns[item.product_id] || ''} onChange={(event) => setReturns((current) => ({ ...current, [item.product_id]: event.target.value }))} /></td>
+        </tr>)}</tbody></table></div>
+        <button disabled={busy || !Object.values(returns).some((qty) => Number(qty) > 0)}>Registrar devolución</button>
+      </form>
+      <h2>Historial</h2>
+      <div className={styles.tableWrap}><table><thead><tr><th>Fecha</th><th>Movimiento</th><th>Producto</th><th>Unidades</th><th>Comprobante</th></tr></thead><tbody>{detail.movements.map((item) => <tr key={item.id}>
+        <td>{formatArgentinaDateTime(item.created_at)}</td><td>{movementLabels[item.kind] || item.kind}</td><td>{item.name}</td><td>{item.quantity}</td><td>{item.invoice_id ? `#${item.invoice_id}` : '—'}</td>
+      </tr>)}</tbody></table></div>
+    </section>}
     <section className={styles.panel}>
       <h2>Clientes con mercadería en consignación</h2>
       <label>Buscar cliente<input value={summaryQuery} onChange={(event) => setSummaryQuery(event.target.value)} placeholder="Nombre del cliente" /></label>
@@ -186,21 +208,6 @@ export default function ConsignacionesPage() {
       </>}
       <div className={styles.row}><button disabled={!offset || loading} onClick={() => setOffset(Math.max(0, offset - ADMIN_LIMITS.consignmentsList))}>Anterior</button><button disabled={rows.length < ADMIN_LIMITS.consignmentsList || loading} onClick={() => setOffset(offset + ADMIN_LIMITS.consignmentsList)}>Siguiente</button></div>
     </section>
-    {detail && <section className={styles.panel}>
-      <h2>Entrega #{detail.id} · {detail.customer_name}</h2>
-      <p>{detail.notes}</p>
-      <p>Pendientes en poder del cliente: <strong>{detail.pending}</strong></p>
-      {detail.pending > 0 && <div><Link className={styles.action} href={`/admin/generar-comprobante?customer_id=${detail.customer_id}&consignment_id=${detail.id}`}>Emitir venta de esta consignación</Link></div>}
-      <form onSubmit={(event) => { event.preventDefault(); void save('return'); }}>
-        <div className={styles.tableWrap}><table><thead><tr><th>Producto</th><th>Entregadas</th><th>Vendidas</th><th>Devueltas</th><th>Pendientes</th><th>Devolver ahora</th></tr></thead><tbody>{detail.items.map((item) => <tr key={item.product_id}>
-          <td>{item.name}<br /><small>{item.sku}</small></td><td>{item.delivered}</td><td>{item.sold}</td><td>{item.returned}</td><td>{item.pending}</td><td><input aria-label={`Devolver ${item.name}`} type="number" min="0" max={item.pending} step="1" disabled={busy || !item.pending} value={returns[item.product_id] || ''} onChange={(event) => setReturns((current) => ({ ...current, [item.product_id]: event.target.value }))} /></td>
-        </tr>)}</tbody></table></div>
-        <button disabled={busy || !Object.values(returns).some((qty) => Number(qty) > 0)}>Registrar devolución</button>
-      </form>
-      <h2>Historial</h2>
-      <div className={styles.tableWrap}><table><thead><tr><th>Fecha</th><th>Movimiento</th><th>Producto</th><th>Unidades</th><th>Comprobante</th></tr></thead><tbody>{detail.movements.map((item) => <tr key={item.id}>
-        <td>{formatArgentinaDateTime(item.created_at)}</td><td>{movementLabels[item.kind] || item.kind}</td><td>{item.name}</td><td>{item.quantity}</td><td>{item.invoice_id ? `#${item.invoice_id}` : '—'}</td>
-      </tr>)}</tbody></table></div>
-    </section>}
+
   </div>;
 }
