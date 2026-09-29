@@ -36,6 +36,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 import consignments
 import storefront
+from product_search import rank_products
 
 try:
     import psycopg2
@@ -185,46 +186,6 @@ def _normalize_search_text(value: Any) -> str:
         return ""
     normalized = unicodedata.normalize("NFD", text)
     return "".join(char for char in normalized if unicodedata.category(char) != "Mn")
-
-
-def _search_tokens(value: Any) -> list[str]:
-    normalized = _normalize_search_text(value)
-    if not normalized:
-        return []
-    return [token for token in re.split(r"[\s,;|/\\-]+", normalized) if token]
-
-
-def _search_haystack(*values: Any) -> str:
-    parts = [_normalize_search_text(value) for value in values]
-    return " ".join(part for part in parts if part)
-
-
-def _search_match_score(query: Any, *values: Any) -> int:
-    normalized_query = _normalize_search_text(query)
-    if not normalized_query:
-        return 0
-    haystack = _search_haystack(*values)
-    if not haystack:
-        return 0
-    tokens = _search_tokens(normalized_query)
-    if not tokens:
-        tokens = [normalized_query]
-    score = 0
-    for token in tokens:
-        if token == haystack:
-            score += 200
-            continue
-        if haystack.startswith(token):
-            score += 80
-        if f" {token}" in f" {haystack}":
-            score += 50
-        elif token in haystack:
-            score += 20
-        else:
-            return 0
-    if normalized_query in haystack:
-        score += 30
-    return score
 
 
 def _product_document_stock_effect(document_type: Any) -> int:
@@ -4926,29 +4887,9 @@ def list_products(
             query += " LIMIT ? OFFSET ?"
             params.extend([limit_value, offset_value])
         rows = conn.execute(query, params).fetchall()
+        approximate = False
         if q:
-            scored_rows: list[tuple[int, Any]] = []
-            for row in rows:
-                score = _search_match_score(
-                    q,
-                    row["name"],
-                    row["sku"],
-                    row["category"],
-                    row["description"] if has_description else "",
-                )
-                if score > 0:
-                    scored_rows.append((score, row))
-            if sort_key in {"", "newest"}:
-                scored_rows.sort(key=lambda item: (-item[0], -int(item[1]["id"])))
-            else:
-                scored_rows.sort(
-                    key=lambda item: (
-                        -item[0],
-                        _normalize_search_text(item[1]["name"]),
-                        int(item[1]["id"]),
-                    )
-                )
-            rows = [row for _, row in scored_rows]
+            rows, approximate = rank_products(q, rows)
         if q:
             rows = rows[offset_value : offset_value + limit_value]
         product_ids = [int(row["id"]) for row in rows]
@@ -4968,6 +4909,7 @@ def list_products(
             "name": row["name"],
             "sku": row["sku"],
             "price": _storefront_price(row),
+            "search_match": "approximate" if approximate else "exact",
             "originalPrice": _base_price(row),
             "soldCount": sold_counts.get(int(row["id"]), 0),
             "flashOffer": _flash_offer_payload(row),
@@ -6200,6 +6142,7 @@ def admin_list_products(
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
+        has_description = _has_column(conn, "products", "description")
         
         conditions = []
         params: list = []
@@ -6236,6 +6179,8 @@ def admin_list_products(
         limit_value = max(1, int(limit))
         query = f"""
             SELECT id, name, sku, barcode, price, price_list_1, price_list_2, cost, stock,
+                   (SELECT c.name FROM categories c WHERE c.id = products.category_id) AS search_category,
+                   {"description" if has_description else "NULL AS description"},
                    COALESCE(is_bundle, 0) AS is_bundle,
                    image_path, category_id, is_active, is_featured, is_offer,
                    flash_offer_price, flash_offer_ends_at,
@@ -6248,26 +6193,9 @@ def admin_list_products(
             query += " LIMIT ? OFFSET ?"
             params.extend([limit_value, offset_value])
         rows = conn.execute(query, params).fetchall()
+        approximate = False
         if q:
-            scored_rows: list[tuple[int, Any]] = []
-            for row in rows:
-                score = _search_match_score(
-                    q,
-                    row["name"],
-                    row["sku"],
-                    row["barcode"],
-                    str(row["id"]),
-                )
-                if score > 0:
-                    scored_rows.append((score, row))
-            scored_rows.sort(
-                key=lambda item: (
-                    -item[0],
-                    _normalize_search_text(item[1]["name"]),
-                    int(item[1]["id"]),
-                )
-            )
-            rows = [row for _, row in scored_rows]
+            rows, approximate = rank_products(q, rows, admin=True)
         if q:
             rows = rows[offset_value : offset_value + limit_value]
 
@@ -6312,6 +6240,7 @@ def admin_list_products(
                     "price_list_1": float(row["price_list_1"] or 0),
                     "price_list_2": float(row["price_list_2"] or 0),
                     "storefront_price": _storefront_price(row),
+                    "search_match": "approximate" if approximate else "exact",
                     "storefront_original_price": _pick_price(row),
                     "storefront_price_source": (
                         "flash_offer"

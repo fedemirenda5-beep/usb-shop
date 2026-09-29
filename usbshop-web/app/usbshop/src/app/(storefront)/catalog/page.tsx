@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "@/components/ProductCard";
 import { fetchJson, getApiBaseUrl, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
-import { matchesSearchQuery, normalizeSearchText } from "@/lib/search";
+import { normalizeSearchText } from "@/lib/search";
 
 type Product = {
+  search_match?: 'exact' | 'approximate';
   id: number;
   name: string;
   price: number;
@@ -62,10 +63,8 @@ const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
 const PRODUCTS_CACHE_KEY = "usbshop_catalog_cache_v1";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const INITIAL_PAGE_SIZE = 60;
-const REQUEST_TIMEOUT_MS = 12000;
 const SEARCH_DEBOUNCE_MS = 300;
 
-const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const loadCachedList = <T,>(key: string, ttlMs: number) => {
   if (typeof window === "undefined") {
@@ -123,6 +122,11 @@ export default function CatalogPage() {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const pageSize = INITIAL_PAGE_SIZE;
+  const [retry, setRetry] = useState(0);
+  const requestController = useRef<AbortController | null>(null);
+  const currentQuery = useRef(query.trim());
+  currentQuery.current = query.trim();
+  const pending = isLoading || query.trim() !== debouncedQuery;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -148,60 +152,21 @@ export default function CatalogPage() {
       };
     });
 
-  const fetchProductsPage = async (offset = 0, currentQuery = "") => {
-    let lastError: unknown = null;
+  const fetchProductsPage = async (offset = 0, search = "", signal?: AbortSignal) => {
     await loadRuntimeConfig();
-    const host = typeof window !== "undefined" ? window.location.hostname : "";
-    const defaultBase = getApiBaseUrl();
-    const fallbackBase =
-      host === "localhost" || host === "127.0.0.1" ? `http://${host}:8000` : null;
-    const baseUrls = fallbackBase && fallbackBase !== defaultBase ? [defaultBase, fallbackBase] : [defaultBase];
-    const params = new URLSearchParams({
-      limit: String(pageSize),
-      offset: String(offset),
-    });
-    if (currentQuery) {
-      params.set("q", currentQuery);
-    }
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      for (const baseUrl of baseUrls) {
-        const controller = new AbortController();
-        const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        try {
-          const data =
-            baseUrl === defaultBase
-              ? await fetchJson<Product[]>(`/products?${params.toString()}`, { signal: controller.signal, cache: "no-store" })
-              : await fetch(`${baseUrl}/products?${params.toString()}`, {
-                  credentials: "include",
-                  cache: "no-store",
-                  headers: { "Content-Type": "application/json" },
-                  signal: controller.signal,
-                }).then(async (response) => {
-                  if (!response.ok) {
-                    throw new Error("API request failed");
-                  }
-                  return (await response.json()) as Product[];
-                });
-          return {
-            data,
-            baseUrl,
-            normalized: normalizeProducts(data, baseUrl),
-          };
-        } catch (fetchError) {
-          lastError = fetchError;
-        } finally {
-          window.clearTimeout(timeoutId);
-        }
-      }
-      if (attempt < 2) {
-        await wait(500 * (attempt + 1));
-      }
-    }
-    throw lastError ?? new Error("API request failed");
+    const baseUrl = getApiBaseUrl();
+    const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
+    if (search) params.set("q", search);
+    const data = await fetchJson<Product[]>(`/products?${params}`, { signal, cache: "no-store" });
+    return { data, baseUrl, normalized: normalizeProducts(data, baseUrl) };
   };
 
   useEffect(() => {
     let active = true;
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    if (query.trim() !== debouncedQuery) return () => controller.abort();
     const loadCategories = async () => {
       try {
         await loadRuntimeConfig();
@@ -218,9 +183,10 @@ export default function CatalogPage() {
     const loadProducts = async (offset = 0, mode: "replace" | "append" = "replace") => {
       let hadCachedData = false;
       try {
+        await loadRuntimeConfig();
         if (mode === "replace" && !debouncedQuery) {
           const cached = loadCachedList<Product[]>(PRODUCTS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
-          if (cached && active) {
+          if (cached && active && cached.baseUrl === getApiBaseUrl()) {
             hadCachedData = true;
             setProducts(normalizeProducts(cached.data, cached.baseUrl));
             setHasMore(cached.data.length >= pageSize);
@@ -238,7 +204,7 @@ export default function CatalogPage() {
         if (!hadCachedData) {
           setError(null);
         }
-        const result = await fetchProductsPage(offset, debouncedQuery);
+        const result = await fetchProductsPage(offset, debouncedQuery, controller.signal);
         if (!active || !Array.isArray(result.data)) {
           return;
         }
@@ -262,7 +228,7 @@ export default function CatalogPage() {
         }
       }
     };
-    void loadCategories();
+    if (!categories.length) void loadCategories();
     loadProducts(0, "replace").catch(() => {
       if (active) {
         setProducts([]);
@@ -270,11 +236,13 @@ export default function CatalogPage() {
     });
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, retry, query]);
 
   const filtered = useMemo(() => {
-    const value = normalizeSearchText(query);
+    const value = query.trim();
+    if (value) return value === debouncedQuery ? products : [];
     const sourceCategories = Array.from(
       new Set(
         products
@@ -302,13 +270,8 @@ export default function CatalogPage() {
       }
       return a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true });
     };
-    const source = value
-      ? products.filter((product) => {
-          return matchesSearchQuery(value, product.name, product.category, product.description || "");
-        })
-      : products;
-    return [...source].sort(compareByCategoryThenNewest);
-  }, [categories, products, query]);
+    return [...products].sort(compareByCategoryThenNewest);
+  }, [categories, products, query, debouncedQuery]);
 
   const skeletonCards = useMemo(() => Array.from({ length: 12 }, (_, idx) => idx), []);
 
@@ -320,24 +283,28 @@ export default function CatalogPage() {
         <p className="hero-text">Los precios y stock se sincronizan con ControlStock.</p>
         <div className="hero-actions catalog-tools">
           <input
+            type="search"
+            enterKeyHint="search"
             value={query}
+            onKeyDown={event => { if (event.key === 'Enter') setDebouncedQuery(query.trim()); }}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar por nombre o categoria"
-            aria-label="Buscar por nombre o categoria"
+            placeholder="Buscar por nombre, categoría o código"
+            aria-label="Buscar por nombre, categoría o código"
             className="catalog-search"
           />
-          <span className="catalog-meta">
-            {filtered.length} productos
+          {query ? <button type="button" className="button button--ghost" onClick={() => { setQuery(''); setDebouncedQuery(''); }}>Limpiar búsqueda</button> : null}
+          <span className="catalog-meta" role="status">
+            {pending ? 'Buscando…' : `${filtered.length}${hasMore ? '+' : ''} productos` }
           </span>
         </div>
       </header>
-      <div className="product-grid stagger">
-        {isLoading ? (
+      {filtered.some(product => product.search_match === 'approximate') ? <p role="status">Sin coincidencias exactas. Estos productos tienen nombres similares.</p> : null}
+      {error ? <div role="alert" className="empty-state"><p>{error}</p><button className="button button--ghost" onClick={() => setRetry(value => value + 1)}>Reintentar</button></div> : null}
+      <div className="product-grid stagger" aria-busy={pending}>
+        {pending ? (
           skeletonCards.map((card) => (
             <div key={`catalog-skeleton-${card}`} className="product-card product-skeleton" />
           ))
-        ) : error ? (
-          <div className="empty-state empty-state--wide">{error}</div>
         ) : filtered.length > 0 ? (
           filtered.map((product, index) => (
             <ProductCard
@@ -349,27 +316,32 @@ export default function CatalogPage() {
           ))
         ) : (
           <div className="empty-state empty-state--wide">
-            No hay productos con esos filtros.
+            {error ? "Podés volver a intentar la búsqueda." : `No encontramos “${query}”. Probá con menos palabras, otro nombre o el código del producto.`}
           </div>
         )}
       </div>
-      {!isLoading && !error && hasMore ? (
+      {!pending && !error && hasMore ? (
         <div className="section catalog-footer">
           <button
             className="button button--ghost"
             onClick={() => {
               if (!isFetchingMore) {
                 const offset = products.length;
+                const controller = requestController.current;
+                if (!controller || controller.signal.aborted) return;
+                const requestedQuery = debouncedQuery;
                 const loadMore = async () => {
                   try {
                     setIsFetchingMore(true);
-                    const result = await fetchProductsPage(offset, debouncedQuery);
-                    if (Array.isArray(result.data)) {
+                    const result = await fetchProductsPage(offset, requestedQuery, controller.signal);
+                    if (!controller.signal.aborted && currentQuery.current === requestedQuery && Array.isArray(result.data)) {
                       setProducts((prev) => [...prev, ...result.normalized]);
                       setHasMore(result.data.length >= pageSize);
                     }
+                  } catch {
+                    if (!controller.signal.aborted) setError('No pudimos cargar más resultados. Volvé a intentar.');
                   } finally {
-                    setIsFetchingMore(false);
+                    if (!controller.signal.aborted) setIsFetchingMore(false);
                   }
                 };
                 loadMore().catch(() => null);

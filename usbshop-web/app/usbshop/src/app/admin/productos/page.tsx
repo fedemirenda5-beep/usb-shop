@@ -14,6 +14,7 @@ import { ProductForm } from './components/ProductForm';
 import styles from './productos.module.css';
 
 interface Product {
+  search_match?: 'exact' | 'approximate';
   id: number;
   name: string;
   sku: string;
@@ -371,8 +372,14 @@ export default function ProductosPage() {
   }, []);
 
   useEffect(() => {
+    if (search.trim() !== deferredSearch.trim()) {
+      productsController.current?.abort();
+      setLoading(true);
+      return;
+    }
     void loadProducts(page);
-  }, [page, deferredSearch, selectedCategoryName, onlyOutOfStock]);
+    return () => productsController.current?.abort();
+  }, [page, deferredSearch, selectedCategoryName, onlyOutOfStock, search]);
 
   useEffect(() => {
     if (!editId) {
@@ -521,6 +528,10 @@ export default function ProductosPage() {
   };
 
   const clearSearchInput = () => {
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+      scannerAutoSubmitTimeoutRef.current = null;
+    }
     if (searchInputRef.current) {
       searchInputRef.current.value = '';
     }
@@ -531,14 +542,17 @@ export default function ProductosPage() {
   const submitSearchScannerValue = (rawValue: string) => {
     const scannedValue = rawValue.trim();
     if (!scannedValue) return;
-    clearSearchInput();
     void (async () => {
       try {
         const matchedProduct = await resolveScannedProduct(scannedValue);
+        if (searchInputRef.current?.value.trim() !== scannedValue) return;
         if (!matchedProduct) {
-          setError(`No existe un producto con el codigo "${scannedValue}"`);
+          setError('');
+          setDeferredSearch(scannedValue);
+          setPage(1);
           return;
         }
+        clearSearchInput();
         setError('');
         openEditor(matchedProduct.id);
       } catch (err) {
@@ -548,15 +562,25 @@ export default function ProductosPage() {
   };
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      clearSearchInput();
+      return;
+    }
     if (event.key !== 'Enter') return;
     event.preventDefault();
     const scannedValue = event.currentTarget.value.trim() || search.trim();
     scannerLastAutoSubmittedRef.current = scannedValue;
     if (!scannedValue) return;
+    setDeferredSearch(scannedValue);
+    setPage(1);
     submitSearchScannerValue(scannedValue);
   };
 
   const scheduleSearchScannerSubmit = (rawValue: string) => {
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+      scannerAutoSubmitTimeoutRef.current = null;
+    }
     const scannedValue = rawValue.trim();
     if (!scannedValue) {
       scannerLastAutoSubmittedRef.current = '';
@@ -956,7 +980,9 @@ export default function ProductosPage() {
         <input
           ref={searchInputRef}
           type="text"
-          placeholder="Buscar por nombre o SKU..."
+          aria-label="Buscar productos"
+          enterKeyHint="search"
+          placeholder="Buscar por nombre, SKU, codigo, rubro o descripcion..."
           value={search}
           onChange={(e) => {
             const nextValue = e.target.value;
@@ -968,6 +994,7 @@ export default function ProductosPage() {
           className={styles.searchInput}
         />
         <select
+          aria-label="Filtrar por rubro"
           value={categoryFilter}
           onChange={(e) => {
             setCategoryFilter(e.target.value);
@@ -993,7 +1020,19 @@ export default function ProductosPage() {
           />
           <span>Solo stock 0</span>
         </label>
+        {(search || categoryFilter || onlyOutOfStock) ? (
+          <button type="button" className={styles.btnSecondary} onClick={() => {
+            clearSearchInput(); setDeferredSearch(''); setCategoryFilter(''); setOnlyOutOfStock(false); setPage(1);
+          }}>Limpiar filtros</button>
+        ) : null}
       </div>
+
+      {!loading && products.some(product => product.search_match === 'approximate') ? (
+        <p role="status">Sin coincidencias exactas. Mostrando productos con nombres similares.</p>
+      ) : null}
+      {categoryFilter || onlyOutOfStock ? (
+        <p role="status">Filtros activos: {[selectedCategoryName, onlyOutOfStock ? 'Solo stock 0' : ''].filter(Boolean).join(' · ')}</p>
+      ) : null}
 
       {isMobileLayout && !detailOnly ? (
         <section className={styles.mobilePicker}>
@@ -1045,7 +1084,7 @@ export default function ProductosPage() {
       <div className={styles.pagination}>
         <span>
           {products.length} productos en esta pagina{search ? ` para "${search}"` : ''} |
-          {' '}orden alfabetico
+          {' '}{deferredSearch.trim() ? 'orden por coincidencia' : 'orden alfabetico'}
         </span>
       </div>
 
@@ -1253,10 +1292,10 @@ export default function ProductosPage() {
         </section>
       ) : null}
 
-      {products.length > 0 ? (
+      {products.length > 0 || page > 1 ? (
         <div className={styles.pagination}>
           <button
-            disabled={page === 1}
+            disabled={page === 1 || loading}
             onClick={() => setPage(Math.max(1, page - 1))}
             className={styles.btnPagination}
           >
@@ -1266,7 +1305,7 @@ export default function ProductosPage() {
             Pagina {page} | Mostrando {products.length} productos
           </span>
           <button
-            disabled={!hasMoreProducts}
+            disabled={!hasMoreProducts || loading}
             onClick={() => setPage((current) => current + 1)}
             className={styles.btnPagination}
           >

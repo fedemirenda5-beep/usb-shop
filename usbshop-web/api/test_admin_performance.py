@@ -112,6 +112,38 @@ class AdminReadTests(unittest.TestCase):
         rows = main.admin_list_products(None, 'admin', q='Producto', limit=12, offset=60)
         self.assertEqual([item['id'] for item in rows], list(range(61, 73)))
 
+    def test_admin_search_includes_storefront_matches_before_pagination(self):
+        conn = main._connect()
+        try:
+            conn.execute("INSERT INTO categories (id, name) VALUES (901, 'Juguetes')")
+            for values in [
+                (101, 'Soporte para auto', 'SOPORTE', '', 0, None),
+                (102, 'Auto acrobático 4x4 con control', '828A', '', 6, 901),
+                (103, 'Vehículo con control', 'CX-81', 'Auto acrobático', 3, 901),
+            ]:
+                conn.execute('''INSERT INTO products
+                    (id, name, sku, description, stock, category_id, price, cost, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, 500, 200, 1)''', values)
+            conn.commit()
+        finally:
+            conn.close()
+        with self.dictionary_reads():
+            for query in ['auto', 'auto acrobatico', 'acrobatico auto', 'juguetes', '828A', 'CX81', 'auto acrobatcio']:
+                with self.subTest(query=query):
+                    public_ids = {row['id'] for row in main.list_products(q=query)}
+                    admin_ids = {row['id'] for row in main.admin_list_products(None, 'admin', q=query)}
+                    self.assertTrue(public_ids)
+                    self.assertEqual(admin_ids, public_ids)
+            first = main.admin_list_products(None, 'admin', q='auto', limit=1)
+            self.assertEqual(first[0]['id'], 102)
+            exhausted = main.admin_list_products(None, 'admin', q='auto', out_of_stock_only=True)
+            self.assertEqual([row['id'] for row in exhausted], [101])
+            for search in [main.list_products, lambda **kwargs: main.admin_list_products(None, 'admin', **kwargs)]:
+                suggestions = search(q='auto acrobatcio')
+                self.assertTrue(all(row['search_match'] == 'approximate' for row in suggestions))
+                self.assertEqual(search(q='828B'), [])
+                self.assertEqual([row['id'] for row in search(q='auto', limit=1, offset=1)], [101])
+
     def test_mutations_invalidate_light_and_full_overview_caches(self):
         main.admin_dashboard('admin')
         main.admin_reports_overview(None, 'admin')

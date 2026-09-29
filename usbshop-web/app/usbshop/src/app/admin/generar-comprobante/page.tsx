@@ -20,6 +20,7 @@ type CustomerOption = {
   seller_id?: number | null;
 };
 type ProductOption = {
+  search_match?: 'exact' | 'approximate';
   id: number;
   name: string;
   sku: string;
@@ -269,6 +270,8 @@ export default function GenerarComprobantePage() {
   const [productSearch, setProductSearch] = useState('');
   const [customerSearchLoading, setCustomerSearchLoading] = useState(false);
   const [productSearchLoading, setProductSearchLoading] = useState(false);
+  const [activeProductIndex, setActiveProductIndex] = useState(-1);
+  const [productResultLimit, setProductResultLimit] = useState(12);
   const [scannedDraft, setScannedDraft] = useState<ScannedProductDraft | null>(null);
   const [searchQuantities, setSearchQuantities] = useState<Record<number, string>>({});
   const [imeiDrafts, setImeiDrafts] = useState<Record<number, string>>({});
@@ -342,13 +345,13 @@ export default function GenerarComprobantePage() {
     return items;
   };
 
-  const fetchProductsByQuery = async (searchValue: string, limit = 12) => {
+  const fetchProductsByQuery = async (searchValue: string, limit = 12, signal?: AbortSignal) => {
     await loadRuntimeConfig();
     const params = new URLSearchParams({
       q: searchValue.trim(),
       limit: String(limit),
     });
-    const res = await fetchApiResponse(`/admin/products?${params.toString()}`);
+    const res = await fetchApiResponse(`/admin/products?${params.toString()}`, { signal });
     if (!res.ok) {
       throw new Error('No se pudieron cargar los productos');
     }
@@ -576,25 +579,33 @@ export default function GenerarComprobantePage() {
 
   useEffect(() => {
     const normalized = productSearch.trim();
+    let cancelled = false;
+    const controller = new AbortController();
+    setProductOptions([]);
+    setActiveProductIndex(-1);
     if (!normalized) {
-      setProductOptions([]);
+      setProductSearchLoading(false);
       return;
     }
+    setProductSearchLoading(true);
     const handle = window.setTimeout(() => {
       void (async () => {
         try {
-          setProductSearchLoading(true);
-          const items = await fetchProductsByQuery(normalized, 12);
-          setProductOptions(items);
+          const items = await fetchProductsByQuery(normalized, productResultLimit, controller.signal);
+          if (!cancelled) setProductOptions(items);
         } catch (err) {
-          setError(getFriendlyApiError(err, 'No se pudieron cargar los productos'));
+          if (!cancelled) setError(getFriendlyApiError(err, 'No se pudieron cargar los productos'));
         } finally {
-          setProductSearchLoading(false);
+          if (!cancelled) setProductSearchLoading(false);
         }
       })();
     }, 180);
-    return () => window.clearTimeout(handle);
-  }, [productSearch]);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(handle);
+    };
+  }, [productSearch, productResultLimit]);
 
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -616,9 +627,7 @@ export default function GenerarComprobantePage() {
   const filteredProducts = useMemo(() => {
     const needle = productSearch.trim().toLowerCase();
     if (!needle) return [];
-    return productOptions
-      .filter((product) => [product.name, product.sku, product.barcode || '', String(product.id)].join(' ').toLowerCase().includes(needle))
-      .slice(0, 12);
+    return productOptions;
   }, [productSearch, productOptions]);
   const selectedSeller = sellerMap.get(Number(form.seller_id));
   const formSubtotal = useMemo(() => form.items.reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unit_price || 0), 0), [form.items]);
@@ -728,10 +737,15 @@ export default function GenerarComprobantePage() {
   };
 
   const clearProductSearchInput = () => {
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+      scannerAutoSubmitTimeoutRef.current = null;
+    }
     if (productSearchInputRef.current) {
       productSearchInputRef.current.value = '';
     }
     setProductSearch('');
+    setProductResultLimit(12);
     scannerLastAutoSubmittedRef.current = '';
   };
 
@@ -957,11 +971,6 @@ export default function GenerarComprobantePage() {
       }
       const resolvedProduct = await resolveScannerProduct(scannedValue);
       if (!resolvedProduct) {
-        if (filteredProducts.length > 0) {
-          setError('');
-          addProductToInvoice(filteredProducts[0]);
-          return;
-        }
         setError(`No existe un producto con el codigo "${scannedValue}"`);
         return;
       }
@@ -1003,15 +1012,44 @@ export default function GenerarComprobantePage() {
   };
 
   const handleProductSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const nextIndex = Math.max(0, Math.min(filteredProducts.length - 1, activeProductIndex + (event.key === 'ArrowDown' ? 1 : -1)));
+      setActiveProductIndex(nextIndex);
+      document.getElementById(`invoice-product-${filteredProducts[nextIndex]?.id}`)?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    if (event.key === 'Escape') {
+      clearProductSearchInput();
+      return;
+    }
     if (event.key !== 'Enter') return;
     event.preventDefault();
+    if (!productSearchLoading && activeProductIndex >= 0 && filteredProducts[activeProductIndex]) {
+      addProductToInvoice(filteredProducts[activeProductIndex]);
+      clearProductSearchInput();
+      return;
+    }
     const scannedValue = event.currentTarget.value.trim() || productSearch.trim();
+    if (!findProductByScannerValue(scannedValue) && !/^\S*\d\S*$/.test(scannedValue)) {
+      // Resolve letter-only SKUs as well, while preserving an ordinary text query.
+      void resolveScannerProduct(scannedValue).then(product => {
+        if (productSearchInputRef.current?.value.trim() !== scannedValue) return;
+        if (product) submitScannerValue(scannedValue);
+        else if (!productSearchLoading && filteredProducts.length) setActiveProductIndex(0);
+      }).catch(err => setError(getFriendlyApiError(err, 'No se pudo buscar el producto')));
+      return;
+    }
     scannerLastAutoSubmittedRef.current = scannedValue;
     if (!scannedValue) return;
     submitScannerValue(scannedValue);
   };
 
   const scheduleProductSearchAutoSubmit = (rawValue: string) => {
+    if (scannerAutoSubmitTimeoutRef.current) {
+      clearTimeout(scannerAutoSubmitTimeoutRef.current);
+      scannerAutoSubmitTimeoutRef.current = null;
+    }
     const scannedValue = rawValue.trim();
     if (!scannedValue) {
       scannerLastAutoSubmittedRef.current = '';
@@ -1479,10 +1517,16 @@ export default function GenerarComprobantePage() {
                   <input
                     ref={productSearchInputRef}
                     type="text"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={filteredProducts.length > 0}
+                    aria-controls="invoice-product-options"
+                    aria-activedescendant={activeProductIndex >= 0 ? `invoice-product-${filteredProducts[activeProductIndex]?.id}` : undefined}
                     value={productSearch}
                     onChange={(e) => {
                       const nextValue = e.target.value;
                       setProductSearch(nextValue);
+                      setProductResultLimit(12);
                       scheduleProductSearchAutoSubmit(nextValue);
                     }}
                     onKeyDown={handleProductSearchKeyDown}
@@ -1528,6 +1572,11 @@ export default function GenerarComprobantePage() {
                 </div>
               ) : null}
               <div className={styles.desktopPickerResults}>
+                {productSearch.trim() ? <p role="status">Usá ↑ y ↓ para elegir y Enter para agregar. Escape limpia la búsqueda.</p> : null}
+                {!productSearchLoading && filteredProducts.length >= productResultLimit ? (
+                  <button type="button" className={styles.secondaryButton} onClick={() => setProductResultLimit(value => value + 12)}>Mostrar más coincidencias</button>
+                ) : null}
+                {filteredProducts.some(product => product.search_match === 'approximate') ? <p role="status">Sin coincidencias exactas. Revisá estos productos con nombres similares.</p> : null}
                 {consignmentId > 0 && form.document_type === 'FACTURA' && consignmentDetail && <div className={styles.productSearchList}>
                   <p>En poder de {consignmentDetail.customer_name}. Agregá solo los productos vendidos y ajustá sus cantidades.</p>
                   {consignmentDetail.items.filter((item) => item.pending > 0).map((item) => <div key={item.product_id} className={styles.productSearchItem}>
@@ -1545,11 +1594,11 @@ export default function GenerarComprobantePage() {
                 ) : filteredProducts.length === 0 ? (
                   <div className={styles.emptyCell}>No hay productos que coincidan con la búsqueda.</div>
                 ) : (
-                  <div className={styles.productSearchList}>
-                    {filteredProducts.map((product) => {
+                  <div className={styles.productSearchList} id="invoice-product-options" role="listbox" aria-label="Productos encontrados">
+                    {filteredProducts.map((product, index) => {
                       const productImageUrl = resolveImageUrl(product.imageUrl || product.image_path, getApiBaseUrl());
                       return (
-                        <div key={product.id} className={styles.productSearchItem}>
+                        <div key={product.id} id={`invoice-product-${product.id}`} role="option" aria-selected={index === activeProductIndex} className={styles.productSearchItem} style={index === activeProductIndex ? { outline: '2px solid #2563eb', outlineOffset: '-2px' } : undefined}>
                           <div className={styles.productSearchIdentity}>
                           <div className={styles.productSearchThumb}>
                             {productImageUrl ? (

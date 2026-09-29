@@ -1,5 +1,23 @@
 # Pruebas del carrito
 
+## Búsqueda de productos
+
+Desde `usbshop-web/api`, ejecutar `.venv/Scripts/python.exe -m unittest test_product_search test_admin_performance`.
+Se verifica relevancia, tildes, palabras en cualquier orden, códigos exactos,
+sugerencias de un error de escritura, filtros y paginación antes de enriquecer los resultados.
+La misma lógica de `product_search.py` sirve a compradores y administrativos.
+Los códigos y números de modelo no se corrigen por similitud.
+
+Con la web servida localmente, ejecutar `node tests/storefront-search.cjs` y
+`node tests/admin-product-search.cjs`. Ambos aceptan `TEST_WEB_URL` (por defecto
+`http://127.0.0.1:3017`) y `PLAYWRIGHT_MODULE`. Todas las respuestas de API están
+simuladas: no se crean ventas reales. Cubren escritorio y móvil, orden del servidor,
+SKU, sugerencias, paginación a demanda, recuperación de errores, respuestas atrasadas,
+Enter, flechas y Escape. `tests/imeis.cjs` cubre además la compatibilidad con lectores.
+
+La caché del motor guarda únicamente texto normalizado, nunca resultados, precios
+ni stock. Cambiar el texto de un producto produce una clave nueva automáticamente.
+
 ## Acceso móvil al admin
 
 `node tests/admin-loading.cjs` verifica la carga inicial del escritorio a 1366 y

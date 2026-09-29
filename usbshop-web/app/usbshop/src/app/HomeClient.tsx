@@ -23,6 +23,7 @@ import { readStoredCart, reconcileCartItems } from "@/lib/cart";
 import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText, searchTokensFromQuery } from "@/lib/search";
 
 type Product = {
+  search_match?: 'exact' | 'approximate';
   id: number;
   name: string;
   price: number;
@@ -417,6 +418,8 @@ export default function HomeClient({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Product[] | null>(null);
   const [isLoadingSearch, setIsLoadingSearch] = useState(false);
+  const [hasMoreSearch, setHasMoreSearch] = useState(false);
+  const searchController = useRef<AbortController | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCatalogSection, setShowCatalogSection] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -551,11 +554,11 @@ export default function HomeClient({
   };
 
   const handleSearchSubmit = () => {
-    const targetId = isSearching ? "resultados" : "catalogo";
-    const target = document.getElementById(targetId);
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
+    setDebouncedSearchQuery(searchQuery.trim());
+    window.requestAnimationFrame(() => {
+      document.getElementById(searchQuery.trim() ? "resultados" : "catalogo")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleOpenCart = () => {
@@ -663,6 +666,9 @@ export default function HomeClient({
   };
 
   const handleLoadMoreCatalog = () => {
+    if (isSearching && hasMoreSearch && filteredProducts.length <= catalogLimit + CATALOG_PAGE_SIZE) {
+      void loadMoreSearch();
+    }
     setShowCatalogSection(true);
     setCatalogLimit((value) => value + CATALOG_PAGE_SIZE);
     if (!isSearching && hasMoreProducts && !isFetchingMore && filteredCatalog.length < catalogLimit + CATALOG_PAGE_SIZE) {
@@ -824,7 +830,8 @@ export default function HomeClient({
   const fetchProductsPage = async (
     offset: number,
     query = "",
-    limit = PRODUCTS_PAGE_SIZE
+    limit = PRODUCTS_PAGE_SIZE,
+    signal?: AbortSignal
   ) => {
     const params = new URLSearchParams({
       sort: "newest",
@@ -834,7 +841,10 @@ export default function HomeClient({
     if (query.trim()) {
       params.set("q", query.trim());
     }
-    const result = await fetchWithRetry<Product[]>(`/products?${params.toString()}`);
+    await loadRuntimeConfig();
+    const result = signal
+      ? { data: await fetchJson<Product[]>(`/products?${params.toString()}`, { signal }), baseUrl: getApiBaseUrl() }
+      : await fetchWithRetry<Product[]>(`/products?${params.toString()}`);
     const normalized = result.data.map((item) => normalizeProduct(item, result.baseUrl));
     return { ...result, normalized };
   };
@@ -1204,7 +1214,8 @@ export default function HomeClient({
   const searchTokens = useMemo(() => {
     return searchTokensFromQuery(debouncedSearchQuery);
   }, [debouncedSearchQuery]);
-  const isSearching = searchTokens.length > 0;
+  const isSearching = Boolean(searchQuery.trim());
+  const searchPending = isLoadingSearch || searchQuery.trim() !== debouncedSearchQuery;
   const skeletonCards = useMemo(() => Array.from({ length: 8 }, (_, idx) => idx), []);
   const allIndexedProducts = useMemo(() => {
     const map = new Map<number, Product>();
@@ -1237,13 +1248,17 @@ export default function HomeClient({
   }, [allIndexedProducts]);
 
   useEffect(() => {
-    if (!debouncedSearchQuery) {
+    searchController.current?.abort();
+    setHasMoreSearch(false);
+    if (!debouncedSearchQuery || searchQuery.trim() !== debouncedSearchQuery) {
       setSearchError(null);
       setSearchResults(null);
       setIsLoadingSearch(false);
       return;
     }
     let active = true;
+    const controller = new AbortController();
+    searchController.current = controller;
     const requestId = searchRequestRef.current + 1;
     searchRequestRef.current = requestId;
     setIsLoadingSearch(true);
@@ -1251,17 +1266,11 @@ export default function HomeClient({
     setSearchResults(null);
     const runSearch = async () => {
       try {
-        let offset = 0;
-        const found = new Map<number, Product>();
-        while (active && searchRequestRef.current === requestId) {
-          const result = await fetchProductsPage(offset, debouncedSearchQuery, SEARCH_PAGE_SIZE);
-          if (!active || searchRequestRef.current !== requestId) return;
-          for (const product of result.normalized) found.set(product.id, product);
-          setProductsApiBase(result.baseUrl);
-          setSearchResults(Array.from(found.values()));
-          if (result.data.length < SEARCH_PAGE_SIZE) break;
-          offset += result.data.length;
-        }
+        const result = await fetchProductsPage(0, debouncedSearchQuery, SEARCH_PAGE_SIZE, controller.signal);
+        if (!active || searchRequestRef.current !== requestId) return;
+        setProductsApiBase(result.baseUrl);
+        setSearchResults(result.normalized);
+        setHasMoreSearch(result.data.length === SEARCH_PAGE_SIZE);
       } catch {
         if (!active || searchRequestRef.current !== requestId) {
           return;
@@ -1276,8 +1285,26 @@ export default function HomeClient({
     void runSearch();
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [debouncedSearchQuery, searchRetry]);
+  }, [debouncedSearchQuery, searchRetry, searchQuery]);
+
+  const loadMoreSearch = async () => {
+    const controller = searchController.current;
+    if (isLoadingSearch || !hasMoreSearch || !controller || controller.signal.aborted) return;
+    setIsLoadingSearch(true);
+    setSearchError(null);
+    try {
+      const result = await fetchProductsPage(searchResults?.length || 0, debouncedSearchQuery, SEARCH_PAGE_SIZE, controller.signal);
+      if (controller.signal.aborted) return;
+      setSearchResults(current => [...(current || []), ...result.normalized]);
+      setHasMoreSearch(result.data.length === SEARCH_PAGE_SIZE);
+    } catch {
+      if (!controller.signal.aborted) setSearchError('No pudimos cargar más resultados. Volvé a intentar.');
+    } finally {
+      if (!controller.signal.aborted) setIsLoadingSearch(false);
+    }
+  };
 
   const searchResultIds = useMemo(() => new Set((searchResults ?? []).map((product) => product.id)), [searchResults]);
 
@@ -1310,6 +1337,9 @@ export default function HomeClient({
       });
   }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex, searchResultIds]);
   const filteredProducts = useMemo(() => {
+    if (isSearching) {
+      return searchQuery.trim() === debouncedSearchQuery ? (searchResults || []).filter(matchesSelectedCategory) : [];
+    }
     const sourceMap = new Map<number, Product>();
     for (const product of products) {
       sourceMap.set(product.id, product);
@@ -1331,7 +1361,7 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(compareByCategoryThenName);
-  }, [products, featuredSource, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex, searchResultIds]);
+  }, [products, featuredSource, searchResults, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex, searchResultIds, isSearching, searchQuery, debouncedSearchQuery]);
 
   useEffect(() => {
     if (selectedCategory && hasMoreProducts && !isFetchingMore && !isLoadingProducts && !catalogError) {
@@ -1802,6 +1832,8 @@ export default function HomeClient({
           <input
             type="search"
             aria-label="Buscar productos"
+            aria-controls="resultados"
+            enterKeyHint="search"
             placeholder="¿Qué estás buscando hoy?"
             value={searchQuery}
             onChange={(event) => handleSearchChange(event.target.value)}
@@ -2062,7 +2094,7 @@ export default function HomeClient({
               </p>
               <h2 className="section-title">
                 {isSearching
-                  ? `${filteredProducts.length} productos encontrados`
+                  ? searchPending && !filteredProducts.length ? 'Buscando productos…' : `${filteredProducts.length}${hasMoreSearch ? '+' : ''} productos para “${searchQuery.trim()}”`
                   : selectedCategory
                   ? `${selectedCategory}: productos disponibles`
                   : "Productos destacados"}
@@ -2105,7 +2137,10 @@ export default function HomeClient({
         ) : null}
         <div className="featured-layout">
           <div className="featured-main">
-            <div className="featured-grid" id={isSearching ? "resultados" : "featured-grid"}>
+            {isSearching && filteredProducts.some(product => product.search_match === 'approximate') ? (
+              <p role="status">No encontramos coincidencias exactas. Estos productos tienen nombres similares.</p>
+            ) : null}
+            <div className="featured-grid" id={isSearching ? "resultados" : "featured-grid"} aria-busy={isSearching && searchPending}>
               {isSearching ? (
                 filteredProducts.length > 0 ? (
                   filteredProducts.slice(0, catalogLimit).map((product, index) => (
@@ -2120,13 +2155,13 @@ export default function HomeClient({
                       style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
                     />
                   ))
-                ) : (isLoadingProducts || isFetchingMore || isLoadingSearch) ? (
+                ) : searchPending ? (
                   skeletonCards.map((card) => (
                     <div key={`search-skeleton-${card}`} className="product-card product-skeleton" />
                   ))
                 ) : (
                   <div className="empty-state empty-state--wide">
-                    No hay productos disponibles con esos filtros.
+                    {searchError ? 'La búsqueda no pudo completarse. Volvé a intentar.' : `No encontramos “${searchQuery.trim()}”. Probá con menos palabras, el nombre del producto o su código.`}
                   </div>
                 )
               ) : selectedCategory ? (
@@ -2179,15 +2214,15 @@ export default function HomeClient({
                 </div>
               )}
             </div>
-            {(isSearching ? filteredProducts.length > catalogLimit : selectedCategory ? filteredCatalog.length > catalogLimit || hasMoreProducts : false) ? (
+            {(isSearching ? filteredProducts.length > catalogLimit || hasMoreSearch : selectedCategory ? filteredCatalog.length > catalogLimit || hasMoreProducts : false) ? (
               <div className="section-actions">
                 <button
                   type="button"
                   className="button button--ghost"
                   onClick={handleLoadMoreCatalog}
-                  disabled={isFetchingMore}
+                  disabled={isSearching ? searchPending : isFetchingMore}
                 >
-                  {isFetchingMore ? "Cargando mas..." : "Mostrar mas"}
+                  {(isSearching ? searchPending : isFetchingMore) ? "Cargando mas..." : "Mostrar mas"}
                 </button>
               </div>
             ) : null}
