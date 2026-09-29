@@ -260,7 +260,7 @@ export default function Navbar({
         <div className="navbar-brand">
           <Link href="/" className="logo">
             <div className="logo-badge">
-              <img src="/logo-small.jpeg" alt="USB Shop" />
+              <img src="/branding/usbshop-logo-flat-v2.png" alt="USB Shop" width={48} height={48} />
             </div>
             <div className="logo-text">
               <h1>
