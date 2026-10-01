@@ -33,6 +33,14 @@ interface Order {
   items?: OrderItem[];
 }
 
+interface OrderSummary {
+  total: number;
+  pending: number;
+  processed: number;
+  confirmed: number;
+  cancelled: number;
+}
+
 const statusColors: Record<string, { bg: string; text: string; label: string }> = {
   PENDING: { bg: 'rgba(249, 115, 22, 0.12)', text: '#c2410c', label: 'Pendiente' },
   CONFIRMED: { bg: 'rgba(34, 197, 94, 0.12)', text: '#15803d', label: 'Procesada' },
@@ -46,6 +54,7 @@ const money = (value: number) =>
 export default function PedidosPage() {
   useAdminSession();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [summary, setSummary] = useState<OrderSummary | null>(null);
   const [orderDetails, setOrderDetails] = useState<Record<number, Order>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -60,13 +69,17 @@ export default function PedidosPage() {
       setLoading(true);
       setError('');
       const res = await fetchApiResponse(
-        `/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=false`,
-        { signal }
+        `/admin/orders?status=ALL&limit=${ADMIN_LIMITS.ordersList}&include_items=false&include_summary=true`,
+        { signal, cache: 'no-store' }
       );
       if (!res.ok) throw new Error('No se pudieron cargar las ordenes de compra');
       const data = await res.json();
+      if (!Array.isArray(data.orders) || !data.summary) {
+        throw new Error('No se pudo cargar el resumen de pedidos. Actualiza la API para ver los totales.');
+      }
       if (signal?.aborted) return;
-      setOrders(data);
+      setOrders(data.orders);
+      setSummary(data.summary);
     } catch (err) {
       if (signal?.aborted) return;
       setError(getFriendlyApiError(err, 'Error cargando ordenes de compra'));
@@ -88,17 +101,6 @@ export default function PedidosPage() {
 
   const pendingOrders = useMemo(() => orders.filter((order) => order.status === 'PENDING'), [orders]);
   const historicalOrders = useMemo(() => orders.filter((order) => order.status !== 'PENDING'), [orders]);
-
-  const summary = useMemo(
-    () => ({
-      total: orders.length,
-      pending: pendingOrders.length,
-      processed: historicalOrders.length,
-      confirmed: orders.filter((order) => order.status === 'CONFIRMED').length,
-      cancelled: orders.filter((order) => order.status === 'CANCELLED').length,
-    }),
-    [historicalOrders.length, orders, pendingOrders.length]
-  );
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
@@ -318,21 +320,25 @@ export default function PedidosPage() {
       <section className={styles.summaryGrid}>
         <article className={styles.summaryCard}>
           <span>Ordenes ingresadas</span>
-          <strong>{summary.total}</strong>
+          <strong>{summary?.total ?? '...'}</strong>
         </article>
         <article className={styles.summaryCard}>
           <span>Pendientes</span>
-          <strong>{summary.pending}</strong>
+          <strong>{summary?.pending ?? '...'}</strong>
         </article>
         <article className={styles.summaryCard}>
           <span>Procesadas</span>
-          <strong>{summary.confirmed}</strong>
+          <strong>{summary?.confirmed ?? '...'}</strong>
         </article>
         <article className={styles.summaryCard}>
           <span>Canceladas</span>
-          <strong>{summary.cancelled}</strong>
+          <strong>{summary?.cancelled ?? '...'}</strong>
         </article>
       </section>
+
+      {summary && summary.total > orders.length ? (
+        <p>Mostrando los ultimos {orders.length} de {summary.total} pedidos. Los contadores incluyen todos los pedidos.</p>
+      ) : null}
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
@@ -340,7 +346,7 @@ export default function PedidosPage() {
             <h2>Pendientes</h2>
             <p>Solo aparecen las ordenes de compra que todavia necesitan atencion.</p>
           </div>
-          <span className={styles.sectionCount}>{summary.pending} pendientes</span>
+          <span className={styles.sectionCount}>{summary?.pending ?? '...'} pendientes</span>
         </div>
 
         <div className={styles.tableWrapper}>
@@ -348,7 +354,7 @@ export default function PedidosPage() {
             <div className={styles.loading}>Cargando ordenes pendientes...</div>
           ) : pendingOrders.length === 0 ? (
             <div className={styles.empty}>
-              <p>No hay ordenes de compra pendientes.</p>
+              <p>No hay ordenes de compra pendientes entre los pedidos mostrados.</p>
             </div>
           ) : (
             <table className={styles.table}>
@@ -375,7 +381,7 @@ export default function PedidosPage() {
             <h2>Historial de ordenes</h2>
             <p>Ordenes ya procesadas o canceladas, separadas de la operacion principal.</p>
           </div>
-          <span className={styles.sectionCount}>{summary.processed} en historial</span>
+          <span className={styles.sectionCount}>{summary?.processed ?? '...'} en historial</span>
         </div>
 
         <details className={styles.historyDisclosure}>

@@ -5192,7 +5192,8 @@ def admin_list_orders(
     status: str = "PENDING",
     limit: int = 200,
     include_items: bool = True,
-) -> list[dict]:
+    include_summary: bool = False,
+) -> list[dict] | dict:
     _require_admin(session_token)
     status_value = (status or "PENDING").strip().upper()
     if status_value not in {"PENDING", "CONFIRMED", "CANCELLED", "BUDGETED", "ALL"}:
@@ -5297,6 +5298,25 @@ def admin_list_orders(
         else:
             for order in orders:
                 order.pop("items", None)
+        if include_summary:
+            counts = conn.execute(
+                "SELECT COALESCE(status, 'PENDING') AS status, COUNT(*) AS quantity "
+                "FROM web_orders GROUP BY COALESCE(status, 'PENDING')"
+            ).fetchall()
+            by_status = {
+                (row["status"] if isinstance(row, dict) else row[0]):
+                int(row["quantity"] if isinstance(row, dict) else row[1])
+                for row in counts
+            }
+            total = sum(by_status.values())
+            pending = by_status.get("PENDING", 0)
+            return {"orders": orders, "summary": {
+                "total": total,
+                "pending": pending,
+                "processed": total - pending,
+                "confirmed": by_status.get("CONFIRMED", 0),
+                "cancelled": by_status.get("CANCELLED", 0),
+            }}
         return orders
     finally:
         conn.close()
