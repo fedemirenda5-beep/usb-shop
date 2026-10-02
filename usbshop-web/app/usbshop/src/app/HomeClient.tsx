@@ -1379,7 +1379,9 @@ export default function HomeClient({
       }
       return matchesSearch(product);
       })
-      .sort(selectedCategory ? compareByNewest : compareByCategoryThenName);
+      .sort(selectedCategory
+        ? (a, b) => Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0) || compareByNewest(a, b)
+        : compareByCategoryThenName);
   }, [catalogSource, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex, searchResultIds]);
 
   const newestIds = useMemo(() => {
