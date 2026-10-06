@@ -7896,6 +7896,7 @@ def admin_backoffice_customer_detail(
     customer_id: int,
     request: Request,
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+    include_history: bool = True,
 ) -> dict:
     _require_admin(session_token)
     conn = _connect()
@@ -7920,7 +7921,7 @@ def admin_backoffice_customer_detail(
             ORDER BY created_at DESC, id DESC
             """,
             (customer_id,),
-        ).fetchall()
+        ).fetchall() if include_history else []
         movements = conn.execute(
             """
             SELECT am.id, am.amount, am.movement_type, am.reference, am.invoice_id,
@@ -7932,7 +7933,7 @@ def admin_backoffice_customer_detail(
             + _active_account_movements_clause(conn, "am")
             + " ORDER BY am.created_at ASC, am.id ASC",
             (customer_id,),
-        ).fetchall()
+        ).fetchall() if include_history else []
         running_balance = 0.0
         serialized_movements = []
         for row in movements:
@@ -7971,7 +7972,7 @@ def admin_backoffice_customer_detail(
             "zone": customer["zone"],
             "created_at": customer["created_at"],
             "is_active": bool(int(customer["is_active"] or 0)) if customer["is_active"] is not None else True,
-            "accountHistory": True,
+            "accountHistory": include_history,
             "balance": running_balance,
             "documents": [
                 {

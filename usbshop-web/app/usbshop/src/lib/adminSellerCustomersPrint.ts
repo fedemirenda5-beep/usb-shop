@@ -1,4 +1,4 @@
-import { formatArgentinaDate } from './datetime';
+import { formatCustomerMonthlyPurchases } from './customerMonthlyPurchases';
 
 type SellerCustomerPrintItem = {
   id: number;
@@ -11,8 +11,6 @@ type SellerCustomerPrintItem = {
   balance?: number;
   monthlySalesTotal?: number;
   monthlyPurchaseCount?: number;
-  lastPurchaseAt?: string | null;
-  lastPurchaseMonth?: string | null;
   daysWithoutPurchase?: number | null;
 };
 
@@ -50,19 +48,11 @@ export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl:
             <strong>${escapeHtml(customer.name)}</strong>
             <div class="subline">${escapeHtml(customer.locality || '')}</div>
           </td>
+          ${payload.purchaseMonth ? `<td>${escapeHtml(formatCustomerMonthlyPurchases(customer))}</td>` : ''}
           <td>${escapeHtml(customer.phone || customer.email || '-')}</td>
           <td>${escapeHtml(customer.zone || '-')}</td>
           <td>${escapeHtml(customer.address || '-')}</td>
           <td class="${(customer.balance || 0) > 0 ? 'debt' : 'credit'}">${escapeHtml(money(customer.balance || 0))}</td>
-          ${payload.purchaseMonth ? `
-          <td>${escapeHtml(money(customer.monthlySalesTotal || 0))}
-            ${customer.monthlyPurchaseCount === 0 ? '<div class="subline">Sin compras en el mes</div>' : ''}
-          </td>
-          <td>${customer.lastPurchaseAt ? escapeHtml(formatArgentinaDate(customer.lastPurchaseAt)) : 'Sin compras registradas'}
-            ${customer.lastPurchaseMonth ? `<div class="subline">${escapeHtml(monthLabel(customer.lastPurchaseMonth))}</div>` : ''}
-          </td>
-          <td>${customer.daysWithoutPurchase == null ? '—' : escapeHtml(`${customer.daysWithoutPurchase} días`)}</td>
-          ` : ''}
         </tr>
       `
     )
@@ -103,7 +93,7 @@ export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl:
       .banner, .meta-grid { break-inside: avoid; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; }
-      @page { size: A4 ${payload.purchaseMonth ? 'landscape' : 'portrait'}; margin: 6mm; }
+      @page { size: A4 portrait; margin: 6mm; }
     }
   </style>
 </head>
@@ -137,22 +127,21 @@ export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl:
         </div>
       </section>
       <section class="panel">
-        ${payload.purchaseMonth ? `<p><strong>Compras de ${escapeHtml(monthLabel(payload.purchaseMonth))}</strong></p>
-          <p class="subline">Total neto de facturas menos notas de crédito. Última compra y días sin comprar al emitir este informe.</p>` : ''}
+        ${payload.purchaseMonth ? `<p><strong>Compras de ${escapeHtml(monthLabel(payload.purchaseMonth))}</strong></p>` : ''}
         <table>
           <thead>
             <tr>
               <th>ID</th>
               <th>Cliente</th>
+              ${payload.purchaseMonth ? '<th>Compras del mes</th>' : ''}
               <th>Contacto</th>
               <th>Zona</th>
               <th>Direccion</th>
               <th>Saldo</th>
-              ${payload.purchaseMonth ? '<th>Comprado en el mes</th><th>Última compra</th><th>Días sin comprar</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="${payload.purchaseMonth ? 9 : 6}">Sin clientes asignados.</td></tr>`}
+            ${rows || `<tr><td colspan="${payload.purchaseMonth ? 7 : 6}">Sin clientes asignados.</td></tr>`}
           </tbody>
         </table>
       </section>

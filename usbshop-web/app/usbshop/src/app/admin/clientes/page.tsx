@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
+import { formatCustomerMonthlyPurchases } from '@/lib/customerMonthlyPurchases';
 import { formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
@@ -141,7 +142,6 @@ export default function ClientesPage() {
   const queryClient = useQueryClient();
   const canViewProfit = canViewProfitMetrics(user?.role);
   const detailRequestRef = useRef(0);
-  const skipNextDetailLoadRef = useRef<number | null>(null);
   const detailSectionRef = useRef<HTMLElement | null>(null);
   const customerNameInputRef = useRef<HTMLInputElement | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -164,7 +164,7 @@ export default function ClientesPage() {
   const [quickSellerId, setQuickSellerId] = useState('');
   const [printScope, setPrintScope] = useState<'all' | 'seller'>('all');
   const [includePurchases, setIncludePurchases] = useState(false);
-  const [purchaseMonth, setPurchaseMonth] = useState(() => getArgentinaNowDateInput().slice(0, 7));
+  const purchaseMonth = getArgentinaNowDateInput().slice(0, 7);
   const [printingCustomers, setPrintingCustomers] = useState(false);
   const [showGrowthChart, setShowGrowthChart] = useState(false);
   const [showRankingChart, setShowRankingChart] = useState(false);
@@ -175,27 +175,7 @@ export default function ClientesPage() {
     sales_total: 0,
     profit_total: 0,
   });
-  const [isMobileLayout, setIsMobileLayout] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth <= 860 : false
-  );
-  const [desktopWorkspaceMode, setDesktopWorkspaceMode] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return;
-    }
-    const media = window.matchMedia('(max-width: 860px)');
-    const sync = () => setIsMobileLayout(media.matches);
-    sync();
-    media.addEventListener('change', sync);
-    return () => media.removeEventListener('change', sync);
-  }, []);
-
-  useEffect(() => {
-    if (isMobileLayout) {
-      setDesktopWorkspaceMode(false);
-    }
-  }, [isMobileLayout]);
+  const [customerWorkspaceOpen, setCustomerWorkspaceOpen] = useState(false);
 
   useEffect(() => {
     if (!showCustomerForm) return;
@@ -209,7 +189,7 @@ export default function ClientesPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams({ limit: '300', summary: 'true' });
-      if (includePurchases) params.set('purchase_month', purchaseMonth);
+      params.set('purchase_month', purchaseMonth);
       if (query.trim()) params.set('q', query.trim());
       if (sellerFilter !== 'all') params.set('seller_id', sellerFilter);
       if (zoneFilter !== 'all') params.set('zone', zoneFilter);
@@ -227,9 +207,9 @@ export default function ClientesPage() {
         : [];
       setError('');
       setCustomers(items);
-      if (!selectedCustomerId && items.length > 0) setSelectedCustomerId(items[0].id);
       if (selectedCustomerId && !items.some((item) => item.id === selectedCustomerId)) {
-        setSelectedCustomerId(items[0]?.id ?? null);
+        setSelectedCustomerId(null);
+        setCustomerWorkspaceOpen(false);
       }
     } catch (err) {
       if (signal?.aborted) return;
@@ -288,7 +268,7 @@ export default function ClientesPage() {
       setQuickSellerId(customerData.seller_id ? String(customerData.seller_id) : '');
       setShowCustomerForm(false);
     } catch (err) {
-      if (signal?.aborted) return;
+      if (signal?.aborted || requestId !== detailRequestRef.current) return;
       setSelectedCustomer(null);
       setCustomerForm(emptyCustomerForm());
       setQuickSellerId('');
@@ -331,23 +311,19 @@ export default function ClientesPage() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [search, sellerFilter, zoneFilter, includePurchases, purchaseMonth]);
+  }, [search, sellerFilter, zoneFilter, purchaseMonth]);
 
   useEffect(() => {
-    if (selectedCustomerId) {
-      if (skipNextDetailLoadRef.current === selectedCustomerId) {
-        skipNextDetailLoadRef.current = null;
-        return;
-      }
+    if (customerWorkspaceOpen && selectedCustomerId) {
+      setSelectedCustomer(null);
       const controller = new AbortController();
       void loadCustomerDetail(selectedCustomerId, controller.signal);
-      return () => controller.abort();
-    } else {
-      setSelectedCustomer(null);
-      setCustomerForm(emptyCustomerForm());
-      setQuickSellerId('');
+      return () => {
+        controller.abort();
+        detailRequestRef.current += 1;
+      };
     }
-  }, [selectedCustomerId]);
+  }, [selectedCustomerId, customerWorkspaceOpen]);
 
   const handleCustomerFormChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -357,6 +333,7 @@ export default function ClientesPage() {
   };
 
   const resetForNewCustomer = () => {
+    setCustomerWorkspaceOpen(false);
     setSelectedCustomerId(null);
     setSelectedCustomer(null);
     setCustomerForm(emptyCustomerForm());
@@ -365,7 +342,7 @@ export default function ClientesPage() {
   };
 
   const loadCustomerDetailData = async (customerId: number) => {
-    const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}`);
+    const res = await fetchApiResponse(`/admin/backoffice-customers/${customerId}?include_history=false`);
     if (!res.ok) {
       const data = await res.json().catch(() => null);
       throw new Error(data?.detail || 'No se pudo cargar el cliente');
@@ -377,7 +354,6 @@ export default function ClientesPage() {
     try {
       setError('');
       const customerData = await loadCustomerDetailData(customerId);
-      skipNextDetailLoadRef.current = customerId;
       setSelectedCustomerId(customerId);
       setSelectedCustomer(customerData);
       setCustomerForm({
@@ -422,16 +398,15 @@ export default function ClientesPage() {
   const openCustomerWorkspace = (customerId: number) => {
     setError('');
     setSelectedCustomerId(customerId);
-    if (!isMobileLayout) {
-      setDesktopWorkspaceMode(true);
-    }
+    setCustomerWorkspaceOpen(true);
     requestAnimationFrame(() => {
       detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   };
 
-  const exitDesktopWorkspace = () => {
-    setDesktopWorkspaceMode(false);
+  const closeCustomerWorkspace = () => {
+    setCustomerWorkspaceOpen(false);
+    setSelectedCustomer(null);
   };
 
   const sellerMap = useMemo(
@@ -569,8 +544,6 @@ export default function ClientesPage() {
           balance: customer.balance,
           monthlySalesTotal: customer.monthly_sales_total,
           monthlyPurchaseCount: customer.monthly_purchase_count,
-          lastPurchaseAt: customer.last_purchase_at,
-          lastPurchaseMonth: customer.last_purchase_month,
           daysWithoutPurchase: customer.days_without_purchase,
         })),
       }, popup);
@@ -639,6 +612,7 @@ export default function ClientesPage() {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'customers'] });
       await Promise.all([loadCustomers(search), loadCustomerZones()]);
       if (nextId) setSelectedCustomerId(nextId);
+      if (customerWorkspaceOpen && nextId) await loadCustomerDetail(nextId);
       setShowCustomerForm(false);
     } catch (err) {
       setError(getFriendlyApiError(err, 'Error guardando cliente'));
@@ -731,6 +705,7 @@ export default function ClientesPage() {
         throw new Error(data?.detail || 'No se pudo eliminar el cliente');
       }
       if (selectedCustomerId === customerId) {
+        setCustomerWorkspaceOpen(false);
         setSelectedCustomerId(null);
         setSelectedCustomer(null);
         setCustomerForm(emptyCustomerForm());
@@ -758,7 +733,7 @@ export default function ClientesPage() {
       }
       await queryClient.invalidateQueries({ queryKey: ['admin', 'customers'] });
       await Promise.all([loadCustomers(search), loadCustomerZones()]);
-      if (selectedCustomerId) {
+      if (customerWorkspaceOpen && selectedCustomerId) {
         await loadCustomerDetail(selectedCustomerId);
       }
     } catch (err) {
@@ -776,8 +751,8 @@ export default function ClientesPage() {
             <h1>Clientes</h1>
             <p>Padron unico con asignacion simple por vendedor y zona.</p>
           </div>
-          {!isMobileLayout && desktopWorkspaceMode ? (
-            <button type="button" className={styles.backButton} onClick={exitDesktopWorkspace}>
+          {customerWorkspaceOpen ? (
+            <button type="button" className={styles.backButton} onClick={closeCustomerWorkspace}>
               <span aria-hidden="true">←</span>
               Cambiar cliente
             </button>
@@ -801,15 +776,8 @@ export default function ClientesPage() {
           <div className={styles.printControls}>
             <label className={styles.purchaseToggle}>
               <input type="checkbox" checked={includePurchases} onChange={(e) => setIncludePurchases(e.target.checked)} />
-              Ver compras del mes
+              Incluir compras del mes en la impresión
             </label>
-            {includePurchases ? (
-              <label className={styles.purchaseMonth}>
-                Mes de compras
-                <input type="month" className={styles.headerSelect} value={purchaseMonth}
-                  onChange={(e) => { if (e.target.value) setPurchaseMonth(e.target.value); }} />
-              </label>
-            ) : null}
             <select
               value={printScope}
               onChange={(e) => setPrintScope(e.target.value === 'seller' ? 'seller' : 'all')}
@@ -842,11 +810,6 @@ export default function ClientesPage() {
       </div>
 
       {error ? <div className={styles.errorBox}>{error}</div> : null}
-      {includePurchases ? (
-        <p className={styles.tableMeta}>
-          Compras de {purchaseMonth}: facturas menos notas de crédito. Los días sin comprar se cuentan hasta hoy.
-        </p>
-      ) : null}
 
       <div className={styles.searchBar}>
         <input
@@ -882,7 +845,7 @@ export default function ClientesPage() {
         </label>
       </div>
 
-      {!desktopWorkspaceMode ? (
+      {!customerWorkspaceOpen ? (
       <div className={styles.tablePanel}>
         <div className={styles.tableMeta}>
           <span>{filteredCustomers.length} clientes visibles{search ? ` para "${search}"` : ''}</span>
@@ -893,21 +856,17 @@ export default function ClientesPage() {
           ) : filteredCustomers.length === 0 ? (
             <div className={styles.empty}>No hay clientes cargados.</div>
           ) : (
-            <table className={`${styles.table} ${includePurchases ? styles.purchaseTable : ''}`}>
+            <table className={styles.table}>
               <thead>
                 <tr>
                   <th className={styles.colId}>ID</th>
                   <th className={styles.colCliente}>Cliente</th>
+                  <th className={styles.colCompras}>Compras del mes</th>
                   <th className={styles.colEstado}>Estado</th>
                   <th className={styles.colContacto}>Contacto</th>
                   <th className={styles.colVendedor}>Vendedor</th>
                   <th className={styles.colZona}>Zona</th>
                   <th className={styles.colCuit}>CUIT / DNI</th>
-                  {includePurchases ? <>
-                    <th>Comprado en {purchaseMonth}</th>
-                    <th>Última compra</th>
-                    <th>Días sin comprar</th>
-                  </> : null}
                   <th className={styles.colAcciones}>Acciones</th>
                 </tr>
               </thead>
@@ -918,11 +877,28 @@ export default function ClientesPage() {
                     className={customer.id === selectedCustomerId ? styles.customerRowActive : ''}
                     onClick={() => setSelectedCustomerId(customer.id)}
                     onDoubleClick={() => void openCustomerWorkspace(customer.id)}
-                    title="Click para seleccionar. Doble click para abrir la ficha."
+                    title="Click para seleccionar. Pulsa el nombre o haz doble click para abrir la ficha."
                   >
                     <td className={styles.colId}>{customer.id}</td>
                     <td className={styles.colCliente} title={customer.locality || customer.address || customer.name}>
-                      <strong className={styles.clientName}>{customer.name}</strong>
+                      <button
+                        type="button"
+                        className={`${styles.clientName} ${styles.clientNameButton}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openCustomerWorkspace(customer.id);
+                        }}
+                        aria-label={`Abrir ficha de ${customer.name}`}
+                      >
+                        {customer.name}
+                      </button>
+                    </td>
+                    <td className={styles.colCompras}>
+                      {formatCustomerMonthlyPurchases({
+                        monthlySalesTotal: customer.monthly_sales_total,
+                        monthlyPurchaseCount: customer.monthly_purchase_count,
+                        daysWithoutPurchase: customer.days_without_purchase,
+                      })}
                     </td>
                     <td className={styles.colEstado}>
                       <span className={customer.is_active === false ? styles.inactiveBadge : styles.activeBadge}>
@@ -937,14 +913,6 @@ export default function ClientesPage() {
                     </td>
                     <td className={`${styles.colZona} ${styles.truncateCell}`}>{customer.zone || '-'}</td>
                     <td className={`${styles.colCuit} ${styles.truncateCell}`}>{customer.cuit || '-'}</td>
-                    {includePurchases ? <>
-                      <td>
-                        {customer.monthly_sales_total === undefined ? '—' : formatCurrency(customer.monthly_sales_total)}
-                        {customer.monthly_purchase_count === 0 ? <div>Sin compras en el mes</div> : null}
-                      </td>
-                      <td>{customer.last_purchase_at ? formatDate(customer.last_purchase_at) : customer.monthly_sales_total === undefined ? '—' : 'Sin compras registradas'}</td>
-                      <td>{customer.days_without_purchase == null ? '—' : `${customer.days_without_purchase} días`}</td>
-                    </> : null}
                     <td className={styles.colAcciones}>
                       <div className={styles.rowActions}>
                         <button
@@ -1116,6 +1084,7 @@ export default function ClientesPage() {
         </div>
       ) : null}
 
+      {customerWorkspaceOpen ? (
       <section className={styles.main} ref={detailSectionRef}>
 
         {selectedCustomer ? (
@@ -1253,13 +1222,9 @@ export default function ClientesPage() {
             </div>
             ) : null}
           </div>
-        ) : null}
-
-        <div className={styles.notice}>
-          Esta pantalla ya no usa clientes internos paralelos. Clientes, comprobantes y cuentas
-          corrientes trabajan sobre la misma base real del backoffice.
-        </div>
+        ) : <div className={styles.empty}>Cargando ficha del cliente...</div>}
       </section>
+      ) : null}
 
       {showGrowthChart ? (
         <div className={styles.modalOverlay} onClick={() => setShowGrowthChart(false)}>

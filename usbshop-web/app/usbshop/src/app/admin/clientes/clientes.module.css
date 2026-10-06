@@ -90,17 +90,6 @@
   color: #334155;
 }
 
-.purchaseMonth {
-  display: grid;
-  gap: 4px;
-  color: #334155;
-}
-
-.purchaseTable {
-  min-width: 1150px;
-  table-layout: auto;
-}
-
 .headerSelect {
   min-width: 190px;
   border: 1px solid #d7dee7;
@@ -259,6 +248,22 @@
 
 .colCliente {
   width: 22%;
+}
+
+.colCompras {
+  width: 140px;
+}
+
+.clientNameButton {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
 }
 
 .colEstado {

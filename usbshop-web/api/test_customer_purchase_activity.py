@@ -80,6 +80,33 @@ class CustomerPurchaseActivityTests(unittest.TestCase):
     def test_normal_list_does_not_include_activity(self):
         self.assertNotIn('monthly_sales_total', main.admin_backoffice_customers(None, None)[0])
 
+    def test_edit_details_do_not_query_or_return_history(self):
+        self.dated_invoice('2026-10-02 12:00:00')
+        statements = []
+        execute = main.DBConn.execute
+
+        def traced_execute(conn, query, params=None):
+            statements.append(query)
+            return execute(conn, query, params)
+
+        with patch.object(main.DBConn, 'execute', traced_execute):
+            customer = main.admin_backoffice_customer_detail(1, None, None, include_history=False)
+        self.assertEqual(customer['name'], 'Cliente Uno')
+        self.assertFalse(customer['accountHistory'])
+        self.assertEqual(customer['documents'], [])
+        self.assertEqual(customer['movements'], [])
+        history_queries = [sql for sql in statements if sql.lstrip().upper().startswith('SELECT')
+                           and ('FROM INVOICES' in sql.upper() or 'FROM ACCOUNT_MOVEMENTS' in sql.upper())]
+        self.assertEqual(history_queries, [])
+
+    def test_opening_customer_preserves_history(self):
+        invoice = self.dated_invoice('2026-10-02 12:00:00', sale_mode='CUENTA_CORRIENTE')
+        customer = main.admin_backoffice_customer_detail(1, None, None)
+        self.assertTrue(customer['accountHistory'])
+        self.assertEqual([document['id'] for document in customer['documents']], [invoice['id']])
+        self.assertTrue(customer['movements'])
+        self.assertEqual(customer['balance'], 1000)
+
 
 if __name__ == '__main__':
     unittest.main()
