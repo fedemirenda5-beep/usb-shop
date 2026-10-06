@@ -83,6 +83,24 @@
   align-items: center;
 }
 
+.purchaseToggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #334155;
+}
+
+.purchaseMonth {
+  display: grid;
+  gap: 4px;
+  color: #334155;
+}
+
+.purchaseTable {
+  min-width: 1150px;
+  table-layout: auto;
+}
+
 .headerSelect {
   min-width: 190px;
   border: 1px solid #d7dee7;

@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
-import { formatArgentinaDateTime } from '@/lib/datetime';
+import { formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
 import { canViewProfitMetrics } from '../adminPermissions';
@@ -33,6 +33,11 @@ type Customer = {
   zone?: string | null;
   balance: number;
   invoice_count: number;
+  monthly_sales_total?: number;
+  monthly_purchase_count?: number;
+  last_purchase_at?: string | null;
+  last_purchase_month?: string | null;
+  days_without_purchase?: number | null;
   created_at?: string | null;
 };
 
@@ -158,6 +163,9 @@ export default function ClientesPage() {
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(emptyCustomerForm);
   const [quickSellerId, setQuickSellerId] = useState('');
   const [printScope, setPrintScope] = useState<'all' | 'seller'>('all');
+  const [includePurchases, setIncludePurchases] = useState(false);
+  const [purchaseMonth, setPurchaseMonth] = useState(() => getArgentinaNowDateInput().slice(0, 7));
+  const [printingCustomers, setPrintingCustomers] = useState(false);
   const [showGrowthChart, setShowGrowthChart] = useState(false);
   const [showRankingChart, setShowRankingChart] = useState(false);
   const [rankingLoading, setRankingLoading] = useState(false);
@@ -201,6 +209,7 @@ export default function ClientesPage() {
     try {
       setLoading(true);
       const params = new URLSearchParams({ limit: '300', summary: 'true' });
+      if (includePurchases) params.set('purchase_month', purchaseMonth);
       if (query.trim()) params.set('q', query.trim());
       if (sellerFilter !== 'all') params.set('seller_id', sellerFilter);
       if (zoneFilter !== 'all') params.set('zone', zoneFilter);
@@ -322,7 +331,7 @@ export default function ClientesPage() {
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [search, sellerFilter, zoneFilter]);
+  }, [search, sellerFilter, zoneFilter, includePurchases, purchaseMonth]);
 
   useEffect(() => {
     if (selectedCustomerId) {
@@ -517,18 +526,33 @@ export default function ClientesPage() {
       setError('Selecciona un vendedor en el filtro para imprimir solo sus clientes.');
       return;
     }
+    const popup = window.open('', '_blank', 'width=1100,height=900');
+    if (!popup) {
+      setError('El navegador bloqueo la ventana de impresion');
+      return;
+    }
+    popup.document.body.textContent = 'Preparando lista de clientes...';
+    setPrintingCustomers(true);
+    setError('');
     try {
       const params = new URLSearchParams({ limit: '300' });
+      if (includePurchases) params.set('purchase_month', purchaseMonth);
       if (search.trim()) params.set('q', search.trim());
-      if (targetSellerId) params.set('seller_id', String(targetSellerId));
+      if (printScope === 'seller' && targetSellerId) params.set('seller_id', String(targetSellerId));
       if (zoneFilter !== 'all') params.set('zone', zoneFilter);
-      const res = await fetchApiResponse(`/admin/backoffice-customers?${params.toString()}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('No se pudieron cargar los clientes para imprimir');
-      const data = await res.json();
-      const printableCustomers = Array.isArray(data)
-        ? (data as Customer[]).sort((a, b) => a.name.localeCompare(b.name, 'es'))
-        : [];
+      const printableCustomers: Customer[] = [];
+      for (let offset = 0; ; offset += 300) {
+        params.set('offset', String(offset));
+        const res = await fetchApiResponse(`/admin/backoffice-customers?${params.toString()}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudieron cargar los clientes para imprimir');
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Respuesta de clientes invalida');
+        printableCustomers.push(...data);
+        if (data.length < 300) break;
+      }
+      printableCustomers.sort((a, b) => a.name.localeCompare(b.name, 'es'));
       await openAdminSellerCustomersPrint({
+        purchaseMonth: includePurchases ? purchaseMonth : undefined,
         sellerName:
           printScope === 'seller' && targetSellerId
             ? sellerMap.get(targetSellerId) || `Vendedor ${targetSellerId}`
@@ -543,10 +567,18 @@ export default function ClientesPage() {
           address: customer.address,
           zone: customer.zone,
           balance: customer.balance,
+          monthlySalesTotal: customer.monthly_sales_total,
+          monthlyPurchaseCount: customer.monthly_purchase_count,
+          lastPurchaseAt: customer.last_purchase_at,
+          lastPurchaseMonth: customer.last_purchase_month,
+          daysWithoutPurchase: customer.days_without_purchase,
         })),
-      });
+      }, popup);
     } catch (err) {
+      popup.close();
       setError(err instanceof Error ? err.message : 'No se pudo abrir la impresion');
+    } finally {
+      setPrintingCustomers(false);
     }
   };
 
@@ -767,6 +799,17 @@ export default function ClientesPage() {
             Ranking mejores clientes
           </button>
           <div className={styles.printControls}>
+            <label className={styles.purchaseToggle}>
+              <input type="checkbox" checked={includePurchases} onChange={(e) => setIncludePurchases(e.target.checked)} />
+              Ver compras del mes
+            </label>
+            {includePurchases ? (
+              <label className={styles.purchaseMonth}>
+                Mes de compras
+                <input type="month" className={styles.headerSelect} value={purchaseMonth}
+                  onChange={(e) => { if (e.target.value) setPurchaseMonth(e.target.value); }} />
+              </label>
+            ) : null}
             <select
               value={printScope}
               onChange={(e) => setPrintScope(e.target.value === 'seller' ? 'seller' : 'all')}
@@ -779,8 +822,9 @@ export default function ClientesPage() {
               type="button"
               className={styles.secondaryButton}
               onClick={() => void printSellerCustomers()}
+              disabled={printingCustomers}
             >
-              Imprimir clientes
+              {printingCustomers ? 'Preparando...' : 'Imprimir clientes'}
             </button>
           </div>
           <button
@@ -798,6 +842,11 @@ export default function ClientesPage() {
       </div>
 
       {error ? <div className={styles.errorBox}>{error}</div> : null}
+      {includePurchases ? (
+        <p className={styles.tableMeta}>
+          Compras de {purchaseMonth}: facturas menos notas de crédito. Los días sin comprar se cuentan hasta hoy.
+        </p>
+      ) : null}
 
       <div className={styles.searchBar}>
         <input
@@ -844,7 +893,7 @@ export default function ClientesPage() {
           ) : filteredCustomers.length === 0 ? (
             <div className={styles.empty}>No hay clientes cargados.</div>
           ) : (
-            <table className={styles.table}>
+            <table className={`${styles.table} ${includePurchases ? styles.purchaseTable : ''}`}>
               <thead>
                 <tr>
                   <th className={styles.colId}>ID</th>
@@ -854,6 +903,11 @@ export default function ClientesPage() {
                   <th className={styles.colVendedor}>Vendedor</th>
                   <th className={styles.colZona}>Zona</th>
                   <th className={styles.colCuit}>CUIT / DNI</th>
+                  {includePurchases ? <>
+                    <th>Comprado en {purchaseMonth}</th>
+                    <th>Última compra</th>
+                    <th>Días sin comprar</th>
+                  </> : null}
                   <th className={styles.colAcciones}>Acciones</th>
                 </tr>
               </thead>
@@ -883,6 +937,14 @@ export default function ClientesPage() {
                     </td>
                     <td className={`${styles.colZona} ${styles.truncateCell}`}>{customer.zone || '-'}</td>
                     <td className={`${styles.colCuit} ${styles.truncateCell}`}>{customer.cuit || '-'}</td>
+                    {includePurchases ? <>
+                      <td>
+                        {customer.monthly_sales_total === undefined ? '—' : formatCurrency(customer.monthly_sales_total)}
+                        {customer.monthly_purchase_count === 0 ? <div>Sin compras en el mes</div> : null}
+                      </td>
+                      <td>{customer.last_purchase_at ? formatDate(customer.last_purchase_at) : customer.monthly_sales_total === undefined ? '—' : 'Sin compras registradas'}</td>
+                      <td>{customer.days_without_purchase == null ? '—' : `${customer.days_without_purchase} días`}</td>
+                    </> : null}
                     <td className={styles.colAcciones}>
                       <div className={styles.rowActions}>
                         <button

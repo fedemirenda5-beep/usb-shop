@@ -6965,6 +6965,52 @@ def admin_list_customers(
         conn.close()
 
 
+def _customer_purchase_activity(conn, customer_ids: list[int], month: str) -> dict[int, dict]:
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(status_code=400, detail="Mes invalido. Usa YYYY-MM.")
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Mes invalido. Usa YYYY-MM.") from exc
+    activity = {
+        customer_id: {"monthly_sales_total": 0.0, "monthly_purchase_count": 0,
+                      "last_purchase_at": None, "last_purchase_month": None,
+                      "days_without_purchase": None}
+        for customer_id in customer_ids
+    }
+    if not customer_ids:
+        return activity
+    placeholders = ", ".join("?" for _ in customer_ids)
+    rows = conn.execute(
+        f"""SELECT customer_id, total, created_at, document_type FROM invoices
+            WHERE customer_id IN ({placeholders})
+              AND (UPPER(TRIM(COALESCE(document_type, ''))) LIKE 'FACTURA%'
+                   OR UPPER(TRIM(COALESCE(document_type, ''))) = 'NOTA_CREDITO')""",
+        customer_ids,
+    ).fetchall()
+    last_dates: dict[int, datetime] = {}
+    today = _argentina_now().date()
+    for row in rows:
+        purchased_at = _argentina_datetime(row["created_at"])
+        if purchased_at is None:
+            continue
+        customer_id = int(row["customer_id"])
+        item = activity[customer_id]
+        is_credit = str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO"
+        if purchased_at.strftime("%Y-%m") == month:
+            item["monthly_sales_total"] += float(row["total"] or 0) * (-1 if is_credit else 1)
+            if not is_credit:
+                item["monthly_purchase_count"] += 1
+        if not is_credit and (customer_id not in last_dates or purchased_at > last_dates[customer_id]):
+            last_dates[customer_id] = purchased_at
+            item["last_purchase_at"] = purchased_at.isoformat()
+            item["last_purchase_month"] = purchased_at.strftime("%Y-%m")
+            item["days_without_purchase"] = max(0, (today - purchased_at.date()).days)
+    for item in activity.values():
+        item["monthly_sales_total"] = round(item["monthly_sales_total"], 2)
+    return activity
+
+
 @app.get("/admin/backoffice-customers")
 def admin_backoffice_customers(
     request: Request,
@@ -6976,6 +7022,7 @@ def admin_backoffice_customers(
     limit: int = 100,
     offset: int = 0,
     summary: bool = False,
+    purchase_month: Optional[str] = None,
 ) -> list[dict]:
     _require_admin(session_token)
     conn = _connect()
@@ -7045,6 +7092,10 @@ def admin_backoffice_customers(
             """,
             params + [min(300, max(1, limit)), max(0, offset)],
         ).fetchall()
+        purchase_activity = (
+            _customer_purchase_activity(conn, [int(row["id"]) for row in rows], purchase_month)
+            if purchase_month is not None else {}
+        )
         if summary:
             return [
                 {
@@ -7062,6 +7113,7 @@ def admin_backoffice_customers(
                     "external_ref": row["external_ref"],
                     "seller_id": int(row["seller_id"]) if row["seller_id"] is not None else None,
                     "zone": row["zone"],
+                    **purchase_activity.get(int(row["id"]), {}),
                 }
                 for row in rows
             ]
@@ -7123,6 +7175,7 @@ def admin_backoffice_customers(
                 "zone": row["zone"],
                 "balance": balances.get(int(row["id"]), 0.0),
                 "invoice_count": invoice_counts.get(int(row["id"]), 0),
+                **purchase_activity.get(int(row["id"]), {}),
             }
             for row in rows
         ]

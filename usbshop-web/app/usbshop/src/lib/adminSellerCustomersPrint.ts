@@ -1,3 +1,5 @@
+import { formatArgentinaDate } from './datetime';
+
 type SellerCustomerPrintItem = {
   id: number;
   name: string;
@@ -7,12 +9,18 @@ type SellerCustomerPrintItem = {
   address?: string | null;
   zone?: string | null;
   balance?: number;
+  monthlySalesTotal?: number;
+  monthlyPurchaseCount?: number;
+  lastPurchaseAt?: string | null;
+  lastPurchaseMonth?: string | null;
+  daysWithoutPurchase?: number | null;
 };
 
 type SellerCustomerPrintPayload = {
   sellerName: string;
   generatedAtLabel: string;
   customers: SellerCustomerPrintItem[];
+  purchaseMonth?: string;
 };
 
 const money = (value: number) =>
@@ -26,7 +34,13 @@ const escapeHtml = (value: unknown) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string) => {
+const monthLabel = (value: string) => {
+  const [year, month] = value.split('-').map(Number);
+  return new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, 1)));
+};
+
+export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string) => {
   const rows = payload.customers
     .map(
       (customer) => `
@@ -40,6 +54,15 @@ const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string
           <td>${escapeHtml(customer.zone || '-')}</td>
           <td>${escapeHtml(customer.address || '-')}</td>
           <td class="${(customer.balance || 0) > 0 ? 'debt' : 'credit'}">${escapeHtml(money(customer.balance || 0))}</td>
+          ${payload.purchaseMonth ? `
+          <td>${escapeHtml(money(customer.monthlySalesTotal || 0))}
+            ${customer.monthlyPurchaseCount === 0 ? '<div class="subline">Sin compras en el mes</div>' : ''}
+          </td>
+          <td>${customer.lastPurchaseAt ? escapeHtml(formatArgentinaDate(customer.lastPurchaseAt)) : 'Sin compras registradas'}
+            ${customer.lastPurchaseMonth ? `<div class="subline">${escapeHtml(monthLabel(customer.lastPurchaseMonth))}</div>` : ''}
+          </td>
+          <td>${customer.daysWithoutPurchase == null ? '—' : escapeHtml(`${customer.daysWithoutPurchase} días`)}</td>
+          ` : ''}
         </tr>
       `
     )
@@ -77,10 +100,10 @@ const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string
     .debt { color: #b91c1c; font-weight: 700; }
     .credit { color: #047857; font-weight: 700; }
     @media print {
-      .banner, .panel, table { break-inside: avoid; }
+      .banner, .meta-grid { break-inside: avoid; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; }
-      @page { size: A4; margin: 6mm; }
+      @page { size: A4 ${payload.purchaseMonth ? 'landscape' : 'portrait'}; margin: 6mm; }
     }
   </style>
 </head>
@@ -114,6 +137,8 @@ const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string
         </div>
       </section>
       <section class="panel">
+        ${payload.purchaseMonth ? `<p><strong>Compras de ${escapeHtml(monthLabel(payload.purchaseMonth))}</strong></p>
+          <p class="subline">Total neto de facturas menos notas de crédito. Última compra y días sin comprar al emitir este informe.</p>` : ''}
         <table>
           <thead>
             <tr>
@@ -123,10 +148,11 @@ const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string
               <th>Zona</th>
               <th>Direccion</th>
               <th>Saldo</th>
+              ${payload.purchaseMonth ? '<th>Comprado en el mes</th><th>Última compra</th><th>Días sin comprar</th>' : ''}
             </tr>
           </thead>
           <tbody>
-            ${rows || '<tr><td colspan="6">Sin clientes asignados.</td></tr>'}
+            ${rows || `<tr><td colspan="${payload.purchaseMonth ? 9 : 6}">Sin clientes asignados.</td></tr>`}
           </tbody>
         </table>
       </section>
@@ -141,8 +167,8 @@ const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl: string
 </html>`;
 };
 
-export async function openAdminSellerCustomersPrint(payload: SellerCustomerPrintPayload): Promise<void> {
-  const popup = window.open('', '_blank', 'width=960,height=900');
+export async function openAdminSellerCustomersPrint(payload: SellerCustomerPrintPayload, printWindow?: Window): Promise<void> {
+  const popup = printWindow || window.open('', '_blank', 'width=1100,height=900');
   if (!popup) throw new Error('El navegador bloqueo la ventana de impresion');
   const logoUrl = new URL('/logo-small.jpeg', window.location.origin).toString();
   popup.document.open();
