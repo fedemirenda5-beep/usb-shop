@@ -80,6 +80,27 @@ class CustomerPurchaseActivityTests(unittest.TestCase):
     def test_normal_list_does_not_include_activity(self):
         self.assertNotIn('monthly_sales_total', main.admin_backoffice_customers(None, None)[0])
 
+    def test_summary_activity_query_is_safe_for_postgres_parameters(self):
+        self.dated_invoice('2026-10-02 12:00:00')
+        execute = main.DBConn.execute
+        checked_queries = []
+
+        def checked_execute(conn, query, params=None):
+            if 'SELECT customer_id, total, created_at, document_type FROM invoices' in query:
+                # psycopg2 interprets percent markers even inside SQL literals.
+                # Exercise that formatting before running the query on SQLite.
+                with patch.object(main, 'DB_IS_POSTGRES', True):
+                    postgres_query = main._adapt_query(query)
+                postgres_query % tuple(str(value) for value in params)
+                checked_queries.append(query)
+            return execute(conn, query, params)
+
+        with patch.object(main.DBConn, 'execute', checked_execute):
+            customers = self.report(summary=True, q='Uno')
+        self.assertEqual(len(checked_queries), 1)
+        self.assertEqual(customers[0]['monthly_sales_total'], 1000)
+        self.assertEqual(customers[0]['monthly_purchase_count'], 1)
+
     def test_edit_details_do_not_query_or_return_history(self):
         self.dated_invoice('2026-10-02 12:00:00')
         statements = []

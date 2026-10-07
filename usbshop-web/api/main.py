@@ -6984,9 +6984,9 @@ def _customer_purchase_activity(conn, customer_ids: list[int], month: str) -> di
     rows = conn.execute(
         f"""SELECT customer_id, total, created_at, document_type FROM invoices
             WHERE customer_id IN ({placeholders})
-              AND (UPPER(TRIM(COALESCE(document_type, ''))) LIKE 'FACTURA%'
+              AND (UPPER(TRIM(COALESCE(document_type, ''))) LIKE ?
                    OR UPPER(TRIM(COALESCE(document_type, ''))) = 'NOTA_CREDITO')""",
-        customer_ids,
+        [*customer_ids, "FACTURA%"],
     ).fetchall()
     last_dates: dict[int, datetime] = {}
     today = _argentina_now().date()
