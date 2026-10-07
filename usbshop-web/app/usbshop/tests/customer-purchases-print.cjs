@@ -19,7 +19,8 @@ const { buildPrintableHtml, openAdminSellerCustomersPrint } = loadTs('adminSelle
 const payload = {
   sellerName: 'Todos los clientes', generatedAtLabel: '06/10/2026', purchaseMonth: '2026-10',
   customers: [
-    { id: 1, name: '<script>cliente</script>', monthlySalesTotal: 1234.5, monthlyPurchaseCount: 1,
+    { id: 1, name: '<script>cliente</script>', locality: 'San Martín', address: 'Av. Mitre 123 & 125',
+      phone: '11 5555-1234', email: 'cliente@example.test', monthlySalesTotal: 1234.5, monthlyPurchaseCount: 1,
       lastPurchaseAt: '2026-10-01T02:59:59Z', lastPurchaseMonth: '2026-09', daysWithoutPurchase: 6 },
     { id: 2, name: 'Sin historial', monthlySalesTotal: 0, monthlyPurchaseCount: 0 },
     { id: 3, name: 'Sin compras este mes', monthlySalesTotal: 0, monthlyPurchaseCount: 0,
@@ -37,7 +38,12 @@ assert.ok(!html.includes('<th>Última compra</th>'));
 assert.ok(!html.includes('<th>Días sin comprar</th>'));
 assert.match(html, /<th>Cliente<\/th>\s*<th>Compras del mes<\/th>/);
 const rows = [...html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].slice(1);
-assert.deepEqual(rows.map(row => (row[1].match(/<td\b/g) || []).length), [7, 7, 7]);
+assert.deepEqual(rows.map(row => (row[1].match(/<td\b/g) || []).length), [8, 8, 8]);
+assert.match(html, /<th>Localidad<\/th>\s*<th>Dirección<\/th>\s*<th>Teléfono<\/th>/);
+assert.ok(html.includes('<td>San Martín</td>'));
+assert.ok(html.includes('<td>Av. Mitre 123 &amp; 125</td>'));
+assert.ok(html.includes('11 5555-1234'));
+assert.ok(html.includes('cliente@example.test'));
 assert.ok(html.includes('&lt;script&gt;cliente&lt;/script&gt;'));
 assert.ok(!html.includes('<script>cliente</script>'));
 assert.ok(html.includes('1.234,50'));
@@ -48,8 +54,8 @@ assert.ok(!simple.includes('<th>Compras del mes</th>'));
 assert.ok(!simple.includes('45 días sin comprar'));
 assert.ok(simple.includes('A4 portrait'));
 const empty = buildPrintableHtml({ ...payload, customers: [] }, '/logo.jpeg');
-assert.ok(empty.includes('colspan="7"'));
-assert.ok(buildPrintableHtml({ ...payload, purchaseMonth: undefined, customers: [] }, '/logo.jpeg').includes('colspan="6"'));
+assert.ok(empty.includes('colspan="8"'));
+assert.ok(buildPrintableHtml({ ...payload, purchaseMonth: undefined, customers: [] }, '/logo.jpeg').includes('colspan="7"'));
 
 const { formatCustomerMonthlyPurchases } = loadTs('customerMonthlyPurchases.ts');
 assert.equal(formatCustomerMonthlyPurchases({ monthlySalesTotal: 0, monthlyPurchaseCount: 1,

@@ -46,12 +46,15 @@ export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl:
           <td>#${escapeHtml(customer.id)}</td>
           <td>
             <strong>${escapeHtml(customer.name)}</strong>
-            <div class="subline">${escapeHtml(customer.locality || '')}</div>
           </td>
           ${payload.purchaseMonth ? `<td>${escapeHtml(formatCustomerMonthlyPurchases(customer))}</td>` : ''}
-          <td>${escapeHtml(customer.phone || customer.email || '-')}</td>
-          <td>${escapeHtml(customer.zone || '-')}</td>
+          <td>${escapeHtml(customer.locality || '-')}</td>
           <td>${escapeHtml(customer.address || '-')}</td>
+          <td>
+            ${escapeHtml(customer.phone || '-')}
+            ${customer.email ? `<div class="subline">${escapeHtml(customer.email)}</div>` : ''}
+          </td>
+          <td>${escapeHtml(customer.zone || '-')}</td>
           <td class="${(customer.balance || 0) > 0 ? 'debt' : 'credit'}">${escapeHtml(money(customer.balance || 0))}</td>
         </tr>
       `
@@ -84,7 +87,7 @@ export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl:
     .meta-card span { display: block; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
     .meta-card strong { font-size: 16px; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 9px 8px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 12px; vertical-align: top; }
+    th, td { padding: 9px 6px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 12px; vertical-align: top; overflow-wrap: anywhere; }
     th { background: #f8fafc; text-transform: uppercase; font-size: 11px; }
     .subline { margin-top: 4px; color: #64748b; font-size: 11px; }
     .debt { color: #b91c1c; font-weight: 700; }
@@ -134,14 +137,15 @@ export const buildPrintableHtml = (payload: SellerCustomerPrintPayload, logoUrl:
               <th>ID</th>
               <th>Cliente</th>
               ${payload.purchaseMonth ? '<th>Compras del mes</th>' : ''}
-              <th>Contacto</th>
+              <th>Localidad</th>
+              <th>Dirección</th>
+              <th>Teléfono</th>
               <th>Zona</th>
-              <th>Direccion</th>
               <th>Saldo</th>
             </tr>
           </thead>
           <tbody>
-            ${rows || `<tr><td colspan="${payload.purchaseMonth ? 7 : 6}">Sin clientes asignados.</td></tr>`}
+            ${rows || `<tr><td colspan="${payload.purchaseMonth ? 8 : 7}">Sin clientes asignados.</td></tr>`}
           </tbody>
         </table>
       </section>
