@@ -149,6 +149,7 @@
   background: #f0fdfa;
 }
 
+.dangerButton,
 .primaryButton,
 .secondaryButton {
   border: none;
@@ -162,6 +163,46 @@
 .primaryButton {
   background: linear-gradient(135deg, #a8e637, #9d4edd);
   color: white;
+}
+
+.dangerButton {
+  background: #b91c1c;
+  color: #fff;
+}
+
+.dangerButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.retirementDialog {
+  width: min(600px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.retirementDialog .formGrid {
+  grid-template-columns: 1fr;
+}
+
+.retirementDialog select {
+  width: 100%;
+  border: 1px solid #d7dee7;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  background: #fff;
 }
 
 .secondaryButton {

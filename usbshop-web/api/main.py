@@ -7891,6 +7891,70 @@ def admin_update_seller(
         conn.close()
 
 
+@app.delete("/admin/sellers/{seller_id}")
+def admin_delete_seller(
+    seller_id: int,
+    request: Request,
+    replacement_seller_id: Optional[int] = None,
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict:
+    """Retire a seller and transfer customers without changing historical sales."""
+    _require_admin(session_token)
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_sellers_table(conn)
+        if conn.is_postgres:
+            lock_suffix = " FOR UPDATE"
+        else:
+            conn.execute("BEGIN IMMEDIATE")
+            lock_suffix = ""
+        # Lock in a stable order when retiring sellers concurrently.
+        seller_ids = sorted({seller_id, replacement_seller_id} - {None})
+        placeholders = ", ".join("?" for _ in seller_ids)
+        sellers = {
+            int(row["id"]): row
+            for row in conn.execute(
+                f"SELECT id, is_active FROM sellers WHERE id IN ({placeholders}) ORDER BY id{lock_suffix}",
+                seller_ids,
+            ).fetchall()
+        }
+        if seller_id not in sellers:
+            raise HTTPException(status_code=404, detail="Vendedor no encontrado")
+        if replacement_seller_id is not None:
+            if replacement_seller_id == seller_id:
+                raise HTTPException(status_code=400, detail="Selecciona otro vendedor para recibir los clientes")
+            replacement = sellers.get(replacement_seller_id)
+            if replacement is None:
+                raise HTTPException(status_code=404, detail="Vendedor de destino no encontrado")
+            if not replacement["is_active"]:
+                raise HTTPException(status_code=400, detail="El vendedor de destino debe estar activo")
+        count = conn.execute(
+            "SELECT COUNT(*) AS total FROM customers WHERE seller_id = ? AND deleted_at IS NULL",
+            (seller_id,),
+        ).fetchone()
+        customer_count = int(count["total"] or 0)
+        if customer_count and replacement_seller_id is None:
+            raise HTTPException(status_code=400, detail="Selecciona un vendedor para reasignar los clientes antes de dar la baja")
+        if replacement_seller_id is not None:
+            conn.execute(
+                "UPDATE customers SET seller_id = ? WHERE seller_id = ? AND deleted_at IS NULL",
+                (replacement_seller_id, seller_id),
+            )
+        conn.execute(
+            "UPDATE sellers SET is_active = 0, updated_at = ? WHERE id = ?",
+            (datetime.now(timezone.utc).isoformat(), seller_id),
+        )
+        conn.commit()
+        return {"id": seller_id, "replacement_seller_id": replacement_seller_id,
+                "reassigned_customers": customer_count, "message": "Vendedor dado de baja"}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 @app.get("/admin/backoffice-customers/{customer_id}")
 def admin_backoffice_customer_detail(
     customer_id: int,

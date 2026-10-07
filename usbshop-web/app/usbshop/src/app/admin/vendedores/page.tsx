@@ -221,6 +221,13 @@ export default function VendedoresPage() {
   const [showSellerForm, setShowSellerForm] = useState(false);
   const [sellerDetail, setSellerDetail] = useState<SellerMonthlyDetail | null>(null);
   const [sellerForm, setSellerForm] = useState<SellerFormState>(emptySellerForm);
+  const [retiringSeller, setRetiringSeller] = useState<Seller | null>(null);
+  const [replacementSellers, setReplacementSellers] = useState<Seller[]>([]);
+  const [replacementSellerId, setReplacementSellerId] = useState('');
+  const [retirementLoading, setRetirementLoading] = useState(false);
+  const [retirementSaving, setRetirementSaving] = useState(false);
+  const [retirementError, setRetirementError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const detailSellerId = Number(searchParams.get('seller') || 0) || null;
   const detailScopeParam = searchParams.get('scope');
@@ -640,6 +647,55 @@ export default function VendedoresPage() {
     }
   };
 
+  const openSellerRetirement = async (seller: Seller) => {
+    setRetiringSeller(seller);
+    setReplacementSellerId('');
+    setReplacementSellers([]);
+    setRetirementError('');
+    setSuccessMessage('');
+    setRetirementLoading(true);
+    try {
+      const candidates: Seller[] = [];
+      for (let offset = 0; ; offset += 150) {
+        const res = await fetchApiResponse(`/admin/sellers?limit=150&offset=${offset}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('No se pudieron cargar los vendedores de destino');
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Respuesta de vendedores invalida');
+        candidates.push(...data.filter((item: Seller) => item.is_active && item.id !== seller.id));
+        if (data.length < 150) break;
+      }
+      setReplacementSellers(candidates);
+    } catch (err) {
+      setRetirementError(getErrorMessage(err, 'Error cargando vendedores'));
+    } finally {
+      setRetirementLoading(false);
+    }
+  };
+
+  const retireSeller = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!retiringSeller || retirementSaving) return;
+    setRetirementSaving(true);
+    setRetirementError('');
+    try {
+      const params = new URLSearchParams();
+      if (replacementSellerId) params.set('replacement_seller_id', replacementSellerId);
+      const res = await fetchApiResponse(`/admin/sellers/${retiringSeller.id}?${params.toString()}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail || 'No se pudo dar de baja al vendedor');
+      const destination = replacementSellers.find((seller) => String(seller.id) === replacementSellerId);
+      setSuccessMessage(`${retiringSeller.name} fue dado de baja. ${data.reassigned_customers} clientes reasignados${destination ? ` a ${destination.name}` : ''}.`);
+      setRetiringSeller(null);
+      setShowSellerForm(false);
+      await queryClient.invalidateQueries({ queryKey: ['admin'] });
+      await Promise.all([loadSellers(search), loadMonthlySummary(), loadRangeSummary()]);
+    } catch (err) {
+      setRetirementError(getErrorMessage(err, 'Error dando de baja al vendedor'));
+    } finally {
+      setRetirementSaving(false);
+    }
+  };
+
   const openSellerMonthlyDetail = (sellerId: number) => {
     const params = new URLSearchParams();
     params.set('scope', activeWindow);
@@ -903,6 +959,35 @@ export default function VendedoresPage() {
         </div>
       </section>
 
+      {successMessage ? <div className={styles.notice} role="status">{successMessage}</div> : null}
+
+      {retiringSeller ? (
+        <div className={styles.modalOverlay}>
+          <section className={`${styles.panel} ${styles.retirementDialog}`} role="dialog" aria-modal="true" aria-labelledby="retire-seller-title">
+            <h2 id="retire-seller-title">Dar de baja a {retiringSeller.name}</h2>
+            <p>Se reasignarán todos sus clientes al vendedor elegido y quedará inactivo. Las ventas y comisiones anteriores conservarán su vendedor original.</p>
+            <p>Clientes asignados: <strong>{integer(retiringSeller.customer_count || 0)}</strong></p>
+            <form className={styles.formGrid} onSubmit={retireSeller}>
+              <label>
+                Reasignar clientes a
+                <select autoFocus value={replacementSellerId} onChange={(event) => setReplacementSellerId(event.target.value)} required={Boolean(retiringSeller.customer_count)} disabled={retirementLoading || retirementSaving}>
+                  <option value="">{retirementLoading ? 'Cargando vendedores...' : 'Seleccionar vendedor'}</option>
+                  {replacementSellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.name}</option>)}
+                </select>
+              </label>
+              {!retirementLoading && !retirementError && replacementSellers.length === 0 ? <p>No hay otro vendedor activo. Podés crear uno o activar un vendedor antes de transferir los clientes.</p> : null}
+              {retirementError ? <div className={styles.errorBox} role="alert">{retirementError}</div> : null}
+              <div className={styles.formActions}>
+                <button type="submit" className={styles.dangerButton} disabled={retirementLoading || retirementSaving || Boolean(retirementError && replacementSellers.length === 0) || Boolean(retiringSeller.customer_count && !replacementSellerId)}>
+                  {retirementSaving ? 'Procesando...' : replacementSellerId ? 'Confirmar baja y reasignar clientes' : 'Confirmar baja'}
+                </button>
+                <button type="button" className={styles.secondaryButton} disabled={retirementLoading || retirementSaving} onClick={() => setRetiringSeller(null)}>Cancelar</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+
       {activePanel === 'overview' ? (
         <>
           <div className={styles.tablePanel}>
@@ -938,6 +1023,7 @@ export default function VendedoresPage() {
                       >
                         <td>
                           <strong>{row.seller.name}</strong>
+                          {!row.seller.is_active ? <span className={styles.inactiveBadge}>Inactivo</span> : null}
                           <span className={styles.metaLine}>
                             {formatPercent(row.seller.commission_percent)} · {integer(row.seller.customer_count || 0)} clientes · actualizado {formatDate(row.seller.updated_at || row.seller.created_at)}
                           </span>
@@ -1070,9 +1156,16 @@ export default function VendedoresPage() {
                 <h3>Ficha del vendedor</h3>
                 <p>Resumen rapido para decidir si el vendedor es rentable y abrir su detalle mensual.</p>
               </div>
-              <button type="button" className={styles.secondaryButton} onClick={() => editSeller(selectedSeller)}>
-                Editar vendedor
-              </button>
+              <div className={styles.headerActions}>
+                <button type="button" className={styles.secondaryButton} onClick={() => editSeller(selectedSeller)}>
+                  Editar vendedor
+                </button>
+                {selectedSeller.is_active || selectedSeller.customer_count ? (
+                  <button type="button" className={styles.dangerButton} onClick={() => void openSellerRetirement(selectedSeller)}>
+                    Dar de baja y reasignar clientes
+                  </button>
+                ) : <span className={styles.inactiveBadge}>Vendedor inactivo</span>}
+              </div>
             </div>
 
             <div className={styles.detailGrid}>

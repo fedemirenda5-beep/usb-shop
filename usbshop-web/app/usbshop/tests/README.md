@@ -1,5 +1,23 @@
 # Pruebas del carrito
 
+## Baja de vendedores y transferencia de clientes
+
+En Vendedores, abrir la ficha y elegir **Dar de baja y reasignar clientes**.
+Seleccionar otro vendedor activo y confirmar. La operación transfiere todos los
+clientes no eliminados, incluidos los inactivos, y deja al vendedor anterior
+inactivo para conservar sus ventas y comisiones históricas. Un vendedor sin
+clientes puede darse de baja sin reemplazo.
+
+Desde `usbshop-web/api`, ejecutar
+`.venv/Scripts/python.exe -m unittest test_seller_retirement test_customer_purchase_activity`.
+Las pruebas usan una base temporal y verifican destino válido, transferencia,
+historial, permisos, repetición de solicitudes y rollback ante errores.
+
+Con el build servido en el puerto 3012, ejecutar `node tests/seller-retirement.cjs`.
+Acepta `PLAYWRIGHT_MODULE` y `TEST_WEB_URL`. Usa respuestas simuladas y verifica
+escritorio y móvil, búsqueda del vendedor, selección de destino, cancelación,
+rechazo del servidor y actualización de la ficha después de la baja.
+
 ## Búsqueda de productos
 
 Desde `usbshop-web/api`, ejecutar `.venv/Scripts/python.exe -m unittest test_product_search test_admin_performance`.
