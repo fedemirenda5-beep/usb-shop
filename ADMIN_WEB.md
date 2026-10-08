@@ -91,6 +91,24 @@ Si una mejora no puede cerrar las capas necesarias, no debe quedar visible en el
 
 La web publicada apunta a `https://api.usbshop.com.ar`.
 
+### Demoras de acceso
+
+- `/auth/me` verifica la firma y el vencimiento de la cookie sin esperar la cola
+  de trabajadores de consultas e imagenes. Una sesion invalida sigue devolviendo 401.
+- Las conexiones PostgreSQL tienen un limite de 8 segundos, configurable con
+  `USB_DB_CONNECT_TIMEOUT_SECONDS`. Este limite aplica a la conexion, no a la
+  duracion de las consultas.
+- `render.yaml` declara la API con `plan: free`. Si el servicio publicado usa ese
+  plan, Render lo suspende tras 15 minutos sin trafico y el siguiente acceso puede
+  esperar aproximadamente un minuto: https://render.com/docs/free.
+  Confirmar el plan real en Render; el archivo no prueba la configuracion activa.
+- Para eliminar la suspension por inactividad, usar una instancia siempre activa.
+  El cambio de plan tiene costo y debe decidirse antes de modificar el alojamiento.
+- Verificacion local: desde `usbshop-web/api`, ejecutar
+  `.venv/Scripts/python.exe -m unittest test_api_availability test_admin_performance`.
+  Incluye la verificacion de sesion con todos los trabajadores ocupados y el
+  limite de conexion PostgreSQL; no usa datos productivos.
+
 Rama operativa:
 
 - `release` es la rama de trabajo y publicacion

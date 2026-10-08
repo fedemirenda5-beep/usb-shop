@@ -108,6 +108,7 @@ PUBLIC_STORE_BASE_URL = (
 PREFER_SOURCE_DB_READS = os.getenv("USB_PREFER_SOURCE_DB", "0").strip() == "1"
 SLOW_REQUEST_THRESHOLD_MS = max(1, int(os.getenv("USB_SLOW_REQUEST_MS", "700") or "700"))
 SLOW_QUERY_THRESHOLD_MS = max(1, int(os.getenv("USB_SLOW_QUERY_MS", "250") or "250"))
+DB_CONNECT_TIMEOUT_SECONDS = max(1, int(os.getenv("USB_DB_CONNECT_TIMEOUT_SECONDS", "8") or "8"))
 _REQUEST_DB_TIMING: ContextVar[Optional[dict[str, Any]]] = ContextVar("request_db_timing", default=None)
 
 
@@ -214,9 +215,9 @@ def _connect() -> DBConn:
         if psycopg2 is None:
             raise FileNotFoundError("psycopg2 no instalado para Postgres")
         if "sslmode=" in DB_URL:
-            conn = psycopg2.connect(DB_URL)
+            conn = psycopg2.connect(DB_URL, connect_timeout=DB_CONNECT_TIMEOUT_SECONDS)
         else:
-            conn = psycopg2.connect(DB_URL, sslmode="require")
+            conn = psycopg2.connect(DB_URL, sslmode="require", connect_timeout=DB_CONNECT_TIMEOUT_SECONDS)
         return DBConn(conn, True)
     db_path = _effective_db_path()
     if not db_path.exists():
@@ -6017,7 +6018,9 @@ def auth_logout(response: Response, request: Request) -> dict:
 
 
 @app.get("/auth/me")
-def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
+async def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE)) -> dict:
+    # Signature/expiry verification does not access the database. Keep it off
+    # the shared worker queue used by blocking queries and image downloads.
     payload = _verify_session(session or "")
     if not payload:
         raise HTTPException(status_code=401, detail="No autenticado")
