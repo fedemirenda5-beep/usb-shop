@@ -81,6 +81,55 @@ class AdminReadTests(unittest.TestCase):
         self.assertEqual(date_only.isoformat(), '2026-09-01T00:00:00-03:00')
         self.assertEqual(sorted([timestamp, date_only]), [date_only, timestamp])
 
+    def test_losses_and_credit_notes_match_across_reports(self):
+        for sale_cost, expected_margin in [(800, -600), (None, -900), (500, 0), (0, 1000)]:
+            with self.subTest(sale_cost=sale_cost):
+                main._clear_admin_cached_payload()
+                self.addCleanup(main._clear_admin_cached_payload)
+                conn = main._connect()
+                try:
+                    conn.execute('UPDATE products SET cost = 950 WHERE id = 1')
+                    conn.execute('UPDATE invoice_items SET cost_snapshot = ? WHERE invoice_id = 1', (sale_cost,))
+                    conn.execute('UPDATE invoice_items SET cost_snapshot = 300 WHERE invoice_id = 2')
+                    conn.execute("INSERT OR IGNORE INTO sellers (id, name) VALUES (1, 'Vendedor prueba')")
+                    conn.execute('UPDATE invoices SET seller_id = 1')
+                    conn.commit()
+                    annual = main._compute_annual_report_snapshot(conn, 2026)
+                finally:
+                    conn.close()
+
+                with self.dictionary_reads(), patch.object(main, '_require_full_admin', return_value={'role': 'admin'}), patch.object(main, '_argentina_now', return_value=main.datetime(2026, 10, 8, 12)):
+                    full = main.admin_reports_overview(None, 'admin')
+                    dashboard = main.admin_dashboard('admin')
+                    daily = main.admin_reports_daily(report_date='2026-09-01', session_token='admin')
+                    customers = main.admin_reports_customer_ranking(session_token='admin')
+                    sellers = main.admin_sellers_monthly_summary(None, period='2026-09', session_token='admin')
+                # Sale: two units; credit note reverses a 100 loss;
+                # special discount subtracts 100. Budgets are excluded.
+                self.assertEqual(dashboard['summary']['estimated_margin'], expected_margin)
+                self.assertEqual(full['summary']['estimated_margin'], expected_margin)
+                self.assertEqual(full['summary']['operating_result'], expected_margin - 50)
+                self.assertEqual(full['monthly_sales_all'][0]['margin'], expected_margin)
+                self.assertEqual(full['monthly_sales_all'][0]['operating_result'], expected_margin - 50)
+                self.assertEqual(daily['summary']['margin'], expected_margin)
+                self.assertEqual(customers['summary']['profit_total'], expected_margin)
+                self.assertEqual(sellers['items'][0]['profit'], expected_margin)
+                self.assertEqual(annual['margin_total'], expected_margin)
+                self.assertEqual(annual['operating_result_total'], expected_margin - 50)
+
+    def test_return_of_a_loss_making_sale_cancels_its_loss_and_discount(self):
+        conn = main._connect()
+        try:
+            conn.execute('UPDATE invoice_items SET quantity = 2, unit_price = 500, cost_snapshot = 800 WHERE invoice_id IN (1, 2)')
+            conn.execute('UPDATE invoices SET total = 1000, special_discount = 100 WHERE id = 2')
+            conn.commit()
+        finally:
+            conn.close()
+        self.assertEqual(main.admin_dashboard('admin')['summary']['estimated_margin'], 0)
+        full = main.admin_reports_overview(None, 'admin')
+        self.assertEqual(full['summary']['estimated_margin'], 0)
+        self.assertEqual(full['summary']['operating_result'], -50)
+
     def test_staff_report_accepts_postgres_dictionary_rows(self):
         with self.dictionary_reads():
             full = main.admin_reports_overview(None, 'staff')['summary']

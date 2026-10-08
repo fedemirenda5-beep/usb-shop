@@ -3045,7 +3045,7 @@ def _can_view_profit_metrics(role: Any) -> bool:
 
 
 def _line_margin_value(quantity: float, unit_price: float, cost: float) -> float:
-    return float(quantity or 0) * max(0.0, float(unit_price or 0) - float(cost or 0))
+    return float(quantity or 0) * (float(unit_price or 0) - float(cost or 0))
 
 
 def _log_movement_audit(
@@ -4039,7 +4039,7 @@ def _compute_annual_report_snapshot(conn: DBConn, target_year: int, closure_mode
         quantity = int(row["quantity"] or 0)
         unit_price = float(row["unit_price"] or 0)
         unit_cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else cost_by_product.get(product_id, 0.0))
-        margin_total += quantity * max(0.0, unit_price - unit_cost) * sign
+        margin_total += _line_margin_value(quantity, unit_price, unit_cost) * sign
     margin_total = round(
         margin_total
         - sum(float(row["special_discount"] or 0) * invoice_sign_map.get(int(row["id"] or 0), 0.0) for row in year_invoices),
@@ -10390,9 +10390,7 @@ def admin_dashboard(
         if role == ROLE_ADMIN:
             margin = _scalar_number(conn.execute("""
                 SELECT COALESCE(SUM(COALESCE(ii.quantity, 0) *
-                    CASE WHEN COALESCE(ii.unit_price, 0) > COALESCE(ii.cost_snapshot, p.cost, 0)
-                        THEN COALESCE(ii.unit_price, 0) - COALESCE(ii.cost_snapshot, p.cost, 0)
-                        ELSE 0 END *
+                    (COALESCE(ii.unit_price, 0) - COALESCE(ii.cost_snapshot, p.cost, 0)) *
                     CASE WHEN UPPER(TRIM(COALESCE(i.document_type, ''))) = 'NOTA_CREDITO'
                         THEN -1 ELSE 1 END), 0) AS total
                 FROM invoice_items ii LEFT JOIN invoices i ON i.id = ii.invoice_id
@@ -10691,7 +10689,7 @@ def admin_reports_overview(
             unit_cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else cost_by_product.get(product_id, 0.0))
             sign = -1.0 if str(row["document_type"] or "").strip().upper() == "NOTA_CREDITO" else 1.0
             revenue = quantity * unit_price * sign
-            margin_value = quantity * max(0.0, unit_price - unit_cost) * sign
+            margin_value = _line_margin_value(quantity, unit_price, unit_cost) * sign
             entry["quantity"] += quantity
             entry["revenue"] += revenue
             bucket = _argentina_month_bucket(row["created_at"])
@@ -10986,11 +10984,10 @@ def admin_reports_overview(
         )
         total_margin = round(
             sum(
-                int(row["quantity"] or 0)
-                * max(
-                    0.0,
-                    float(row["unit_price"] or 0)
-                    - float(
+                _line_margin_value(
+                    int(row["quantity"] or 0),
+                    float(row["unit_price"] or 0),
+                    float(
                         row["cost_snapshot"]
                         if row["cost_snapshot"] is not None
                         else cost_by_product.get(int(row["product_id"] or 0), 0.0)
@@ -11424,6 +11421,7 @@ def admin_reports_daily(
         _ensure_syncable_tables(conn)
         _ensure_reporting_indexes(conn)
         _ensure_invoice_special_discount_column(conn)
+        _ensure_invoice_items_cost_snapshot_column(conn)
         _ensure_sellers_table(conn)
         invoices = conn.execute(
             """
@@ -11499,7 +11497,8 @@ def admin_reports_daily(
                 dict(row)
                 for row in conn.execute(
                     f"""
-                    SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.cost
+                    SELECT ii.invoice_id, ii.product_id, ii.quantity, ii.unit_price,
+                           p.name AS product_name, COALESCE(ii.cost_snapshot, p.cost, 0) AS cost
                     FROM invoice_items ii
                     LEFT JOIN products p ON p.id = ii.product_id
                     WHERE ii.invoice_id IN ({placeholders})
@@ -11519,7 +11518,7 @@ def admin_reports_daily(
             sign = -1.0 if related_invoice and str(related_invoice.get("document_type") or "").strip().upper() == "NOTA_CREDITO" else 1.0
             revenue = round(quantity * unit_price * sign, 2)
             cost = float(row.get("cost") or 0)
-            total_margin += quantity * max(0.0, unit_price - cost) * sign
+            total_margin += _line_margin_value(quantity, unit_price, cost) * sign
             product_entry = product_summary.setdefault(
                 product_id,
                 {
@@ -11691,7 +11690,7 @@ def admin_reports_customer_ranking(
                 quantity = int(row["quantity"] or 0)
                 unit_price = float(row["unit_price"] or 0)
                 cost = float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0)
-                margin = quantity * max(0.0, unit_price - cost) * sign
+                margin = _line_margin_value(quantity, unit_price, cost) * sign
                 customer_entry["profit_total"] = round(float(customer_entry["profit_total"]) + margin, 2)
             for invoice_payload in selected_invoices.values():
                 customer_id = int(invoice_payload["customer_id"] or 0)

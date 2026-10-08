@@ -28,6 +28,22 @@ Regla: el admin siempre debe leer desde la API. No se agregan pantallas que lean
 - `Reportes`: operativo sobre resumen comercial
 - `Usuarios`: operativo sobre `users`
 
+## Calculo de rentabilidad
+
+- Ganancia bruta por venta: cantidad por (precio unitario vendido menos costo).
+  Se conserva el resultado negativo cuando se vende por debajo del costo.
+- Las notas de credito revierten la ganancia o perdida de las unidades devueltas.
+  Los descuentos reducen la ganancia; su devolucion revierte esa reduccion.
+- Escritorio, reportes diarios, balances y resumenes de clientes y vendedores
+  usan el costo historico `cost_snapshot`; si falta, usan el costo actual.
+  Un costo historico de cero es valido y no se reemplaza por el costo actual.
+- El resultado operativo descuenta gastos y comisiones de la ganancia bruta.
+- Los cierres anuales ya guardados y los ajustes historicos importados conservan
+  sus valores. La correccion aplica a los calculos y a los nuevos cierres.
+- Prueba: `.venv/Scripts/python.exe -m unittest test_admin_performance` desde
+  `usbshop-web/api`. Usa una base temporal y verifica perdidas, ventas al costo,
+  costo cero, devoluciones, descuentos y coincidencia entre reportes.
+
 ## Legacy
 
 Estas rutas quedan solo por compatibilidad y no deben usarse para nuevos cambios:
