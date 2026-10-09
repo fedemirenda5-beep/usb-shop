@@ -56,6 +56,8 @@ type InvoiceDetail = {
     quantity: number;
     unit_price: number;
     line_total: number;
+    commission_base_price?: number | null;
+    cost_total?: number;
     imeis?: string[];
   }>;
   payments: Array<{
@@ -116,14 +118,19 @@ const calculateCommissionPreview = ({
   return normalizedItems.reduce((acc, item) => {
     const lineTotal = Number(item.line_total || 0);
     const discountShare = specialDiscount > 0 ? (specialDiscount * lineTotal) / subtotal : 0;
-    const commissionable = Math.max(0, lineTotal - discountShare);
+    const baseTotal = item.commission_base_price == null ? lineTotal : Number(item.quantity || 0) * Math.min(Number(item.unit_price || 0), Math.max(0, item.commission_base_price));
+    const commissionable = Math.max(0, baseTotal - discountShare);
     const isLentes = String(item.category_name || '').trim().toLowerCase() === 'lentes';
     const percent = item.is_cellphone && !isNokia106ExceptionProduct(item.product_name)
       ? (isFedeSellerName(sellerName) ? CELULARES_COMMISSION_PERCENT_FEDE : CELULARES_COMMISSION_PERCENT)
       : isLentes && isFedeSellerName(sellerName)
         ? LENTES_COMMISSION_PERCENT_FEDE
         : Number(sellerPercent || 0);
-    return acc + (commissionable * percent) / 100;
+    let lineCommission = (commissionable * percent) / 100;
+    if (!item.is_cellphone && item.cost_total != null) {
+      lineCommission = Math.min(lineCommission, Math.max(0, commissionable - item.cost_total));
+    }
+    return acc + lineCommission;
   }, 0);
 };
 

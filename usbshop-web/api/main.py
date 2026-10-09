@@ -1897,7 +1897,10 @@ def _calculate_invoice_seller_commission(
         if line_total <= 0:
             continue
         discount_share = round((normalized_discount * line_total) / subtotal, 2) if normalized_discount > 0 else 0.0
-        commissionable_total = max(0.0, round(line_total - discount_share, 2))
+        # The consignment markup belongs entirely to the company.
+        base_price = item.get("commission_base_price")
+        base_total = round(quantity * min(unit_price, max(0.0, float(base_price))), 2) if base_price is not None else line_total
+        commissionable_total = max(0.0, round(base_total - discount_share, 2))
         effective_percent = _seller_commission_percent_for_item(
             conn,
             item.get("category_id"),
@@ -3754,6 +3757,7 @@ SYNC_TABLE_SCHEMAS: dict[str, list[tuple[str, str, str]]] = {
         ("product_id", "INTEGER", "INTEGER"),
         ("quantity", "INTEGER", "INTEGER"),
         ("unit_price", "REAL", "NUMERIC(12, 2)"),
+        ("commission_base_price", "REAL", "NUMERIC(12, 2)"),
     ],
     "invoice_item_imeis": [
         ("id", "INTEGER PRIMARY KEY", "INTEGER PRIMARY KEY"),
@@ -9277,6 +9281,10 @@ def admin_create_invoice(
                 if document_type == "FACTURA" and bundle_stock < quantity:
                     raise HTTPException(status_code=400, detail=f"Sin stock suficiente para {product['name']}")
                 expanded_items = _allocate_bundle_components(bundle_items, quantity, unit_price, price_list)
+                if consignment_id:
+                    base_items = _allocate_bundle_components(bundle_items, quantity, _pick_price_by_list(product, price_list), price_list)
+                    for expanded, base_item in zip(expanded_items, base_items):
+                        expanded["commission_base_price"] = base_item["unit_price"]
                 for expanded in expanded_items:
                     if document_type in {"FACTURA", "NOTA_CREDITO"} and _product_requires_imei(conn, expanded.get("category_id"), expanded.get("product_name")):
                         raise HTTPException(400, "Para registrar los IMEI, agrega los celulares del combo por separado al comprobante")
@@ -9311,6 +9319,7 @@ def admin_create_invoice(
                         "quantity": quantity,
                         "unit_price": unit_price,
                         "cost_snapshot": round(float(product["cost"] or 0), 2),
+                        "commission_base_price": round(_pick_price_by_list(product, price_list), 2) if consignment_id else None,
                         "subtotal": subtotal,
                         "imeis": item_imeis,
                     }
@@ -9412,20 +9421,20 @@ def admin_create_invoice(
             if DB_IS_POSTGRES:
                 invoice_item_row = conn.execute(
                     """
-                    INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot, commission_base_price)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     RETURNING id
                     """,
-                    (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"]),
+                    (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"], item.get("commission_base_price")),
                 ).fetchone()
                 invoice_item_id = int(invoice_item_row["id"] if isinstance(invoice_item_row, dict) else invoice_item_row[0])
             else:
                 conn.execute(
                     """
-                    INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO invoice_items (invoice_id, product_id, quantity, unit_price, cost_snapshot, commission_base_price)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"]),
+                    (invoice_id, item["product_id"], item["quantity"], item["unit_price"], item["cost_snapshot"], item.get("commission_base_price")),
                 )
                 invoice_item_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
                 invoice_item_id = int(invoice_item_row["id"] if isinstance(invoice_item_row, dict) else invoice_item_row[0])
@@ -9583,7 +9592,8 @@ def admin_invoice_detail(
             raise HTTPException(status_code=404, detail="Comprobante no encontrado")
         items = conn.execute(
             """
-            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, p.name AS product_name, p.image_path, p.cost, p.category_id
+            SELECT ii.id, ii.product_id, ii.quantity, ii.unit_price, ii.commission_base_price, ii.cost_snapshot,
+                   p.name AS product_name, p.image_path, p.cost, p.category_id
             FROM invoice_items ii
             LEFT JOIN products p ON p.id = ii.product_id
             WHERE ii.invoice_id = ?
@@ -9634,7 +9644,8 @@ def admin_invoice_detail(
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "line_total": line_total,
-                    "cost_total": round(quantity * float(row["cost"] or 0), 2),
+                    "commission_base_price": float(row["commission_base_price"]) if row["commission_base_price"] is not None else None,
+                    "cost_total": round(quantity * float(row["cost_snapshot"] if row["cost_snapshot"] is not None else row["cost"] or 0), 2),
                     "image_path": row["image_path"],
                     "imeis": invoice_item_imeis.get(int(row["id"]), [])
                     or sold_imeis_by_product.get(int(row["product_id"]) if row["product_id"] is not None else 0, []),
@@ -9743,7 +9754,8 @@ def admin_update_invoice_seller(
 
         invoice_items = conn.execute(
             """
-            SELECT ii.product_id, ii.quantity, ii.unit_price, p.category_id
+            SELECT ii.product_id, ii.quantity, ii.unit_price, ii.commission_base_price, ii.cost_snapshot,
+                   p.cost, p.category_id, p.name AS product_name
             FROM invoice_items ii
             LEFT JOIN products p ON p.id = ii.product_id
             WHERE ii.invoice_id = ?
@@ -9763,6 +9775,10 @@ def admin_update_invoice_seller(
                     "category_id": int(row["category_id"]) if row["category_id"] is not None else None,
                     "quantity": float(row["quantity"] or 0),
                     "unit_price": float(row["unit_price"] or 0),
+                    "commission_base_price": row["commission_base_price"],
+                    "cost_snapshot": row["cost_snapshot"],
+                    "cost": row["cost"],
+                    "product_name": row["product_name"],
                 }
                 for row in invoice_items
             ],

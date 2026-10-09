@@ -67,6 +67,51 @@ class ConsignmentTests(unittest.TestCase):
         self.assertEqual(self.stock(), (10, 5))
         self.assertEqual(main.list_products(ids='1')[0]['stock'], 5)
 
+    def test_consignment_markup_is_company_profit_and_survives_reassignment(self):
+        conn = main._connect()
+        conn.execute('UPDATE sellers SET commission_percent = 20 WHERE id = 1')
+        conn.commit()
+        conn.close()
+        delivery = self.delivery()
+        sale = self.invoice(consignment_id=delivery['id'], items=[{'product_id': 1, 'quantity': 2, 'unit_price': 1200}])
+        self.assertEqual(sale['total'], 2400)
+        self.assertEqual(sale['commission_amount'], 400)
+        detail = main.admin_invoice_detail(sale['id'], None, None)
+        self.assertEqual(detail['items'][0]['commission_base_price'], 1000)
+        # Catalog changes must never move the base saved for an issued invoice.
+        conn = main._connect()
+        conn.execute('UPDATE products SET price = 3000, cost = 1100 WHERE id = 1')
+        conn.commit()
+        conn.close()
+        reassigned = main.admin_update_invoice_seller(sale['id'], main.InvoiceSellerAssignmentPayload(seller_id=1), None)
+        self.assertEqual(reassigned['commission_amount'], 400)
+
+    def test_consignment_commission_uses_selected_list_and_handles_discounts(self):
+        conn = main._connect()
+        conn.execute('UPDATE sellers SET commission_percent = 20 WHERE id = 1')
+        conn.execute('UPDATE products SET price_list_1 = 1100 WHERE id = 1')
+        conn.commit()
+        conn.close()
+        delivery = self.delivery()
+        for price, discount, expected in [(1200, 0, 220), (900, 0, 180), (1200, 100, 200)]:
+            with self.subTest(price=price, discount=discount):
+                sale = self.invoice(consignment_id=delivery['id'], price_list=1, special_discount=discount,
+                                    items=[{'product_id': 1, 'quantity': 1, 'unit_price': price}])
+                self.assertEqual(sale['commission_amount'], expected)
+        regular = self.invoice(quantity=1, items=[{'product_id': 1, 'quantity': 1, 'unit_price': 1200}])
+        self.assertEqual(regular['commission_amount'], 240)
+
+    def test_consignment_markup_does_not_raise_margin_commission_cap(self):
+        conn = main._connect()
+        conn.execute('UPDATE sellers SET commission_percent = 20 WHERE id = 1')
+        conn.execute('UPDATE products SET cost = 950 WHERE id = 1')
+        conn.commit()
+        conn.close()
+        delivery = self.delivery()
+        sale = self.invoice(consignment_id=delivery['id'],
+                            items=[{'product_id': 1, 'quantity': 1, 'unit_price': 1200}])
+        self.assertEqual(sale['commission_amount'], 50)
+
     def test_web_and_normal_sales_cannot_use_consignment(self):
         self.delivery()
         with self.assertRaises(HTTPException):

@@ -43,7 +43,23 @@ for (const [label, preview] of [['existing invoice', existingPreview], ['new inv
   test(`${label}: Nokia 106 keeps the standard commission exception`, () => {
     assert.equal(calculate([{ ...products[1], name: 'Nokia 106' }]), 200);
   });
+  test(`${label}: consignment markup does not increase seller commission`, () => {
+    const cable = { ...products[2], price: 1000, price_list_1: 1100 };
+    const item = { product_id: '3', quantity: 2, unit_price: 1200, line_total: 2400, commission_base_price: 1000 };
+    assert.equal(calculate([cable], { items: [item], isConsignment: true }), 400);
+    assert.equal(calculate([cable], { items: [item], isConsignment: true, specialDiscount: 200 }), 360);
+    assert.equal(calculate([cable], { items: [{ ...item, unit_price: 900, line_total: 1800 }], isConsignment: true }), 360);
+  });
 }
+
+test('new invoice: consignment commission uses the selected price list', () => {
+  assert.equal(newPreview({
+    sellerName: 'Otro', sellerPercent: 20, specialDiscount: 0, isConsignment: true, priceList: 1,
+    celularesCategoryIds: new Set(),
+    productMap: new Map([[3, { ...products[2], price: 1000, price_list_1: 1100 }]]),
+    items: [{ product_id: '3', quantity: 1, unit_price: 1200 }],
+  }), 220);
+});
 
 test('new invoice: non-phone commission remains capped by the margin', () => {
   assert.equal(newPreview({
@@ -52,4 +68,11 @@ test('new invoice: non-phone commission remains capped by the margin', () => {
     productMap: new Map([[1, { ...products[0], cost: 900 }]]),
     items: [{ product_id: '1', quantity: 1, unit_price: 1000 }],
   }), 100);
+});
+
+test('existing invoice: consignment markup does not raise the margin cap', () => {
+  assert.equal(existingPreview({
+    sellerName: 'Otro', sellerPercent: 20, specialDiscount: 0,
+    items: [{ quantity: 1, unit_price: 1200, line_total: 1200, commission_base_price: 1000, cost_total: 950 }],
+  }), 50);
 });

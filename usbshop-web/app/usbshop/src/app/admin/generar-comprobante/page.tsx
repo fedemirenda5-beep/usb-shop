@@ -123,6 +123,8 @@ const calculateCommissionPreview = ({
   celularesCategoryIds,
   productMap,
   specialDiscount,
+  isConsignment = false,
+  priceList = 0,
 }: {
   items: InvoiceFormItem[];
   sellerPercent: number;
@@ -130,6 +132,8 @@ const calculateCommissionPreview = ({
   celularesCategoryIds: Set<number>;
   productMap: Map<number, ProductOption>;
   specialDiscount: number;
+  isConsignment?: boolean;
+  priceList?: number;
 }) => {
   const normalizedItems = items
     .map((item) => {
@@ -138,6 +142,7 @@ const calculateCommissionPreview = ({
       const unitPrice = Math.max(0, Number(item.unit_price || 0));
       const product = productMap.get(productId);
       const lineTotal = round(quantity * unitPrice, 2);
+      const listPrice = Number((priceList === 1 ? product?.price_list_1 : priceList === 2 ? product?.price_list_2 : product?.price) || product?.price || 0);
       return {
         category_id: product?.category_id ?? null,
         category_name: product?.category_name ?? null,
@@ -145,6 +150,7 @@ const calculateCommissionPreview = ({
         cost: Math.max(0, Number(product?.cost || 0)),
         quantity,
         line_total: lineTotal,
+        commission_total: isConsignment ? round(quantity * Math.min(unitPrice, Math.max(0, listPrice)), 2) : lineTotal,
       };
     })
     .filter((item) => item.line_total > 0);
@@ -153,7 +159,7 @@ const calculateCommissionPreview = ({
   return round(
     normalizedItems.reduce((acc, item) => {
       const discountShare = specialDiscount > 0 ? round((specialDiscount * item.line_total) / subtotal, 2) : 0;
-      const commissionable = Math.max(0, round(item.line_total - discountShare, 2));
+      const commissionable = Math.max(0, round(item.commission_total - discountShare, 2));
       const isCellphone =
         !isNokia106ExceptionProduct(item.product_name) && item.category_id && celularesCategoryIds.has(item.category_id);
       const isLentes = normalizeCategoryName(item.category_name ?? '') === 'lentes';
@@ -652,9 +658,11 @@ export default function GenerarComprobantePage() {
             celularesCategoryIds,
             productMap,
             specialDiscount,
+            isConsignment: form.document_type === 'FACTURA' && !form.order_id && consignmentId > 0,
+            priceList: Number(form.price_list || 0),
           })
         : 0,
-    [celularesCategoryIds, form.items, productMap, selectedSeller, specialDiscount]
+    [celularesCategoryIds, form.items, form.document_type, form.order_id, form.price_list, consignmentId, productMap, selectedSeller, specialDiscount]
   );
   const documentBehavior = useMemo(() => {
     if (form.document_type === 'NOTA_CREDITO') {
@@ -1579,6 +1587,7 @@ export default function GenerarComprobantePage() {
                 {filteredProducts.some(product => product.search_match === 'approximate') ? <p role="status">Sin coincidencias exactas. Revisá estos productos con nombres similares.</p> : null}
                 {consignmentId > 0 && form.document_type === 'FACTURA' && consignmentDetail && <div className={styles.productSearchList}>
                   <p>En poder de {consignmentDetail.customer_name}. Agregá solo los productos vendidos y ajustá sus cantidades.</p>
+                  <p>Si aumentás el precio, la diferencia queda para la empresa. La comisión se calcula sobre el precio de la lista seleccionada.</p>
                   {consignmentDetail.items.filter((item) => item.pending > 0).map((item) => <div key={item.product_id} className={styles.productSearchItem}>
                     <span>{item.name} · Pendientes: {item.pending}</span>
                     <button type="button" className={styles.secondaryButton} disabled={creating} onClick={() => {
