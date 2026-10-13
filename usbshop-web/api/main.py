@@ -1009,6 +1009,8 @@ def _set_admin_overview_cache(role: str, payload: dict[str, Any]) -> dict[str, A
 
 def _clear_admin_overview_cache() -> None:
     _clear_admin_cached_payload("overview:")
+    _clear_admin_cached_payload("cc-overview:")
+    _clear_admin_cached_payload("dashboard:")
 
 
 def _get_admin_cc_overview_cache(role: str) -> Optional[dict[str, Any]]:
@@ -3307,8 +3309,8 @@ def _matches_argentina_date_range(value: Any, start_date: Optional[str], end_dat
 def _customer_current_balance_from_rows(rows: list[Any]) -> float:
     balance = 0.0
     for row in rows:
-        movement_type = str(row["movement_type"] if isinstance(row, dict) else row[0]).upper()
-        amount = float(row["amount"] if isinstance(row, dict) else row[1] or 0)
+        movement_type = str(row["movement_type"]).upper()
+        amount = float(row["amount"] or 0)
         balance += amount if movement_type == "DEBIT" else -amount
     return round(balance, 2)
 
@@ -3839,6 +3841,7 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
                 for name, sqlite_type, pg_type in columns
             )
             conn.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({definitions})")
+            _invalidate_table_cache(table_name)
             continue
         for name, sqlite_type, pg_type in columns:
             if _has_column(conn, table_name, name):
@@ -3846,6 +3849,7 @@ def _ensure_syncable_tables(conn: DBConn) -> None:
             conn.execute(
                 f"ALTER TABLE {table_name} ADD COLUMN {name} {pg_type if DB_IS_POSTGRES else sqlite_type}"
             )
+            _invalidate_table_cache(table_name)
     conn.commit()
 
 
@@ -4458,9 +4462,36 @@ def _ensure_sellers_table(conn: DBConn) -> None:
     conn.commit()
 
 
+SYNC_PROTECTED_TABLES = frozenset({
+    "customers", "invoices", "invoice_items", "invoice_item_imeis",
+    "account_movements", "annual_balances",
+})
+
+
+def _populated_sync_protected_tables(conn: DBConn) -> list[str]:
+    return [
+        table for table in sorted(SYNC_PROTECTED_TABLES)
+        if _has_table(conn, table)
+        and conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None
+    ]
+
+
 def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
     columns = [name for name, _, _ in SYNC_TABLE_SCHEMAS[table_name]]
     primary_key = columns[0]
+    if table_name in SYNC_PROTECTED_TABLES:
+        # A desktop ID can identify a different record on the web. Never overwrite it.
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            key = str(row.get(primary_key))
+            if key in seen or conn.execute(
+                f"SELECT 1 FROM {table_name} WHERE {primary_key} = ?",
+                (row.get(primary_key),),
+            ).fetchone() is not None:
+                raise HTTPException(409, f"Sincronizacion bloqueada: {table_name} contiene un identificador existente. Se requiere conciliacion de datos.")
+            seen.add(key)
     placeholders = ", ".join(["?"] * len(columns))
     update_columns = [name for name in columns if name != primary_key]
     immutable_sale_fields = {"warranty_days", "customer_name_snapshot", "customer_phone_snapshot"} if table_name == "invoices" else set()
@@ -4469,10 +4500,9 @@ def _upsert_sync_rows(conn: DBConn, table_name: str, rows: list[dict]) -> int:
         else f"{name} = excluded.{name}"
         for name in update_columns
     )
-    sql = (
-        f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders}) "
-        f"ON CONFLICT({primary_key}) DO UPDATE SET {updates}"
-    )
+    sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+    if table_name not in SYNC_PROTECTED_TABLES:
+        sql += f" ON CONFLICT({primary_key}) DO UPDATE SET {updates}"
     processed = 0
     for row in rows:
         if not isinstance(row, dict):
@@ -4719,6 +4749,19 @@ def sync_products(
     }
 
 
+@app.post("/admin/sync/preflight")
+def sync_backoffice_preflight(request: Request) -> dict:
+    _require_sync_token(request)
+    conn = _connect()
+    try:
+        populated = _populated_sync_protected_tables(conn)
+        if populated:
+            raise HTTPException(409, "Sincronizacion completa bloqueada: la web contiene datos contables. Se requiere conciliacion antes de importar.")
+        return {"status": "ok"}
+    finally:
+        conn.close()
+
+
 @app.post("/admin/sync/table")
 def sync_backoffice_table(
     request: Request,
@@ -4734,6 +4777,8 @@ def sync_backoffice_table(
 
     conn = _connect()
     try:
+        if replace and _populated_sync_protected_tables(conn):
+            raise HTTPException(409, "Reemplazo bloqueado: la web contiene datos contables. Se requiere conciliacion antes de importar.")
         _ensure_syncable_tables(conn)
         if table_name == 'products':
             _lock_inventory(conn)
@@ -8517,7 +8562,7 @@ def _build_admin_cc_overview(conn: DBConn) -> dict[str, Any]:
     ).fetchall()
     aggregates_by_customer: dict[int, dict[str, Any]] = {}
     for row in aggregate_rows:
-        raw_customer_id = row["customer_id"] if isinstance(row, dict) else row[1]
+        raw_customer_id = row["customer_id"]
         try:
             customer_id = int(raw_customer_id)
         except (TypeError, ValueError):
@@ -10176,6 +10221,7 @@ def admin_cc_create_movement(
             (customer_id, parsed_invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method),
         )
         conn.commit()
+        _clear_admin_overview_cache()
         balance_row = conn.execute(
             """
             SELECT amount, movement_type
@@ -10276,6 +10322,7 @@ def admin_cc_update_movement(
             (parsed_invoice_id, amount, movement_type, entry_kind, reference, payment_method, movement_id, customer_id),
         )
         conn.commit()
+        _clear_admin_overview_cache()
         balance_row = conn.execute(
             """
             SELECT amount, movement_type
@@ -10345,6 +10392,7 @@ def admin_cc_delete_movement(
         if not success:
             raise HTTPException(status_code=400, detail="No se pudo eliminar el movimiento")
         conn.commit()
+        _clear_admin_overview_cache()
         balance_row = conn.execute(
             """
             SELECT amount, movement_type

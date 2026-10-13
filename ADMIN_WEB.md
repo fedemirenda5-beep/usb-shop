@@ -133,6 +133,11 @@ Rama operativa:
 
 Para que produccion muestre clientes, comprobantes y cuentas corrientes reales, hace falta sincronizar:
 
+La sincronizacion completa siguiente es solo para una carga inicial en una web
+sin datos contables. La API bloquea el reemplazo si ya existen clientes,
+comprobantes, movimientos o cierres. En una web en uso se deben conciliar ambas
+fuentes; no vaciar tablas para eludir esta proteccion.
+
 ```powershell
 $env:USBSHOP_SYNC_API_BASE_URL="https://api.usbshop.com.ar"
 $env:USB_SYNC_TOKEN="TU_SECRET"

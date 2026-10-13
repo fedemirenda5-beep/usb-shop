@@ -43,6 +43,17 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ## Sincronizar catalogo, stock, cuentas corrientes y comprobantes a la API publicada
+
+Este script es solo para una carga inicial en una web sin datos contables.
+Antes de borrar cualquier tabla consulta `/admin/sync/preflight`: si hay clientes,
+comprobantes, movimientos o cierres, la API rechaza la sincronizacion con HTTP 409.
+La API tambien bloquea reemplazos cuando existe informacion contable y rechaza
+identificadores existentes en las tablas protegidas, para evitar sobrescribir
+pagos cargados en la web. Una API anterior sin preflight detiene el script con 404.
+Para actualizar una web en uso hace falta una conciliacion de ambas fuentes;
+no ejecutar este script ni vaciar tablas para eludir la proteccion.
+
+Prueba aislada: `.venv/Scripts/python.exe -m unittest test_sync_safety -v`.
 ```powershell
 set USBSHOP_SYNC_API_BASE_URL=https://api.usbshop.com.ar
 set USB_SYNC_TOKEN=tu-token

@@ -56,6 +56,11 @@ Si alguna infraestructura externa sigue mirando otra rama, hay que corregir esa 
 
 ## Sincronizacion de datos productivos
 
+El script siguiente sirve para una carga inicial sin datos contables en destino.
+Si la web ya tiene clientes, comprobantes, movimientos o cierres, la API bloquea
+el reemplazo. Para actualizar datos existentes se requiere conciliacion;
+no vaciar la web para forzar esta importacion.
+
 ```powershell
 $env:USBSHOP_SYNC_API_BASE_URL="https://api.usbshop.com.ar"
 $env:USB_SYNC_TOKEN="TU_SECRET"

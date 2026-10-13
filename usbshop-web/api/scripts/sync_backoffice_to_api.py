@@ -271,6 +271,8 @@ def main() -> None:
         raise SystemExit("Falta USB_SYNC_TOKEN o USB_SYNC_SECRET.")
 
     db_path = _source_db()
+    # Fail before the first deletion; older APIs without this check fail closed.
+    _request_json("/admin/sync/preflight", {})
     conn = sqlite3.connect(db_path)
     try:
         for table_name in DELETE_ORDER:

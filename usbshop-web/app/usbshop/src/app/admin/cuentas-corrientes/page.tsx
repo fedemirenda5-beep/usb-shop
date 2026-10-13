@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { getApiBaseUrl, loadRuntimeConfig } from '@/lib/api';
+import { fetchApiResponse } from '@/lib/api';
 import { openAdminAccountPrint } from '@/lib/adminAccountPrint';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDateTime } from '@/lib/datetime';
@@ -227,8 +227,7 @@ export default function CuentasCorrientesPage() {
     overviewRequestRef.current = requestId;
     setLoading(true);
     try {
-      await loadRuntimeConfig();
-      const res = await fetch(`${getApiBaseUrl()}/admin/cc/overview`, { credentials: 'include' });
+      const res = await fetchApiResponse(`/admin/cc/overview`, { credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
@@ -264,9 +263,8 @@ export default function CuentasCorrientesPage() {
     const requestId = detailRequestRef.current + 1;
     detailRequestRef.current = requestId;
     setDetailLoading(true);
-    await loadRuntimeConfig();
     try {
-      const res = await fetch(`${getApiBaseUrl()}/admin/cc/${customerId}`, { credentials: 'include' });
+      const res = await fetchApiResponse(`/admin/cc/${customerId}`, { credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
@@ -288,9 +286,8 @@ export default function CuentasCorrientesPage() {
   async function loadInvoices(customerId: number) {
     const requestId = invoicesRequestRef.current + 1;
     invoicesRequestRef.current = requestId;
-    await loadRuntimeConfig();
     try {
-      const res = await fetch(`${getApiBaseUrl()}/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
+      const res = await fetchApiResponse(`/admin/invoices?customer_id=${customerId}&limit=100`, { credentials: 'include' });
       if (!res.ok) throw new Error('No se pudieron cargar los comprobantes del cliente');
       const data = await res.json();
       if (invoicesRequestRef.current !== requestId) return;
@@ -346,10 +343,9 @@ export default function CuentasCorrientesPage() {
       if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
         throw new Error('Ingresa un importe valido. Podes usar 306000, 306.000 o 306,00');
       }
-      await loadRuntimeConfig();
       const endpoint = editingMovementId
-        ? `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${editingMovementId}`
-        : `${getApiBaseUrl()}/admin/cc/${selectedId}/movements`;
+        ? `/admin/cc/${selectedId}/movements/${editingMovementId}`
+        : `/admin/cc/${selectedId}/movements`;
       const payload = {
         movement_type: form.movement_type,
         entry_kind: form.entry_kind,
@@ -358,7 +354,7 @@ export default function CuentasCorrientesPage() {
         reference: form.reference || null,
         invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
       };
-      const res = await fetch(endpoint, {
+      const res = await fetchApiResponse(endpoint, {
         method: editingMovementId ? 'PUT' : 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -366,7 +362,7 @@ export default function CuentasCorrientesPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || (editingMovementId ? 'No se pudo actualizar el movimiento' : 'No se pudo registrar el movimiento'));
-      await Promise.all([loadOverview(), loadDetail(selectedId), loadInvoices(selectedId)]);
+      await Promise.all([loadOverview(), loadDetail(selectedId)]);
       setEditingMovementId(null);
       setForm((current) => ({
         ...current,
@@ -697,9 +693,8 @@ export default function CuentasCorrientesPage() {
     try {
       setDeleting(true);
       setError('');
-      await loadRuntimeConfig();
-      const endpoint = `${getApiBaseUrl()}/admin/cc/${selectedId}`;
-      const res = await fetch(endpoint, {
+      const endpoint = `/admin/cc/${selectedId}`;
+      const res = await fetchApiResponse(endpoint, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -728,9 +723,8 @@ export default function CuentasCorrientesPage() {
     try {
       setDeletingMovementId(movement.id);
       setError('');
-      await loadRuntimeConfig();
-      const endpoint = `${getApiBaseUrl()}/admin/cc/${selectedId}/movements/${movement.id}`;
-      const res = await fetch(endpoint, {
+      const endpoint = `/admin/cc/${selectedId}/movements/${movement.id}`;
+      const res = await fetchApiResponse(endpoint, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -739,7 +733,7 @@ export default function CuentasCorrientesPage() {
       if (editingMovementId === movement.id) {
         resetMovementForm();
       }
-      await Promise.all([loadOverview(), loadDetail(selectedId), loadInvoices(selectedId)]);
+      await Promise.all([loadOverview(), loadDetail(selectedId)]);
     } catch (err) {
       setError(getErrorMessage(err, 'Error eliminando movimiento'));
     } finally {

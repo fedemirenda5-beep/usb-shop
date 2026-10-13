@@ -75,6 +75,16 @@ class AdminReadTests(unittest.TestCase):
         self.assertEqual(result['estimated_margin'], 400)
         self.assertEqual(result['cc_open_balance'], 750)
 
+    def test_payment_refreshes_cached_account_and_dashboard_balances(self):
+        request = SimpleNamespace()
+        main.admin_cc_overview(request, 'admin')
+        self.assertEqual(main.admin_dashboard('admin')['summary']['cc_open_balance'], 750)
+        main.admin_cc_create_movement(1, request, 'admin', {
+            'movement_type': 'CREDIT', 'entry_kind': 'PAYMENT', 'amount': 100,
+        })
+        self.assertEqual(main.admin_cc_overview(request, 'admin')['summary']['balance'], 650)
+        self.assertEqual(main.admin_dashboard('admin')['summary']['cc_open_balance'], 650)
+
     def test_date_only_events_sort_with_timestamp_events_without_changing_day(self):
         date_only = main._argentina_datetime('2026-09-01')
         timestamp = main._argentina_datetime('2026-09-01 12:00:00')
