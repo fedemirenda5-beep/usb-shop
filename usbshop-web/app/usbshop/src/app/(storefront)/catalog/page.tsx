@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { refreshInventory, useStorefrontInventory } from '@/hooks/useStorefrontInventory';
 import ProductCard from "@/components/ProductCard";
 import { fetchJson, getApiBaseUrl, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
 import { normalizeSearchText } from "@/lib/search";
@@ -120,6 +121,9 @@ export default function CatalogPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useStorefrontInventory(products, inventory => {
+    setProducts(items => items.map(item => refreshInventory(item, inventory)));
+  }, () => setError('No se pudo actualizar el stock. Reintenta para ver la disponibilidad actual.'));
   const [hasMore, setHasMore] = useState(true);
   const pageSize = INITIAL_PAGE_SIZE;
   const [retry, setRetry] = useState(0);

@@ -1243,6 +1243,7 @@ export default function GenerarComprobantePage() {
         return;
       }
       const payload = {
+        budget_invoice_id: budgetInvoiceIdParam || null,
         expected_sale_invoice_id: returnImei ? returnInvoiceId : null,
         consignment_id: form.document_type === 'FACTURA' && !form.order_id ? consignmentId || null : null,
         order_id: form.order_id ? Number(form.order_id) : null,
@@ -1331,7 +1332,7 @@ export default function GenerarComprobantePage() {
               <p>{documentBehavior}</p>
               <p className={styles.modelNote}>Modelo activo en web: tipo, fecha/hora, lista de precios, forma de pago, vencimiento, vendedor y comisión.</p>
               {form.order_id ? <p className={styles.orderDraftInfo}>Pedido web #{form.order_id} cargado como borrador editable.</p> : null}
-              {budgetInvoiceIdParam ? <p className={styles.orderDraftInfo}>Presupuesto #{budgetInvoiceIdParam} cargado como borrador editable de factura.</p> : null}
+              {budgetInvoiceIdParam ? <p className={styles.orderDraftInfo}>Al emitir, el presupuesto #{budgetInvoiceIdParam} se convierte en factura y queda un único comprobante.</p> : null}
             </div>
           </div>
           <form onSubmit={submitInvoice} className={styles.createForm}>
@@ -1390,7 +1391,7 @@ export default function GenerarComprobantePage() {
               </label>
               <label>
                 Tipo de comprobante
-                <select disabled={Boolean(returnImei)} value={form.document_type} onChange={(e) => setForm((current) => ({ ...current, document_type: e.target.value }))}>
+                <select disabled={Boolean(returnImei || budgetInvoiceIdParam)} value={form.document_type} onChange={(e) => setForm((current) => ({ ...current, document_type: e.target.value }))}>
                   <option value="FACTURA">Factura</option>
                   <option value="NOTA_CREDITO">Nota de crédito</option>
                   <option value="PRESUPUESTO">Presupuesto</option>

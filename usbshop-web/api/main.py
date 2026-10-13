@@ -9147,6 +9147,9 @@ def admin_create_invoice(
         raise HTTPException(status_code=400, detail="Agrega items al comprobante")
 
     document_type = str(payload.get("document_type") or "FACTURA").strip().upper() or "FACTURA"
+    budget_invoice_id = int(payload.get("budget_invoice_id") or 0)
+    if budget_invoice_id and document_type != "FACTURA":
+        raise HTTPException(400, "El presupuesto solo puede convertirse en factura")
     expected_sale_invoice_id = int(payload.get("expected_sale_invoice_id") or 0)
     if expected_sale_invoice_id and (
         document_type != "NOTA_CREDITO" or len(items) != 1
@@ -9180,6 +9183,27 @@ def admin_create_invoice(
         _ensure_invoice_item_imeis_table(conn)
         _ensure_sellers_table(conn)
         _lock_inventory(conn)
+        budget = None
+        if budget_invoice_id:
+            budget = conn.execute(
+                "SELECT id, document_type, external_ref FROM invoices WHERE id = ?",
+                (budget_invoice_id,),
+            ).fetchone()
+            if budget is None:
+                raise HTTPException(404, "Presupuesto no encontrado")
+            if str(budget["document_type"] or "").strip().upper() != "PRESUPUESTO":
+                raise HTTPException(409, "El presupuesto ya fue procesado. Revisa el comprobante emitido.")
+            linked_order = conn.execute(
+                "SELECT id FROM web_orders WHERE confirmed_invoice_id = ?",
+                (budget_invoice_id,),
+            ).fetchone()
+            if linked_order:
+                linked_order_id = int(linked_order["id"])
+                if order_id and order_id != linked_order_id:
+                    raise HTTPException(400, "El pedido no corresponde al presupuesto")
+                if consignment_id:
+                    raise HTTPException(400, "El presupuesto de un pedido web no puede vincularse a una consignacion")
+                order_id = linked_order_id
         if consignment_request_key:
             previous = conn.execute('SELECT * FROM consignment_invoice_requests WHERE request_key = ?', (consignment_request_key,)).fetchone()
             if previous:
@@ -9428,6 +9452,8 @@ def admin_create_invoice(
         last_external = str(external_ref_row["external_ref"] or "").strip() if external_ref_row else ""
         next_external_number = int(last_external) + 1 if last_external.isdigit() else 1
         external_ref = f"{next_external_number:014d}"
+        if budget is not None:
+            external_ref = str(budget["external_ref"] or external_ref)
 
         insert_invoice_sql = """
             INSERT INTO invoices (
@@ -9454,7 +9480,21 @@ def admin_create_invoice(
             customer["name"],
             customer["phone"],
         )
-        if DB_IS_POSTGRES:
+        if budget is not None:
+            invoice_id = budget_invoice_id
+            conn.execute(
+                """UPDATE invoices SET
+                    customer_id = ?, total = ?, special_discount = ?, created_at = ?,
+                    seller_id = ?, document_type = ?, commission_amount = ?,
+                    sale_mode = ?, price_list = ?, external_ref = ?, due_date = ?,
+                    notes = ?, payment_method = ?, warranty_days = ?,
+                    customer_name_snapshot = ?, customer_phone_snapshot = ?
+                   WHERE id = ?""",
+                (*insert_invoice_params, invoice_id),
+            )
+            conn.execute("DELETE FROM invoice_item_imeis WHERE invoice_id = ?", (invoice_id,))
+            conn.execute("DELETE FROM invoice_items WHERE invoice_id = ?", (invoice_id,))
+        elif DB_IS_POSTGRES:
             invoice_row = conn.execute(f"{insert_invoice_sql} RETURNING id", insert_invoice_params).fetchone()
             invoice_id = int(invoice_row["id"] if isinstance(invoice_row, dict) else invoice_row[0])
         else:
@@ -9584,6 +9624,7 @@ def admin_create_invoice(
             )
 
         conn.commit()
+        _clear_admin_overview_cache()
         return {
             "id": invoice_id,
             "customer_id": customer_id,

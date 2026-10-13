@@ -3,6 +3,7 @@
 import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { refreshInventory, useStorefrontInventory } from '@/hooks/useStorefrontInventory';
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
@@ -1765,6 +1766,21 @@ export default function HomeClient({
   const visibleCatalog = useMemo(
     () => filteredCatalog.slice(0, catalogLimit),
     [filteredCatalog, catalogLimit]
+  );
+
+  useStorefrontInventory(
+    [...featured, ...newArrivals, ...restocked, ...visibleCatalog,
+      ...filteredProducts.slice(0, catalogLimit), ...(quickView ? [quickView] : [])],
+    inventory => {
+      const update = (items: Product[]) => items.map(item => refreshInventory(item, inventory));
+      setProducts(update);
+      setFeatured(update);
+      setNewArrivals(update);
+      setRestocked(update);
+      setSearchResults(items => items ? update(items) : null);
+      setQuickView(item => item ? refreshInventory(item, inventory) : null);
+    },
+    () => setCatalogError('No se pudo actualizar el stock. Reintenta para ver la disponibilidad actual.'),
   );
 
   const toggleFeatured = async (product: Product) => {

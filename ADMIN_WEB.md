@@ -28,6 +28,15 @@ Regla: el admin siempre debe leer desde la API. No se agregan pantallas que lean
 - `Reportes`: operativo sobre resumen comercial
 - `Usuarios`: operativo sobre `users`
 
+Al facturar un presupuesto desde Comprobantes, el formulario envia
+`budget_invoice_id` y la API convierte ese mismo registro en factura, conservando
+su identificador y numero. Los items editados, el descuento de stock y la deuda
+se guardan en una sola transaccion. Si falla la emision, se conserva el presupuesto;
+un presupuesto procesado no se puede volver a facturar. Los pedidos web vinculados
+quedan confirmados con el mismo comprobante.
+Prueba: `.venv/Scripts/python.exe -m unittest test_budget_conversion -v` desde
+`usbshop-web/api`.
+
 ## Calculo de rentabilidad
 
 - Ganancia bruta por venta: cantidad por (precio unitario vendido menos costo).
