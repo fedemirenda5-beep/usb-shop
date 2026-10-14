@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAdminSession } from '@/hooks/useAdminSession';
+import { usePageResume } from '@/hooks/usePageResume';
 import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { buildSearchHaystack, matchesSearchQuery, normalizeSearchText } from '@/lib/search';
 import { formatArgentinaDateTime } from '@/lib/datetime';
@@ -246,6 +247,7 @@ const getStorefrontPriceLabel = (product: Product) => {
 };
 
 export default function ProductosPage() {
+  const resumeRevision = usePageResume();
   const { user } = useAdminSession();
   const queryClient = useQueryClient();
   const canViewProfit = canViewProfitMetrics(user?.role);
@@ -379,7 +381,7 @@ export default function ProductosPage() {
     }
     void loadProducts(page);
     return () => productsController.current?.abort();
-  }, [page, deferredSearch, selectedCategoryName, onlyOutOfStock, search]);
+  }, [page, deferredSearch, selectedCategoryName, onlyOutOfStock, search, resumeRevision]);
 
   useEffect(() => {
     if (!editId) {

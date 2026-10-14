@@ -4,6 +4,7 @@ import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { refreshInventory, useStorefrontInventory } from '@/hooks/useStorefrontInventory';
+import { usePageResume } from '@/hooks/usePageResume';
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
@@ -364,6 +365,7 @@ export default function HomeClient({
   initialApiBase,
   initialHasMoreProducts,
 }: HomeClientProps) {
+  const resumeRevision = usePageResume();
   const initialBase = initialApiBase || getApiBaseUrl();
   const [productsApiBase, setProductsApiBase] = useState(initialBase);
   const [featured, setFeatured] = useState<Product[]>(() =>
@@ -1288,7 +1290,7 @@ export default function HomeClient({
       active = false;
       controller.abort();
     };
-  }, [debouncedSearchQuery, searchRetry, searchQuery]);
+  }, [debouncedSearchQuery, searchRetry, searchQuery, resumeRevision]);
 
   const loadMoreSearch = async () => {
     const controller = searchController.current;

@@ -96,14 +96,7 @@ export async function loadRuntimeConfig(): Promise<string | null> {
     try {
       const host = window.location.hostname;
       const configUrl = getRuntimeConfigUrl();
-      const controller = new AbortController();
-      const timeoutHandle = window.setTimeout(() => controller.abort(), RUNTIME_CONFIG_TIMEOUT_MS);
-      let response: Response;
-      try {
-        response = await fetch(configUrl, { cache: "no-store", signal: controller.signal });
-      } finally {
-        window.clearTimeout(timeoutHandle);
-      }
+      const response = await fetchWithTimeout(configUrl, { cache: "no-store" }, RUNTIME_CONFIG_TIMEOUT_MS);
       if (!response.ok) {
         return null;
       }
@@ -268,8 +261,18 @@ const wait = (ms: number) =>
 
 const createAbortSignal = (timeoutMs: number, externalSignal?: AbortSignal) => {
   const controller = new AbortController();
+  const deadline = Date.now() + timeoutMs;
+  const abortTimeout = () => controller.abort(new DOMException("Request timeout", "AbortError"));
   const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
-  const timeoutHandle = setTimeout(() => controller.abort(new DOMException("Request timeout", "AbortError")), timeoutMs);
+  const timeoutHandle = setTimeout(abortTimeout, timeoutMs);
+  // Browser timers pause during sleep. Check elapsed wall time on return as well.
+  const checkDeadline = () => { if (Date.now() >= deadline) abortTimeout(); };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', checkDeadline);
+    window.addEventListener('online', checkDeadline);
+    window.addEventListener('pageshow', checkDeadline);
+    document.addEventListener('visibilitychange', checkDeadline);
+  }
 
   if (externalSignal) {
     if (externalSignal.aborted) {
@@ -283,6 +286,12 @@ const createAbortSignal = (timeoutMs: number, externalSignal?: AbortSignal) => {
     signal: controller.signal,
     cleanup: () => {
       clearTimeout(timeoutHandle);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', checkDeadline);
+        window.removeEventListener('online', checkDeadline);
+        window.removeEventListener('pageshow', checkDeadline);
+        document.removeEventListener('visibilitychange', checkDeadline);
+      }
       if (externalSignal) {
         externalSignal.removeEventListener("abort", abortFromExternalSignal);
       }
@@ -292,11 +301,23 @@ const createAbortSignal = (timeoutMs: number, externalSignal?: AbortSignal) => {
 
 const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
   const { signal, cleanup } = createAbortSignal(timeoutMs, init.signal);
+  let abortListener: (() => void) | undefined;
   try {
-    return await fetch(url, {
-      ...init,
-      signal,
+    const aborted = new Promise<never>((_, reject) => {
+      abortListener = () => reject(signal.reason ?? new DOMException('Request aborted', 'AbortError'));
+      if (signal.aborted) abortListener();
+      else signal.addEventListener('abort', abortListener, { once: true });
     });
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { ...init, signal });
+        // Receiving headers is not the end of a request: a stalled JSON body
+        // used to wait forever after the timeout had already been cleared.
+        await response.clone().arrayBuffer();
+        return response;
+      })(),
+      aborted,
+    ]);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       if (init.signal?.aborted) {
@@ -306,6 +327,7 @@ const fetchWithTimeout = async (url: string, init: RequestInit, timeoutMs: numbe
     }
     throw error;
   } finally {
+    if (abortListener) signal.removeEventListener('abort', abortListener);
     cleanup();
   }
 };

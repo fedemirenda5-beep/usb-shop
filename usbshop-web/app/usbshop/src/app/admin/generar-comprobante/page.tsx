@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { usePageResume } from '@/hooks/usePageResume';
 import { fetchApiResponse, getApiBaseUrl, getFriendlyApiError, loadRuntimeConfig, resolveImageUrl } from '@/lib/api';
 import { ADMIN_LIMITS } from '../adminConfig';
 import { argentinaDateTimeLocalToIso, getArgentinaNowDateTimeLocalInput } from '@/lib/datetime';
@@ -247,6 +248,7 @@ const uniqById = <T extends { id: number }>(items: T[]) => {
 };
 
 export default function GenerarComprobantePage() {
+  const resumeRevision = usePageResume();
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderIdParam = Number(searchParams?.get('order_id') || 0);
@@ -611,7 +613,7 @@ export default function GenerarComprobantePage() {
       controller.abort();
       window.clearTimeout(handle);
     };
-  }, [productSearch, productResultLimit]);
+  }, [productSearch, productResultLimit, resumeRevision]);
 
   const customerMap = useMemo(() => new Map(customers.map((customer) => [customer.id, customer])), [customers]);
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);

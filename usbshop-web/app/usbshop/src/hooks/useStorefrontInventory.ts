@@ -24,13 +24,19 @@ export function useStorefrontInventory(
     let request: AbortController | null = null;
     let lastAttempt = 0;
     const refresh = async () => {
+      if (request && Date.now() - lastAttempt >= 18_000) {
+        request.abort();
+        request = null;
+        lastAttempt = 0;
+      }
       if (!active || request || document.visibilityState !== 'visible' || !navigator.onLine) return;
       // Focus and visibilitychange can arrive together. Only send one request.
       if (Date.now() - lastAttempt < 10_000) return;
       const ids = [...new Set(latest.current.products.map(product => product.id))];
       if (!ids.length) return;
       lastAttempt = Date.now();
-      request = new AbortController();
+      const controller = new AbortController();
+      request = controller;
       try {
         const inventory: InventoryMap = new Map();
         // The API caps each response at 100 products.
@@ -38,29 +44,45 @@ export function useStorefrontInventory(
           const batch = ids.slice(offset, offset + 100);
           const params = new URLSearchParams({ ids: batch.join(','), limit: String(batch.length) });
           const rows = await fetchJson<Inventory[]>(`/products?${params}`, {
-            cache: 'no-store', signal: request.signal,
+            cache: 'no-store', signal: controller.signal,
           }, { attempts: 1 });
+          if (controller.signal.aborted) return;
           rows.forEach(product => inventory.set(product.id, product));
         }
-        if (active) latest.current.onRefresh(inventory);
+        if (active && !controller.signal.aborted) latest.current.onRefresh(inventory);
       } catch {
-        if (active) latest.current.onError();
+        if (active && !controller.signal.aborted) latest.current.onError();
       } finally {
-        request = null;
+        if (request === controller) request = null;
       }
     };
     const trigger = () => { void refresh(); };
+    const suspend = () => {
+      request?.abort();
+      request = null;
+      lastAttempt = 0;
+    };
+    const visibility = () => {
+      if (document.visibilityState === 'hidden') suspend();
+      else trigger();
+    };
+    const reconnect = () => { suspend(); trigger(); };
+    const pageshow = (event: PageTransitionEvent) => { if (event.persisted) reconnect(); };
     window.addEventListener('focus', trigger);
-    window.addEventListener('online', trigger);
-    document.addEventListener('visibilitychange', trigger);
+    window.addEventListener('online', reconnect);
+    window.addEventListener('offline', suspend);
+    window.addEventListener('pageshow', pageshow);
+    document.addEventListener('visibilitychange', visibility);
     const interval = window.setInterval(trigger, 60_000);
     return () => {
       active = false;
       request?.abort();
       window.clearInterval(interval);
       window.removeEventListener('focus', trigger);
-      window.removeEventListener('online', trigger);
-      document.removeEventListener('visibilitychange', trigger);
+      window.removeEventListener('online', reconnect);
+      window.removeEventListener('offline', suspend);
+      window.removeEventListener('pageshow', pageshow);
+      document.removeEventListener('visibilitychange', visibility);
     };
   }, []);
 }

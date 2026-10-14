@@ -1,5 +1,20 @@
 # Pruebas del carrito
 
+## Recuperacion despues del reposo
+
+`node --test tests/api-recovery.test.cjs tests/page-resume.test.cjs tests/storefront-inventory.test.cjs`
+verifica respuestas detenidas despues de recibir encabezados, temporizadores
+suspendidos, regreso a la pestaña, reconexion, stock y respuestas atrasadas.
+Las escrituras de ventas siguen sin reintentarse automaticamente.
+
+Con el build servido en `http://127.0.0.1:3020`, ejecutar
+`node tests/search-resume.cjs`. Acepta `PLAYWRIGHT_MODULE` y `TEST_WEB_URL`.
+Simula una busqueda de `holder` detenida y un minuto de suspension en la portada,
+catalogo, Productos y Generar comprobante, a 1366 y 390 px. Comprueba que se
+recupera la busqueda y se conservan el texto y la venta en preparacion.
+Todas las respuestas de API son simuladas; no crea ventas reales ni suspende
+fisicamente el dispositivo.
+
 ## Baja de vendedores y transferencia de clientes
 
 En Vendedores, abrir la ficha y elegir **Dar de baja y reasignar clientes**.

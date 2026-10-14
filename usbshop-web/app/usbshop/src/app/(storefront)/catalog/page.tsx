@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { refreshInventory, useStorefrontInventory } from '@/hooks/useStorefrontInventory';
+import { usePageResume } from '@/hooks/usePageResume';
 import ProductCard from "@/components/ProductCard";
 import { fetchJson, getApiBaseUrl, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
 import { normalizeSearchText } from "@/lib/search";
@@ -114,6 +115,7 @@ const toComparableTimestamp = (product: Product) => {
 };
 
 export default function CatalogPage() {
+  const resumeRevision = usePageResume();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [query, setQuery] = useState("");
@@ -242,7 +244,7 @@ export default function CatalogPage() {
       active = false;
       controller.abort();
     };
-  }, [debouncedQuery, retry, query]);
+  }, [debouncedQuery, retry, query, resumeRevision]);
 
   const filtered = useMemo(() => {
     const value = query.trim();

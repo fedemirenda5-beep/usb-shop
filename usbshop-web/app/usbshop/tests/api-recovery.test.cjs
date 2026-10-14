@@ -7,17 +7,20 @@ const compiled = ts.transpileModule(readFileSync(join(__dirname, '../src/lib/api
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-function apiWith(responses) {
+function apiWith(responses, clock) {
   const calls = [];
   const deadlines = [];
   const mod = { exports: {} };
   const timer = (callback, delay) => {
     deadlines.push(delay);
+    if (clock && delay !== 700) return undefined;
     return setTimeout(callback, delay === 700 ? 1 : delay);
   };
-  const browser = { location: { hostname: 'shop.test', origin: 'https://shop.test' }, dispatchEvent() {} };
-  new Function('module', 'exports', 'require', 'process', 'window', 'fetch', 'setTimeout', 'clearTimeout', compiled)(
-    mod, mod.exports, () => ({}), { env: { NEXT_PUBLIC_API_BASE_URL: 'https://api.test' } }, browser,
+  const browser = new EventTarget();
+  browser.location = { hostname: 'shop.test', origin: 'https://shop.test' };
+  const document = new EventTarget();
+  new Function('module', 'exports', 'require', 'process', 'window', 'document', 'Date', 'fetch', 'setTimeout', 'clearTimeout', compiled)(
+    mod, mod.exports, () => ({}), { env: { NEXT_PUBLIC_API_BASE_URL: 'https://api.test' } }, browser, document, clock || Date,
     async (url, init) => {
       calls.push({ url, init });
       const next = responses.shift();
@@ -26,8 +29,35 @@ function apiWith(responses) {
       return next;
     }, timer, clearTimeout,
   );
-  return { api: mod.exports, calls, deadlines };
+  return { api: mod.exports, calls, deadlines, browser, document };
 }
+
+test('timeout includes a response body that stalls after headers; writes are not repeated', async () => {
+  let stream;
+  const response = new Response(new ReadableStream({ start(controller) { stream = controller; } }));
+  const { api, calls } = apiWith([response]);
+  try {
+    await assert.rejects(api.fetchApiResponse('/admin/invoices', { method: 'POST' }, 20), /demoro demasiado/);
+    assert.equal(calls.length, 1);
+  } finally { stream.close(); }
+});
+
+test('returning from sleep expires an old read even when its timer was suspended', async () => {
+  let now = 100000;
+  let stream;
+  const stalled = new Response(new ReadableStream({ start(controller) { stream = controller; } }));
+  const state = apiWith([stalled, Response.json([{ id: 704, name: 'Holder' }])], { now: () => now });
+  try {
+    const pending = state.api.fetchApiResponse('/products?q=holder');
+    await new Promise(resolve => setImmediate(resolve));
+    now += 60000;
+    state.browser.dispatchEvent(new Event('focus'));
+    const response = await pending;
+    assert.deepEqual(await response.json(), [{ id: 704, name: 'Holder' }]);
+    assert.equal(state.calls.length, 2);
+    assert.equal(state.calls[0].init.signal.aborted, true);
+  } finally { stream.close(); }
+});
 
 test('session verification recovers after temporary HTTP failure without using cache', async () => {
   const { api, calls } = apiWith([new Response('', { status: 503 }), Response.json({ username: 'test' })]);

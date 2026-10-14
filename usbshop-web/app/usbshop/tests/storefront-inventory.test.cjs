@@ -45,6 +45,27 @@ function mount(products, responder) {
 
 const settled = () => new Promise(resolve => setImmediate(resolve));
 
+test('suspension releases a stalled refresh and a late response cannot overwrite fresh stock', async () => {
+  let oldResponse;
+  const state = mount([{ id: 704, stock: 3 }], () => state.calls.length === 1
+    ? new Promise(resolve => { oldResponse = resolve; })
+    : Promise.resolve([{ id: 704, stock: 2 }]));
+  state.browser.dispatchEvent(new Event('focus'));
+  state.document.visibilityState = 'hidden';
+  state.document.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(state.calls[0].init.signal.aborted, true);
+  state.document.visibilityState = 'visible';
+  state.document.dispatchEvent(new Event('visibilitychange'));
+  await settled();
+  assert.equal(state.calls.length, 2);
+  assert.equal(state.updates[0].get(704).stock, 2);
+  oldResponse([{ id: 704, stock: 99 }]);
+  await settled();
+  assert.equal(state.updates.length, 1);
+  assert.equal(state.errors.length, 0);
+  state.cleanup();
+});
+
 test('returning to the tab refreshes stock and sold counts without changing product identity', async () => {
   const product = { id: 6463, name: 'Cargador', stock: 300, soldCount: 0 };
   const state = mount([product], async () => [{ id: 6463, stock: 198, soldCount: 98 }]);
