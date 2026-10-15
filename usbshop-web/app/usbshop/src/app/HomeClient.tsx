@@ -8,6 +8,8 @@ import { usePageResume } from '@/hooks/usePageResume';
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
+import ProductDiscovery from "@/components/ProductDiscovery";
+import { uniqueStorefrontSections } from '@/lib/storefrontSections';
 import CartDrawer from "@/components/CartDrawer";
 import StorefrontCartPanel from "@/components/StorefrontCartPanel";
 import {
@@ -424,9 +426,7 @@ export default function HomeClient({
   const [hasMoreSearch, setHasMoreSearch] = useState(false);
   const searchController = useRef<AbortController | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [showCatalogSection, setShowCatalogSection] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [featuredIndex, setFeaturedIndex] = useState(0);
   const [orderStatus, setOrderStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -534,7 +534,6 @@ export default function HomeClient({
     setSelectedCategory(category);
     setCatalogError(null);
     setSearchQuery("");
-    setShowCatalogSection(Boolean(category));
     setCatalogLimit(CATALOG_PAGE_SIZE);
     window.requestAnimationFrame(() => {
       const target =
@@ -551,7 +550,6 @@ export default function HomeClient({
   const handleReturnHome = () => {
     setSelectedCategory(null);
     setSearchQuery("");
-    setShowCatalogSection(false);
     setCatalogLimit(CATALOG_PAGE_SIZE);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -658,7 +656,6 @@ export default function HomeClient({
   const handleViewFullCatalog = () => {
     setSelectedCategory(null);
     setSearchQuery("");
-    setShowCatalogSection(true);
     setCatalogLimit(CATALOG_PAGE_SIZE);
     if (hasMoreProducts && !isFetchingMore) {
       void fetchAllProducts();
@@ -672,7 +669,6 @@ export default function HomeClient({
     if (isSearching && hasMoreSearch && filteredProducts.length <= catalogLimit + CATALOG_PAGE_SIZE) {
       void loadMoreSearch();
     }
-    setShowCatalogSection(true);
     setCatalogLimit((value) => value + CATALOG_PAGE_SIZE);
     if (!isSearching && hasMoreProducts && !isFetchingMore && filteredCatalog.length < catalogLimit + CATALOG_PAGE_SIZE) {
       if (selectedCategory) void fetchAllProducts();
@@ -919,17 +915,6 @@ export default function HomeClient({
       active = false;
     };
   }, [initialFeatured]);
-
-  useEffect(() => {
-    const source = featured;
-    if (source.length <= 4) {
-      return;
-    }
-    const interval = setInterval(() => {
-      setFeaturedIndex((prev) => (prev + 4) % source.length);
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [featured, products]);
 
   useEffect(() => {
     let active = true;
@@ -1330,15 +1315,6 @@ export default function HomeClient({
     );
   };
 
-  const filteredFeatured = useMemo(() => {
-    return [...featuredSource]
-      .filter((product) => {
-      if (!matchesSelectedCategory(product)) {
-        return false;
-      }
-      return matchesSearch(product);
-      });
-  }, [featuredSource, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex, searchResultIds]);
   const filteredProducts = useMemo(() => {
     if (isSearching) {
       return searchQuery.trim() === debouncedSearchQuery ? (searchResults || []).filter(matchesSelectedCategory) : [];
@@ -1447,7 +1423,7 @@ export default function HomeClient({
         return compareByNewest(a, b);
       });
 
-    return offers.slice(0, HOME_SECTION_CARD_LIMIT);
+    return offers;
   }, [products, featuredSource]);
 
   const discountedProducts = useMemo(() => {
@@ -1461,8 +1437,7 @@ export default function HomeClient({
           return discountB - discountA;
         }
         return compareByNewest(a, b);
-      })
-      .slice(0, HOME_SECTION_CARD_LIMIT);
+      });
   }, [products, featuredSource]);
 
   const flashOfferProducts = useMemo(() => {
@@ -1473,23 +1448,18 @@ export default function HomeClient({
       .slice(0, 2);
   }, [products, featuredSource]);
 
-  const filteredWeeklyOffers = useMemo(() => {
-    return weeklyOffers.filter((product) => {
-      if (!matchesSelectedCategory(product)) {
-        return false;
-      }
-      return matchesSearch(product);
-    });
-  }, [weeklyOffers, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
-
-  const filteredDiscountedProducts = useMemo(() => {
-    return discountedProducts.filter((product) => {
-      if (!matchesSelectedCategory(product)) {
-        return false;
-      }
-      return matchesSearch(product);
-    });
-  }, [discountedProducts, searchTokens, selectedCategory, productSearchIndex, productCategoryIndex]);
+  const homeSections = useMemo(() => uniqueStorefrontSections([
+    { key: 'flash', products: flashOfferProducts, limit: 2 },
+    { key: 'new', products: newArrivals, limit: HOME_SECTION_CARD_LIMIT },
+    { key: 'restocked', products: restocked, limit: HOME_SECTION_CARD_LIMIT },
+    { key: 'discounts', products: discountedProducts, limit: HOME_SECTION_CARD_LIMIT },
+    { key: 'featured', products: featured, limit: HOME_SECTION_CARD_LIMIT },
+    { key: 'offers', products: weeklyOffers.filter(product => product.isOffer || hasDiscountedPrice(product)), limit: HOME_SECTION_CARD_LIMIT },
+  ]), [flashOfferProducts, newArrivals, restocked, discountedProducts, featured, weeklyOffers]);
+  const homeProductIds = useMemo(
+    () => Object.values(homeSections).flat().map(product => product.id),
+    [homeSections],
+  );
 
   const showStockNoticeMessage = (message: string) => {
     setStockNotice(message);
@@ -1755,16 +1725,7 @@ export default function HomeClient({
     }
   };
 
-  const featuredWindow = useMemo(() => {
-    if (filteredFeatured.length <= 4) {
-      return filteredFeatured;
-    }
-    const start = featuredIndex % filteredFeatured.length;
-    return Array.from({ length: 4 }, (_, idx) => {
-      const pos = (start + idx) % filteredFeatured.length;
-      return filteredFeatured[pos];
-    });
-  }, [filteredFeatured, featuredIndex]);
+  const featuredWindow = homeSections.featured;
   const visibleCatalog = useMemo(
     () => filteredCatalog.slice(0, catalogLimit),
     [filteredCatalog, catalogLimit]
@@ -1894,7 +1855,7 @@ export default function HomeClient({
 
       {categoryStrip}
 
-      {!isSearching && !selectedCategory ? (
+      {!isSearching && !selectedCategory && (collectionsLoading || collectionsError || homeSections.new.length > 0) ? (
       <section id="novedades" className="section">
         <div className="section-header">
           <div>
@@ -1913,8 +1874,8 @@ export default function HomeClient({
           ) : null}
         </div>
         <div className="product-grid stagger">
-          {newArrivals.length > 0 ? (
-            newArrivals.map((product, index) => (
+          {homeSections.new.length > 0 ? (
+            homeSections.new.map((product, index) => (
               <ProductCard
                 key={`new-${product.id}`}
                 product={applyBadge(product, "catalog")}
@@ -1939,10 +1900,10 @@ export default function HomeClient({
       </section>
       ) : null}
 
-      {!isSearching && !selectedCategory && restocked.length > 0 ? (
+      {!isSearching && !selectedCategory && homeSections.restocked.length > 0 ? (
         <section id="reposiciones" className="section">
           <div className="section-header"><div><p className="section-kicker">De nuevo en stock</p><h2 className="section-title">Volvió a ingresar</h2><p>Reposiciones de los últimos 7 días</p></div></div>
-          <div className="product-grid stagger">{restocked.map((product, index) => (
+          <div className="product-grid stagger">{homeSections.restocked.map((product, index) => (
             <ProductCard key={`restocked-${product.id}`} product={{ ...product, badge: "Volvió a ingresar" }}
               imageRefreshKey={imageRefreshKey} imagePriority={getCardImagePriority(index)}
               inCart={cart[product.id]?.qty ?? 0} onAdd={() => addItem(product)}
@@ -1951,9 +1912,9 @@ export default function HomeClient({
         </section>
       ) : null}
 
-      {!isSearching && !selectedCategory && flashOfferProducts.length > 0 ? (
+      {!isSearching && !selectedCategory && homeSections.flash.length > 0 ? (
         <section className="flash-offers">
-          {flashOfferProducts.map((product, index) => {
+          {homeSections.flash.map((product, index) => {
             const campaignLabel = getFlashOfferCampaignLabel(product);
             const discountPercent = getFlashOfferDiscountPercent(product);
             return (
@@ -2023,20 +1984,20 @@ export default function HomeClient({
         </section>
       ) : null}
 
-      {!isSearching && !selectedCategory && (isLoadingProducts || filteredDiscountedProducts.length > 1) ? (
+      {!isSearching && !selectedCategory && (isLoadingProducts || homeSections.discounts.length > 0) ? (
         <section id="bajaron-de-precio" className="section">
           <div className="section-header">
             <div>
               <p className="section-kicker">Bajaron de precio</p>
               <h2 className="section-title">Productos con precio actualizado</h2>
             </div>
-            <a className="button button--ghost" href="#catalogo">
+            <button type="button" className="button button--ghost" onClick={handleViewFullCatalog}>
               Ver catalogo completo
-            </a>
+            </button>
           </div>
           <div className="product-grid stagger">
-            {filteredDiscountedProducts.length > 0 ? (
-              filteredDiscountedProducts.map((product, index) => (
+            {homeSections.discounts.length > 0 ? (
+              homeSections.discounts.map((product, index) => (
                 <ProductCard
                   key={`discount-${product.id}`}
                   product={{
@@ -2061,20 +2022,20 @@ export default function HomeClient({
       ) : null}
 
 
-      {!isSearching && !selectedCategory && (
+      {!isSearching && !selectedCategory && (isLoadingProducts || homeSections.offers.length > 0) && (
         <section id="ofertas" className="section">
         <div className="section-header">
           <div>
             <p className="section-kicker">Ofertas</p>
-            <h2 className="section-title">Lo más vendido para aprovechar ahora</h2>
+            <h2 className="section-title">Ofertas para aprovechar ahora</h2>
           </div>
-          <a className="button button--ghost" href="#catalogo">
+          <button type="button" className="button button--ghost" onClick={handleViewFullCatalog}>
             Ver mas productos
-          </a>
+          </button>
         </div>
         <div className="product-grid stagger">
-          {filteredWeeklyOffers.length > 0 ? (
-            filteredWeeklyOffers.map((product, index) => (
+          {homeSections.offers.length > 0 ? (
+            homeSections.offers.map((product, index) => (
               <ProductCard
                 key={`offer-${product.id}`}
                 product={applyBadge(product, "offer")}
@@ -2102,6 +2063,7 @@ export default function HomeClient({
         <section
           id={selectedCategory ? "selected-category-results" : "destacados"}
           className="section"
+          hidden={!isSearching && !selectedCategory && !isLoadingFeatured && featuredWindow.length === 0}
         >
           <div className="section-header">
             <div>
@@ -2210,7 +2172,7 @@ export default function HomeClient({
               ) : featuredWindow.length > 0 ? (
                 featuredWindow.map((product, index) => (
                   <div
-                    key={`${product.id}-${featuredIndex}`}
+                    key={product.id}
                     className="featured-fade"
                     style={{ "--delay": getStaggerDelay(index, 0.12, 0.6) } as React.CSSProperties}
                   >
@@ -2282,12 +2244,30 @@ export default function HomeClient({
         </div>
         </section>
 
-      {!isSearching && !selectedCategory && showCatalogSection ? (
+      <div hidden={isSearching || Boolean(selectedCategory)}>
+        <ProductDiscovery<Product>
+          excludedIds={homeProductIds}
+          ready={!collectionsLoading && !isLoadingProducts && !isLoadingFeatured}
+          normalize={normalizeProductWithBase}
+          renderProduct={(product, index) => (
+            <ProductCard
+              product={applyBadge(product, "catalog")}
+              imageRefreshKey={imageRefreshKey}
+              imagePriority={getCardImagePriority(index)}
+              inCart={cart[product.id]?.qty ?? 0}
+              onAdd={() => addItem(product)}
+              onView={() => handleOpenQuickView(product)}
+            />
+          )}
+        />
+      </div>
+
+      {!isSearching && !selectedCategory ? (
         <section className="section" id="catalogo">
           <div className="section-header">
             <div>
               <p className="section-kicker">Catalogo</p>
-              <h2 className="section-title">Mas productos</h2>
+              <h2 className="section-title">Catálogo completo</h2>
               {selectedCategory ? (
                 <p className="hero-text">Filtrando por: {selectedCategory}</p>
               ) : null}
@@ -2314,7 +2294,7 @@ export default function HomeClient({
               ))
             ) : (
               <div className="empty-state empty-state--wide">
-                No hay destacados u ofertas con esos filtros.
+                No hay productos disponibles por el momento.
               </div>
             )}
           </div>

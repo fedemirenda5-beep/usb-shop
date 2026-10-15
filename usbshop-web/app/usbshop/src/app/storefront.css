@@ -241,3 +241,6 @@
 @media (prefers-reduced-motion: reduce) {
   .storefront *, .storefront *::before, .storefront *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.storefront [hidden] { display: none !important; }
+.storefront--home .section-header .button--ghost { display: inline-flex; }

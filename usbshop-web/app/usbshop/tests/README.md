@@ -1,5 +1,21 @@
 # Pruebas del carrito
 
+## Descubrimiento de productos
+
+`node --test tests/storefront-sections.test.cjs` verifica que las secciones
+promocionales se completen con productos disponibles sin repetirlos.
+
+Con el build servido en `http://127.0.0.1:3016`, ejecutar
+`node tests/storefront-discovery.cjs`. Acepta `PLAYWRIGHT_MODULE`, `TEST_WEB_URL`
+y `SCREENSHOT_DIR`. Simula escritorio y celular, catálogo visible, selección
+estable al agregar al carrito o volver de un rubro, paginación sin repeticiones
+y reintentos que conservan los productos actuales.
+
+Desde `usbshop-web/api`, `python -m unittest test_product_discovery` verifica
+el orden por visita, la variedad de rubros, la paginación y la visibilidad de
+productos con una base descartable. La selección usa `/products?sort=discover`
+con una semilla estable durante la visita; publicar juntos frontend y API.
+
 ## Recuperacion despues del reposo
 
 `node --test tests/api-recovery.test.cjs tests/page-resume.test.cjs tests/storefront-inventory.test.cjs`

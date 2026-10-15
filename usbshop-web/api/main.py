@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 import consignments
 import storefront
 from product_search import rank_products
+from product_discovery import discovery_order
 
 try:
     import psycopg2
@@ -4837,6 +4838,7 @@ def list_products(
     q: Optional[str] = None,
     sort: Optional[str] = None,
     ids: Optional[str] = None,
+    seed: int = 0,
 ) -> list[dict]:
     conn = _connect()
     try:
@@ -4882,6 +4884,8 @@ def list_products(
             conditions.append("p.deleted_at IS NULL")
         if has_is_active:
             conditions.append("p.is_active = 1")
+        if str(sort or "").strip().lower() == "discover" and not q:
+            conditions.append("(p.stock > 0 OR p.is_bundle = 1)")
         base_conditions = []
         if has_deleted_at:
             base_conditions.append("deleted_at IS NULL")
@@ -4919,7 +4923,10 @@ def list_products(
             query += f" AND p.id IN ({placeholders})" if conditions else f" WHERE p.id IN ({placeholders})"
             params.extend(parsed_ids)
         sort_key = str(sort or "").strip().lower()
-        if sort_key in {"", "newest"}:
+        if sort_key == "discover" and not q:
+            order_by, order_params = discovery_order(seed)
+            params.extend(order_params)
+        elif sort_key in {"", "newest"}:
             if has_created_at and has_updated_at:
                 order_by = "COALESCE(p.created_at, p.updated_at) DESC, p.id DESC"
             elif has_created_at:

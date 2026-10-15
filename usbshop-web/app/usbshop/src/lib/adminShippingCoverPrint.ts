@@ -17,12 +17,11 @@ export function buildShippingCoverPrintHtml(customer: ShippingCoverCustomer): st
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Carátula de envío - ${escapeHtml(customer.name)}</title>
+  <title>${escapeHtml(customer.name)}</title>
   <style>
     * { box-sizing: border-box; }
     html, body { margin: 0; background: #fff; color: #000; font-family: Arial, sans-serif; }
     main { margin: 16mm; padding: 14mm; border: 2px solid #000; }
-    h1 { margin: 0 0 14mm; font-size: 22px; text-transform: uppercase; }
     dl { margin: 0; }
     dt { margin-top: 10mm; font-size: 16px; text-transform: uppercase; }
     dd { margin: 3mm 0 0; font-size: 32px; font-weight: bold; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -34,7 +33,6 @@ export function buildShippingCoverPrintHtml(customer: ShippingCoverCustomer): st
 </head>
 <body>
   <main>
-    <h1>Carátula de envío</h1>
     <dl>
       <dt>Destinatario</dt>
       <dd>${escapeHtml(customer.name)}</dd>
