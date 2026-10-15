@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminSellerCustomersPrint } from '@/lib/adminSellerCustomersPrint';
+import { openAdminShippingCoverPrint } from '@/lib/adminShippingCoverPrint';
 import { formatCustomerMonthlyPurchases } from '@/lib/customerMonthlyPurchases';
 import { formatArgentinaDateTime, getArgentinaNowDateInput } from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
@@ -1159,6 +1160,20 @@ export default function ClientesPage() {
                 </div>
               </div>
               <div className={styles.summaryActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    setError('');
+                    try {
+                      openAdminShippingCoverPrint(selectedCustomer);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'No se pudo imprimir la carátula de envío.');
+                    }
+                  }}
+                >
+                  Imprimir carátula de envíos
+                </button>
                 <button
                   type="button"
                   className={styles.secondaryButton}
