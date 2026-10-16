@@ -89,6 +89,14 @@ Después de compilar, servir `out` en el puerto 3012 y ejecutar
 login lento, almacenamiento bloqueado, cookies rechazadas, cortes temporales,
 recuperación de conexión y vencimiento real de sesión. No usa cuentas reales.
 
+## Imagen ampliada del catálogo
+
+Con `out` servido en el puerto 3012, ejecutar `node tests/image-lightbox.cjs`.
+Acepta `PLAYWRIGHT_MODULE` y `TEST_WEB_URL`. Usa imágenes verticales y horizontales
+grandes con respuestas simuladas. Verifica que el doble clic abra la imagen
+centrada y dentro de la pantalla en tres resoluciones de PC y una de móvil,
+que el botón de cierre siga visible y que Escape vuelva al detalle del producto.
+
 ## IMEI y garantías
 
 La API se verifica con `python -m unittest test_imei_tracking`, desde `usbshop-web/api`
