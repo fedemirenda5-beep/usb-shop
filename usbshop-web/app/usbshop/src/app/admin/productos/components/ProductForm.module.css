@@ -84,6 +84,28 @@
   color: #6b7280;
 }
 
+.imeiList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.imeiList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.imeiList span {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
 .summaryCard {
   display: flex;
   flex-direction: column;

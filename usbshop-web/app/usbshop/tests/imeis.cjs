@@ -16,12 +16,19 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
     let submitted = null;
     let soldCustomer = 1;
     let invoicePosts = 0;
+    let submittedProduct = null;
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.pathname === '/usbshop-config.json') return route.fulfill({ json: { apiBaseUrl: 'http://127.0.0.1:8000' } });
       if (url.pathname === '/auth/me') return route.fulfill({ json: { id: 1, username: 'test', role: 'admin' } });
-      if (url.pathname === '/admin/categories') return route.fulfill({ json: [{ id: 1, name: 'Celulares' }] });
-      if (url.pathname === '/admin/products') return route.fulfill({ json: [product] });
+      if (url.pathname === '/admin/categories') return route.fulfill({ json: [{ id: 1, name: 'Celulares' }, { id: 2, name: 'Accesorios' }] });
+      if (url.pathname === '/admin/products') {
+        if (route.request().method() === 'POST') {
+          submittedProduct = route.request().postDataJSON();
+          return route.fulfill({ json: { id: 2 } });
+        }
+        return route.fulfill({ json: [product] });
+      }
       if (url.pathname === '/admin/dashboard') return route.fulfill({ json: { summary: { products: 1, active_customers: 2, stock_units: 2, sales_count: 1, sales_total: 1000, estimated_margin: 0, expenses_total: 0, cc_open_balance: 0 } } });
       if (url.pathname === '/admin/backoffice-customers') return route.fulfill({ json: [{ id: 1, name: 'Cliente Uno', phone: '1122334455', sale_mode: 'CONTADO' }] });
       if (url.pathname === '/admin/sellers') return route.fulfill({ json: [{ id: 1, name: 'Vendedor', is_active: true, commission_percent: 0 }] });
@@ -47,11 +54,45 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
     await page.getByLabel('Escanear IMEI de ingreso').fill(imei);
     await page.getByLabel('Escanear IMEI de ingreso').press('Enter');
     assert.equal(await page.locator('#imeis').inputValue(), imei);
+    assert.equal(await page.locator('#stock').inputValue(), '1');
+    assert.equal(await page.locator('#stock').evaluate(node => node.readOnly), true);
     await page.getByLabel('Escanear IMEI de ingreso').fill(imei);
     await page.getByLabel('Escanear IMEI de ingreso').press('Enter');
     await page.getByRole('status').filter({ hasText: 'Este IMEI ya está cargado.' }).waitFor();
     assert.equal(await page.locator('#imeis').inputValue(), imei);
-    console.log('PASS receipt scan appends once without submitting product form');
+    assert.equal(await page.locator('#stock').inputValue(), '1');
+    await page.getByLabel('Escanear IMEI de ingreso').fill('123');
+    await page.getByRole('button', { name: 'Agregar IMEI', exact: true }).click();
+    assert.equal(await page.locator('#stock').inputValue(), '1');
+    await page.getByLabel('Escanear IMEI de ingreso').fill('356789012345679');
+    await page.getByRole('button', { name: 'Agregar IMEI', exact: true }).click();
+    assert.equal(await page.locator('#stock').inputValue(), '2');
+    assert.equal(await page.getByLabel('Escanear IMEI de ingreso').evaluate(node => node === document.activeElement), true);
+    await page.getByRole('button', { name: 'Quitar IMEI 356789012345679', exact: true }).click();
+    assert.equal(await page.locator('#stock').inputValue(), '1');
+    await page.getByText('Pegar o editar varios IMEIs', { exact: true }).click();
+    await page.locator('#imeis').fill(`${imei}\n356789012345679\n${imei}`);
+    assert.equal(await page.locator('#stock').inputValue(), '2');
+    await page.locator('#imeis').fill('');
+    assert.equal(await page.locator('#stock').inputValue(), '0');
+    await page.locator('#imeis').fill(`${imei}\n356789012345679`);
+    await page.locator('select[name="category_id"]').selectOption('2');
+    await page.locator('#stock').fill('7');
+    assert.equal(await page.locator('#stock').inputValue(), '7');
+    await page.locator('select[name="category_id"]').selectOption('1');
+    assert.equal(await page.locator('#stock').inputValue(), '2');
+    await page.locator('#name').fill('Samsung A16');
+    await page.locator('#sku').fill('SAM-A16-NEW');
+    await page.getByLabel('Escanear IMEI de ingreso').fill('356789012345680');
+    await page.getByRole('button', { name: 'Guardar Producto', exact: true }).click();
+    await page.getByText(/Tenés un IMEI pendiente/).waitFor();
+    assert.equal(submittedProduct, null);
+    await page.getByRole('button', { name: 'Agregar IMEI', exact: true }).click();
+    await page.getByRole('button', { name: 'Guardar Producto', exact: true }).click();
+    await page.waitForURL(/\/admin\/productos\/$/);
+    assert.equal(submittedProduct.stock, 3);
+    assert.deepEqual(submittedProduct.imeis, [imei, '356789012345679', '356789012345680']);
+    console.log('PASS IMEI receipt derives stock, rejects duplicates, supports removal and bulk entry, and saves matching stock');
 
     await page.goto(`${base}/admin/generar-comprobante/`);
     await page.getByPlaceholder('Buscar cliente por nombre, mail, telefono o CUIT').fill('Cliente');

@@ -225,6 +225,7 @@ export function ProductForm({
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
   const [imeiScan, setImeiScan] = useState('');
   const [imeiScanMessage, setImeiScanMessage] = useState('');
+  const imeiScanRef = useRef<HTMLInputElement>(null);
   const addScannedImei = () => {
     const imei = imeiScan.replace(/\D/g, '');
     if (!/^[0-9]{15}$/.test(imei)) { setImeiScanMessage('El IMEI debe tener 15 dígitos.'); return; }
@@ -232,7 +233,8 @@ export function ProductForm({
     if (existing.includes(imei)) { setImeiScanMessage('Este IMEI ya está cargado.'); return; }
     setFormData(current => ({ ...current, imeis: [...parseImeiValues(current.imeis), imei].join('\n') }));
     setImeiScan('');
-    setImeiScanMessage(`IMEI ${imei} agregado. Revisá que el stock coincida con la cantidad de equipos.`);
+    setImeiScanMessage(`IMEI ${imei} agregado. Se sumó 1 equipo al stock. Guardá el producto para confirmar.`);
+    imeiScanRef.current?.focus();
   };
   const [imageInputs, setImageInputs] = useState<string[]>(() => buildInitialImages(initialData));
   const [selectedImageFiles, setSelectedImageFiles] = useState<Array<File | null>>(() =>
@@ -278,7 +280,8 @@ export function ProductForm({
   const isUploadingAnyImage = uploadingSlots.some(Boolean);
   const selectedCategory = categories.find((category) => String(category.id) === formData.category_id);
   const isCellphonesCategory = !formData.is_bundle && normalizeCategoryName(selectedCategory?.name || '') === 'celulares';
-  const parsedStock = parseInteger(formData.stock);
+  const loadedImeis = parseImeiValues(formData.imeis);
+  const parsedStock = isCellphonesCategory ? loadedImeis.length : parseInteger(formData.stock);
   const selectableBundleProducts = selectableProducts.filter((product) => {
     if (product.id === initialData?.id) return false;
     if (product.is_bundle) return false;
@@ -471,7 +474,7 @@ export function ProductForm({
       const priceList1 = parseDecimal(formData.price_list_1);
       const priceList2 = parseDecimal(formData.price_list_2);
       const cost = parseDecimal(formData.cost);
-      const stock = parseInteger(formData.stock);
+      const stock = parsedStock;
       const flashOfferPrice = parseDecimal(formData.flash_offer_price);
 
       if (!formData.name.trim()) {
@@ -499,6 +502,9 @@ export function ProductForm({
         throw new Error('Agrega al menos un producto al combo');
       }
       const imeis = parseImeiValues(formData.imeis);
+      if (isCellphonesCategory && imeiScan.trim()) {
+        throw new Error('Tenés un IMEI pendiente. Presioná Agregar IMEI antes de guardar el producto.');
+      }
       if (isCellphonesCategory && stock > 0 && imeis.length === 0) {
         throw new Error('Para guardar un celular tenes que cargar al menos un IMEI');
       }
@@ -633,13 +639,38 @@ export function ProductForm({
 
         {isCellphonesCategory ? (
           <div className={styles.field}>
+            <div className={styles.summaryCard}>
+              <span className={styles.summaryLabel}>Equipos en stock</span>
+              <strong className={styles.summaryValue}>{loadedImeis.length}</strong>
+              <p className={styles.help}>1 IMEI = 1 equipo en stock. Los cambios se confirman al guardar el producto.</p>
+            </div>
             <label htmlFor="imei-scan">Escanear IMEI de ingreso</label>
-            <input id="imei-scan" inputMode="numeric" autoComplete="off" value={imeiScan} disabled={loading}
-              placeholder="Escaneá el IMEI y presioná Enter"
-              onChange={event => setImeiScan(event.target.value)}
+            <input ref={imeiScanRef} id="imei-scan" inputMode="numeric" autoComplete="off" value={imeiScan} disabled={loading}
+              className={styles.input}
+              placeholder="Escaneá o escribí el IMEI y presioná Enter"
+              aria-describedby="imei-help imei-status"
+              onChange={event => { setImeiScan(event.target.value); setImeiScanMessage(''); }}
               onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addScannedImei(); } }} />
-            <button type="button" onClick={addScannedImei} disabled={loading}>Agregar IMEI</button>
-            <p role="status" className={styles.help}>{imeiScanMessage}</p>
+            <button type="button" className={styles.btnSubmit} onClick={addScannedImei} disabled={loading || !imeiScan.trim()}>Agregar IMEI</button>
+            <p id="imei-status" role="status" className={styles.help}>{imeiScanMessage}</p>
+            <p id="imei-help" className={styles.help}>Cargá solo el IMEI principal de cada equipo, aunque tenga dos. Podés seguir escaneando uno detrás de otro.</p>
+            {loadedImeis.length > 0 ? (
+              <ul className={styles.imeiList} aria-label="Equipos cargados">
+                {loadedImeis.map(imei => (
+                  <li key={imei}>
+                    <span>{imei}</span>
+                    <button type="button" className={styles.btnClearImage} disabled={loading}
+                      aria-label={`Quitar IMEI ${imei}`}
+                      onClick={() => {
+                        setFormData(current => ({ ...current, imeis: parseImeiValues(current.imeis).filter(value => value !== imei).join('\n') }));
+                        setImeiScanMessage('IMEI quitado. Se descontó 1 equipo del stock. Guardá el producto para confirmar.');
+                      }}>Quitar</button>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className={styles.help}>Todavía no cargaste equipos. Agregá el primer IMEI para sumar stock.</p>}
+            <details>
+              <summary>Pegar o editar varios IMEIs</summary>
             <label htmlFor="imeis">IMEIs *</label>
             <textarea
               id="imeis"
@@ -650,11 +681,11 @@ export function ProductForm({
               disabled={loading}
               className={styles.textarea}
               rows={6}
-              required={isCellphonesCategory && parsedStock > 0}
             />
             <p className={styles.help}>
-              {parseImeiValues(formData.imeis).length} IMEIs cargados / {Math.max(0, Number.isFinite(parsedStock) ? parsedStock : 0)} equipos en stock. Registrá un IMEI por equipo; usá ese mismo número al venderlo. Si tiene dos IMEI, cargá solo el principal.
+              Pegá un IMEI por línea. El stock se calcula automáticamente y los repetidos cuentan una sola vez.
             </p>
+            </details>
           </div>
         ) : null}
 
@@ -727,11 +758,13 @@ export function ProductForm({
               type="text"
               inputMode="numeric"
               name="stock"
-              value={formData.is_bundle ? '0' : formData.stock}
+              value={formData.is_bundle ? '0' : isCellphonesCategory ? String(parsedStock) : formData.stock}
               onChange={handleChange}
+              readOnly={isCellphonesCategory}
               disabled={loading || formData.is_bundle}
               className={styles.input}
             />
+            {isCellphonesCategory ? <p className={styles.help}>Se calcula con los IMEIs cargados.</p> : null}
           </div>
         </div>
 
