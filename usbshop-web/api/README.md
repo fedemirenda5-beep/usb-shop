@@ -93,6 +93,14 @@ python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local -
 
 ## Diagnostico de disponibilidad
 
+Las imagenes de `/products/{id}/image` se procesan con un limite independiente
+de `USB_IMAGE_WORKERS` (default: 4). Asi las descargas remotas y miniaturas no
+ocupan los trabajadores usados por las consultas del catalogo y el admin.
+Una descarga remota fallida no se repite como fallback de miniatura; si falla
+solo la conversion se devuelven los bytes originales ya descargados. La lectura
+remota se limita a 12 MiB mas un byte para detectar imagenes demasiado grandes.
+Esto reduce la contencion; no resuelve una suspension o caida del alojamiento.
+
 `GET /health` comprueba una consulta real a la base y que el esquema haya terminado
 de inicializarse. Devuelve HTTP 503 si cualquiera de esas condiciones falla; HTTP
 200 ya no indica solamente que el proceso esta encendido.

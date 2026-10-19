@@ -118,6 +118,15 @@ La web publicada apunta a `https://api.usbshop.com.ar`.
 
 ### Demoras de acceso
 
+- Las imagenes de productos usan hasta 4 trabajadores independientes de las
+  consultas (`USB_IMAGE_WORKERS`), para que las descargas y miniaturas no agoten
+  los trabajadores disponibles para catalogo y administracion. Las pruebas de
+  disponibilidad verifican consultas mientras esos trabajadores estan ocupados.
+- Si el HTML de ambas webs responde rapido pero `/health` y `/auth/me` de la API
+  agotan el tiempo de espera, revisar el servicio `usbshop-api` en Render y sus
+  logs. Sin acceso al alojamiento no se puede confirmar la causa ni recuperar
+  un proceso caido; una correccion local requiere despliegue para tener efecto.
+
 - `/auth/me` verifica la firma y el vencimiento de la cookie sin esperar la cola
   de trabajadores de consultas e imagenes. Una sesion invalida sigue devolviendo 401.
 - Las conexiones PostgreSQL tienen un limite de 8 segundos, configurable con

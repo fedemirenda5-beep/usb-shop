@@ -1,5 +1,6 @@
 """Availability checks use fake connections, never a production database."""
 import asyncio
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
@@ -10,6 +11,84 @@ import main
 
 
 class AvailabilityTests(unittest.TestCase):
+    def test_image_workers_are_bounded_and_do_not_block_database_requests(self):
+        async def run():
+            release = threading.Event()
+            started = []
+            limiter = anyio.CapacityLimiter(2)
+
+            def slow_image(*args):
+                started.append(args[0])
+                release.wait(timeout=5)
+                return main.Response(content=b'image', media_type='image/webp')
+
+            with patch.object(main, '_IMAGE_WORKER_LIMITER', limiter), patch.object(main, '_product_image_response', side_effect=slow_image), patch.object(main, '_connect', return_value=Mock()), patch.object(main, '_RUNTIME_SCHEMA_READY', True):
+                route = next(route for route in main.app.routes if getattr(route, 'path', '') == '/products/{product_id}/image')
+                tasks = []
+                try:
+                    for product_id in range(4):
+                        request = Request({'type': 'http', 'method': 'GET', 'path': f'/products/{product_id}/image',
+                                           'path_params': {'product_id': str(product_id)}, 'query_string': b'w=420', 'headers': []})
+                        tasks.append(asyncio.create_task(route.get_route_handler()(request)))
+                    with anyio.fail_after(2):
+                        while len(started) < 2:
+                            await anyio.sleep(0.01)
+                    self.assertEqual(len(started), 2)
+                    health_route = next(route for route in main.app.routes if getattr(route, 'path', '') == '/health')
+                    request = Request({'type': 'http', 'method': 'GET', 'path': '/health', 'query_string': b'', 'headers': []})
+                    response = await asyncio.wait_for(health_route.get_route_handler()(request), timeout=1)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(len(started), 2)
+                finally:
+                    release.set()
+                    if tasks:
+                        responses = await asyncio.gather(*tasks)
+                        self.assertTrue(all(response.status_code == 200 for response in responses))
+                self.assertEqual(len(started), 4)
+
+        asyncio.run(run())
+
+    def test_image_requests_do_not_use_database_worker_tokens(self):
+        async def run():
+            limiter = anyio.to_thread.current_default_thread_limiter()
+            borrowers = [object() for _ in range(limiter.total_tokens)]
+            for borrower in borrowers:
+                limiter.acquire_on_behalf_of_nowait(borrower)
+            try:
+                with patch.object(main, '_IMAGE_WORKER_LIMITER', None), patch.object(main, '_product_image_response', return_value=main.Response(content=b'image')):
+                    response = await asyncio.wait_for(main.product_image(1, 0, 420, 315, 72, 'webp'), timeout=1)
+                    self.assertEqual(response.status_code, 200)
+            finally:
+                for borrower in borrowers:
+                    limiter.release_on_behalf_of(borrower)
+
+        asyncio.run(run())
+
+    def test_remote_download_failure_is_not_repeated_for_thumbnail_fallback(self):
+        connection = Mock()
+        connection.execute.return_value.fetchone.return_value = {'image_path': ''}
+        with patch.object(main, '_connect', return_value=connection), patch.object(main, '_product_image_candidates', return_value=['https://images.test/product.jpg']), patch.object(main, 'Image', Mock()), patch.object(main, 'ImageOps', Mock()), patch.object(main, '_get_remote_thumbnail_cache', return_value=None), patch.object(main, '_fetch_remote_image_bytes', side_effect=TimeoutError('remote image timed out')) as download:
+            with self.assertRaises(TimeoutError):
+                main._product_image_response(1, 0, 420, 315, 72, 'webp')
+            download.assert_called_once()
+
+    def test_render_failure_reuses_downloaded_original(self):
+        connection = Mock()
+        connection.execute.return_value.fetchone.return_value = {'image_path': ''}
+        with patch.object(main, '_connect', return_value=connection), patch.object(main, '_product_image_candidates', return_value=['https://images.test/product.jpg']), patch.object(main, 'Image', Mock()), patch.object(main, 'ImageOps', Mock()), patch.object(main, '_get_remote_thumbnail_cache', return_value=None), patch.object(main, '_fetch_remote_image_bytes', return_value=(b'original', 'image/jpeg')) as download, patch.object(main, '_render_thumbnail_from_bytes', side_effect=ValueError('bad format')), patch.object(main.logging, 'exception'):
+            response = main._product_image_response(1, 0, 420, 315, 72, 'webp')
+            self.assertEqual(response.body, b'original')
+            self.assertEqual(response.media_type, 'image/jpeg')
+            download.assert_called_once()
+
+    def test_remote_image_download_limits_bytes_read(self):
+        response = Mock()
+        response.read.return_value = b'image'
+        with patch.object(main, '_is_allowed_remote_image_url', return_value=True), patch.object(main, '_get_remote_image_cache', return_value=None), patch.object(main, '_set_remote_image_cache', return_value=(b'image', 'image/jpeg')), patch.object(main, 'urlopen') as download:
+            download.return_value.__enter__.return_value = response
+            main._fetch_remote_image_bytes('https://images.test/product.jpg')
+            response.read.assert_called_once_with(12 * 1024 * 1024 + 1)
+
     def test_session_verification_does_not_wait_for_busy_database_workers(self):
         async def run():
             limiter = anyio.to_thread.current_default_thread_limiter()

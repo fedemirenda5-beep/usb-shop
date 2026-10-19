@@ -20,9 +20,10 @@ import smtplib
 import threading
 import unicodedata
 import uuid
+import anyio
 from email.message import EmailMessage
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 from typing import Optional, List, Any
 from urllib.error import HTTPError
@@ -721,6 +722,17 @@ _REMOTE_THUMBNAIL_CACHE_LOCK = threading.Lock()
 _REMOTE_THUMBNAIL_CACHE: dict[str, tuple[float, bytes, str]] = {}
 _RUNTIME_SCHEMA_READY = False
 _RUNTIME_SCHEMA_LOCK = threading.Lock()
+_IMAGE_WORKER_LIMIT = max(1, int(os.getenv("USB_IMAGE_WORKERS", "4") or "4"))
+_IMAGE_WORKER_LIMITER: Optional[anyio.CapacityLimiter] = None
+
+
+def _image_worker_limiter() -> anyio.CapacityLimiter:
+    # Construct in the serving event loop, independently of database workers.
+    global _IMAGE_WORKER_LIMITER
+    if _IMAGE_WORKER_LIMITER is None:
+        _IMAGE_WORKER_LIMITER = anyio.CapacityLimiter(_IMAGE_WORKER_LIMIT)
+    return _IMAGE_WORKER_LIMITER
+
 
 app = FastAPI(title="USB Shop API", version="1.0.0")
 
@@ -1544,7 +1556,7 @@ def _fetch_remote_image_bytes(url: str) -> tuple[bytes, str]:
     request.add_header("User-Agent", "USBShopImageProxy/1.0")
     request.add_header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
     with urlopen(request, timeout=15) as response:
-        content = response.read()
+        content = response.read(12 * 1024 * 1024 + 1)
         media_type = response.headers.get_content_type() or "application/octet-stream"
     if not content:
         raise HTTPException(status_code=404, detail="Imagen remota vacia")
@@ -6090,13 +6102,23 @@ async def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_CO
 
 
 @app.get("/products/{product_id}/image")
-def product_image(
+async def product_image(
     product_id: int,
     i: Optional[int] = Query(default=0),
     w: Optional[int] = Query(default=None),
     h: Optional[int] = Query(default=None),
     q: Optional[int] = Query(default=72),
     format: Optional[str] = Query(default="webp"),
+):
+    return await anyio.to_thread.run_sync(
+        partial(_product_image_response, product_id, i, w, h, q, format),
+        limiter=_image_worker_limiter(),
+    )
+
+
+def _product_image_response(
+    product_id: int, i: Optional[int], w: Optional[int], h: Optional[int],
+    q: Optional[int], format: Optional[str],
 ):
     conn = _connect()
     try:
@@ -6119,28 +6141,23 @@ def product_image(
     width, height, quality, normalized_format = _normalize_thumbnail_params(w, h, q, format)
     should_resize = bool(width or height)
     if image_value.startswith("http://") or image_value.startswith("https://"):
+        remote_bytes = None
+        remote_media_type = None
         if should_resize and Image is not None and ImageOps is not None:
+            cache_key = _remote_thumbnail_cache_key(image_value, width, height, quality, normalized_format)
+            cached_thumbnail = _get_remote_thumbnail_cache(cache_key)
+            if cached_thumbnail is not None:
+                content, media_type = cached_thumbnail
+                return Response(content=content, media_type=media_type,
+                                headers={"Cache-Control": "public, max-age=86400, s-maxage=86400"})
+            # Download failures propagate once; only rendering can fall back to
+            # the original bytes. Do not occupy a worker for a second download.
+            remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
             try:
-                cache_key = _remote_thumbnail_cache_key(
-                    image_value,
-                    width,
-                    height,
-                    quality,
-                    normalized_format,
+                content, media_type = _render_thumbnail_from_bytes(
+                    remote_bytes, width, height, quality, normalized_format,
                 )
-                cached_thumbnail = _get_remote_thumbnail_cache(cache_key)
-                if cached_thumbnail is not None:
-                    content, media_type = cached_thumbnail
-                else:
-                    remote_bytes, _ = _fetch_remote_image_bytes(image_value)
-                    content, media_type = _render_thumbnail_from_bytes(
-                        remote_bytes,
-                        width,
-                        height,
-                        quality,
-                        normalized_format,
-                    )
-                    _set_remote_thumbnail_cache(cache_key, content, media_type)
+                _set_remote_thumbnail_cache(cache_key, content, media_type)
                 return Response(
                     content=content,
                     media_type=media_type,
@@ -6148,7 +6165,8 @@ def product_image(
                 )
             except Exception:
                 logging.exception("No se pudo generar thumbnail remoto para %s", image_value)
-        remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
+        if remote_bytes is None:
+            remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
         return Response(
             content=remote_bytes,
             media_type=remote_media_type,
