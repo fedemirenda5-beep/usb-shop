@@ -1,8 +1,10 @@
 "use client";
 
+import { useBuyer } from './BuyerSession';
+
 import { clearOrderAttemptKey, getOrderAttemptKey } from "@/lib/orderAttempt";
 import PendingOrderRecovery from './PendingOrderRecovery';
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createOrderIdempotencyKey, getApiBaseUrl, submitOrder } from "@/lib/api";
 import type { CartItem } from "@/lib/cart";
 import { buildWhatsAppLink } from "@/lib/whatsapp";
@@ -34,10 +36,14 @@ export default function CartCheckout({
   onClearCart,
   onSyncCart,
 }: CartCheckoutProps) {
+  const { approved, buyer } = useBuyer();
   const [orderName, setOrderName] = useState("");
   const [orderPhone, setOrderPhone] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
+  useEffect(() => {
+    if (buyer) { setOrderName(buyer.name); setOrderEmail(buyer.email); setOrderPhone(buyer.phone); }
+  }, [buyer?.id]);
   const [orderStatus, setOrderStatus] = useState<
     "idle" | "submitting" | "success" | "error"
   >("idle");
@@ -126,6 +132,8 @@ export default function CartCheckout({
       checkoutSubmittingRef.current = false;
     }
   };
+
+  if (!approved) return <a href="/mi-cuenta/">Ingresá para ver precios y comprar</a>;
 
   return (
     <>

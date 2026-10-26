@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BuyerNav, BuyerWelcome, useBuyer } from './BuyerSession';
 import { useEffect, useState, type ReactNode } from "react";
 
 type NavItem = {
@@ -206,6 +207,7 @@ export default function Navbar({
   showTrust = true,
   children,
 }: NavbarProps) {
+  const { approved } = useBuyer();
   const [campaignBanner, setCampaignBanner] = useState<CampaignBanner | null>(null);
   const cartIsFull = cartCount > 0;
 
@@ -255,7 +257,7 @@ export default function Navbar({
   );
 
   return (
-    <header className="navbar">
+    <><header className="navbar">
       <div className="navbar-top">
         <div className="navbar-brand">
           <Link href="/" className="logo">
@@ -307,7 +309,8 @@ export default function Navbar({
             </div>
           </Link>
         ) : null}
-        {onCartClick ? (
+        <BuyerNav />
+        {!approved ? <Link href="/mi-cuenta/" className="button button--lime">Ver precios y comprar</Link> : onCartClick ? (
           <button type="button" className="cart-pill" onClick={onCartClick}>
             {cartPillContent}
           </button>
@@ -317,6 +320,6 @@ export default function Navbar({
           </Link>
         )}
       </div>
-    </header>
+    </header><BuyerWelcome /></>
   );
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { useBuyer } from './BuyerSession';
 import { getApiBaseUrl } from "@/lib/api";
 
 type CardProps = {
@@ -162,6 +163,8 @@ function ProductCard({
   imageRefreshKey,
   style,
 }: CardProps) {
+  const { approved } = useBuyer();
+  const canSeePrice = approved && typeof product.price === "number";
   const stock = Number.isFinite(product.stock) ? Number(product.stock) : 0;
   const isOut = stock <= 0;
   const soldCount = Number.isFinite(product.soldCount) ? Math.max(0, Math.floor(product.soldCount!)) : 0;
@@ -511,10 +514,10 @@ function ProductCard({
         {product.description ? (
           <p className="product-description">{product.description}</p>
         ) : null}
-        {hasDiscount ? (
+        {canSeePrice && hasDiscount ? (
           <p className="product-price product-price--before">${product.originalPrice.toLocaleString("es-AR")}</p>
         ) : null}
-        <p className={`product-price${hasDiscount ? " product-price--offer" : ""}`}>${product.price.toLocaleString("es-AR")}</p>
+        {canSeePrice ? <p className={`product-price${hasDiscount ? " product-price--offer" : ""}`}>${product.price.toLocaleString("es-AR")}</p> : <a className="button button--ghost" href="/mi-cuenta/">Ingresá para ver precios</a>}
       </div>
       <div className="product-actions">
         {badge ? <span className="product-badge">{badge}</span> : <span />}
@@ -529,7 +532,7 @@ function ProductCard({
               Ver detalle
             </button>
           ) : null}
-          {onAdd ? (
+          {onAdd && canSeePrice ? (
             <button
               type="button"
               className={`button ${isOut ? "button--ghost" : "button--lime"}`}

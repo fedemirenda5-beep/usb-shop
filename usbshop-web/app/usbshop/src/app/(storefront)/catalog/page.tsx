@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { refreshInventory, useStorefrontInventory } from '@/hooks/useStorefrontInventory';
 import { usePageResume } from '@/hooks/usePageResume';
+import { useBuyer } from '@/components/BuyerSession';
 import ProductCard from "@/components/ProductCard";
 import { fetchJson, getApiBaseUrl, loadRuntimeConfig, resolveImageUrl, resolveImageUrls } from "@/lib/api";
 import { normalizeSearchText } from "@/lib/search";
@@ -86,7 +87,7 @@ const loadCachedList = <T,>(key: string, ttlMs: number) => {
       return null;
     }
     return {
-      data: parsed.data,
+      data: JSON.parse(JSON.stringify(parsed.data, (field, value) => ["price", "originalPrice", "flashOffer", "cost"].includes(field) ? null : value)) as T,
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : getApiBaseUrl(),
     };
   } catch {
@@ -101,7 +102,7 @@ const saveCachedList = (key: string, data: unknown, baseUrl: string) => {
   try {
     window.localStorage.setItem(
       key,
-      JSON.stringify({ data, baseUrl, savedAt: new Date().toISOString() })
+      JSON.stringify({ data, baseUrl, savedAt: new Date().toISOString() }, (field, value) => ["price", "originalPrice", "flashOffer", "cost"].includes(field) ? null : value)
     );
   } catch {
     return;
@@ -115,6 +116,8 @@ const toComparableTimestamp = (product: Product) => {
 };
 
 export default function CatalogPage() {
+  const { approved, buyer } = useBuyer();
+  const buyerId = approved ? buyer?.id : null;
   const resumeRevision = usePageResume();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -244,7 +247,7 @@ export default function CatalogPage() {
       active = false;
       controller.abort();
     };
-  }, [debouncedQuery, retry, query, resumeRevision]);
+  }, [debouncedQuery, retry, query, resumeRevision, buyerId]);
 
   const filtered = useMemo(() => {
     const value = query.trim();

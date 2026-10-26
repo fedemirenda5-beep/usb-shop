@@ -5,6 +5,7 @@ import { CART_SYNC_EVENT, readPendingOrder } from '@/lib/checkoutSession';
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { refreshInventory, useStorefrontInventory } from '@/hooks/useStorefrontInventory';
 import { usePageResume } from '@/hooks/usePageResume';
+import { useBuyer } from '@/components/BuyerSession';
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ProductCard from "@/components/ProductCard";
@@ -259,7 +260,7 @@ const loadCachedList = <T,>(key: string, ttlMs: number) => {
       return null;
     }
     return {
-      data: parsed.data,
+      data: JSON.parse(JSON.stringify(parsed.data, (field, value) => ["price", "originalPrice", "flashOffer", "cost"].includes(field) ? null : value)) as T,
       baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : getApiBaseUrl(),
     };
   } catch {
@@ -274,7 +275,7 @@ const saveCachedList = (key: string, data: unknown, baseUrl: string) => {
   try {
     window.localStorage.setItem(
       key,
-      JSON.stringify({ data, baseUrl, savedAt: new Date().toISOString() })
+      JSON.stringify({ data, baseUrl, savedAt: new Date().toISOString() }, (field, value) => ["price", "originalPrice", "flashOffer", "cost"].includes(field) ? null : value)
     );
   } catch {
     return;
@@ -367,6 +368,8 @@ export default function HomeClient({
   initialApiBase,
   initialHasMoreProducts,
 }: HomeClientProps) {
+  const { approved, buyer } = useBuyer();
+  const buyerId = approved ? buyer?.id : null;
   const resumeRevision = usePageResume();
   const initialBase = initialApiBase || getApiBaseUrl();
   const [productsApiBase, setProductsApiBase] = useState(initialBase);
@@ -426,7 +429,6 @@ export default function HomeClient({
   const [hasMoreSearch, setHasMoreSearch] = useState(false);
   const searchController = useRef<AbortController | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [editMode, setEditMode] = useState(false);
   const [orderStatus, setOrderStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [orderMessage, setOrderMessage] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -451,15 +453,14 @@ export default function HomeClient({
   const [orderPhone, setOrderPhone] = useState("");
   const [orderEmail, setOrderEmail] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
+  useEffect(() => {
+    if (buyer) { setOrderName(buyer.name); setOrderEmail(buyer.email); setOrderPhone(buyer.phone); }
+  }, [buyer?.id]);
   const [quickView, setQuickView] = useState<Product | null>(null);
   const [quickViewImageIndex, setQuickViewImageIndex] = useState(0);
   const [quickViewImageFailed, setQuickViewImageFailed] = useState(false);
   const [isQuickViewImageExpanded, setIsQuickViewImageExpanded] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
-  const isPublic =
-    typeof window !== "undefined" &&
-    !["localhost", "127.0.0.1"].includes(window.location.hostname);
-
   useEffect(() => {
     isFetchingMoreRef.current = isFetchingMore;
   }, [isFetchingMore]);
@@ -563,6 +564,7 @@ export default function HomeClient({
   };
 
   const handleOpenCart = () => {
+    if (!approved) { window.location.assign("/mi-cuenta/"); return; }
     setCartFlowStep("summary");
     setIsCartOpen(true);
     if (isMobileLayout) {
@@ -810,7 +812,7 @@ export default function HomeClient({
       .catch(() => { if (active) setCollectionsError(true); })
       .finally(() => { if (active) setCollectionsLoading(false); });
     return () => { active = false; };
-  }, [collectionsAttempt]);
+  }, [collectionsAttempt, buyerId]);
 
   const applyFeaturedResult = (result: { data: Product[]; baseUrl: string }) => {
     setProductsApiBase(result.baseUrl);
@@ -914,7 +916,7 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, [initialFeatured]);
+  }, [initialFeatured, buyerId]);
 
   useEffect(() => {
     let active = true;
@@ -954,7 +956,7 @@ export default function HomeClient({
     return () => {
       active = false;
     };
-  }, [initialProducts]);
+  }, [initialProducts, buyerId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1510,6 +1512,7 @@ export default function HomeClient({
   }, [products]);
 
   const addItem = (product: Product) => {
+    if (!approved || typeof product.price !== "number") { window.location.assign("/mi-cuenta/"); return; }
     setCart((prev) => {
       const current = prev[product.id];
       const stock = Number.isFinite(product.stock) ? Number(product.stock) : 0;
@@ -1646,6 +1649,7 @@ export default function HomeClient({
   }, [cartProductIds, productsApiBase]);
 
   const handleCheckout = async () => {
+    if (!approved) { window.location.assign("/mi-cuenta/"); return; }
     if (checkoutSubmittingRef.current) {
       return;
     }
@@ -1745,37 +1749,6 @@ export default function HomeClient({
     },
     () => setCatalogError('No se pudo actualizar el stock. Reintenta para ver la disponibilidad actual.'),
   );
-
-  const toggleFeatured = async (product: Product) => {
-    if (isPublic) {
-      return;
-    }
-    const nextValue = !product.isFeatured;
-    const baseUrl = productsApiBase || getApiBaseUrl();
-    await fetch(`${baseUrl}/products/${product.id}/featured`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_featured: nextValue }),
-    });
-    try {
-      const [featuredData, productsData] = await Promise.all([
-        fetchWithRetry<Product[]>("/featured?limit=8"),
-        fetchProductsPage(0),
-      ]);
-      applyFeaturedResult(featuredData);
-      applyProductsResult(productsData);
-    } catch {
-      setProducts((prev) =>
-        prev.map((item) =>
-          item.id === product.id ? { ...item, isFeatured: nextValue } : item
-        )
-      );
-    }
-  };
-
-  const requestAdminAccess = () => {
-    setEditMode((value) => !value);
-  };
 
   const categoryStrip = (
     <div className="category-strip category-strip--hero" id="category-strip">
@@ -1955,11 +1928,11 @@ export default function HomeClient({
                       </div>
                     </div>
                   </div>
-                  <div className="flash-offer__price" aria-label="Precio de oferta">
-                    {product.originalPrice && product.originalPrice > product.price ? (
+                  <div className="flash-offer__price" aria-label="Precio de oferta" hidden={!approved}>
+                    {approved && product.originalPrice && product.originalPrice > product.price ? (
                       <span>${product.originalPrice.toLocaleString("es-AR")}</span>
                     ) : null}
-                    <strong>${product.price.toLocaleString("es-AR")}</strong>
+                    <strong>{approved && typeof product.price === "number" ? `$${product.price.toLocaleString("es-AR")}` : "Ingresá para ver precios"}</strong>
                   </div>
                   <FlashOfferTimer product={product} />
                   <button
@@ -2211,7 +2184,7 @@ export default function HomeClient({
           </div>
 
           {!isMobileLayout ? (
-            <CartDrawer open={isCartOpen} onClose={() => setIsCartOpen(false)}>
+            <CartDrawer open={isCartOpen && approved} onClose={() => setIsCartOpen(false)}>
               <div className="cart-panel cart-panel--drawer cart-panel--desktop">
                 <StorefrontCartPanel
                   cartItems={cartItems}
@@ -2284,7 +2257,6 @@ export default function HomeClient({
                   inCart={cart[product.id]?.qty ?? 0}
                   onAdd={() => addItem(product)}
                   onView={() => handleOpenQuickView(product)}
-                  onToggleFeatured={editMode ? () => toggleFeatured(product) : undefined}
                   style={{ "--delay": getStaggerDelay(index) } as React.CSSProperties}
                 />
               ))
@@ -2314,7 +2286,7 @@ export default function HomeClient({
       ) : null}
 
       {isMobileLayout ? (
-        <CartDrawer open={isCartOpen} onClose={() => setIsCartOpen(false)}>
+        <CartDrawer open={isCartOpen && approved} onClose={() => setIsCartOpen(false)}>
           <div className="cart-panel cart-panel--drawer">
             <StorefrontCartPanel
               cartItems={cartItems}
@@ -2345,7 +2317,7 @@ export default function HomeClient({
         </CartDrawer>
       ) : null}
 
-      {cartItems.length > 0 ? (
+      {approved && cartItems.length > 0 ? (
         <div className="cart-bar" role="region" aria-label="Resumen de carrito">
           <div className="cart-bar-info">
             <span>{totalItems} {totalItems === 1 ? "producto" : "productos"}</span>
@@ -2453,7 +2425,7 @@ export default function HomeClient({
                 <span>{quickView.stock && quickView.stock > 0 ? `Stock: ${quickView.stock}` : "Consultar stock"}</span>
               </div>
               <h3 className="modal-title">{quickView.name}</h3>
-              <p className="modal-price">${quickView.price.toLocaleString("es-AR")}</p>
+              {approved && typeof quickView.price === "number" ? <p className="modal-price">${quickView.price.toLocaleString("es-AR")}</p> : <a className="button button--lime" href="/mi-cuenta/">Ingresá para ver precios y comprar</a>}
               <p className="modal-stock">
                 {quickView.stock && quickView.stock > 0
                   ? `Stock disponible: ${quickView.stock}`
@@ -2464,7 +2436,7 @@ export default function HomeClient({
                   type="button"
                   className="button button--lime"
                   onClick={() => addItem(quickView)}
-                  disabled={!quickView.stock || quickView.stock <= 0}
+                  disabled={!approved || typeof quickView.price !== "number" || !quickView.stock || quickView.stock <= 0}
                 >
                   {quickView.stock && quickView.stock > 0 ? "Agregar al carrito" : "Sin stock"}
                 </button>

@@ -19,6 +19,7 @@ class ConsignmentTests(unittest.TestCase):
         path.touch()
         for name, value in {'DB_PATH': path, 'SOURCE_DB_PATH': path, 'DB_IS_POSTGRES': False,
                             '_require_admin': lambda token: None,
+                            '_require_buyer': lambda token: {'customer_id': 1, 'name': 'Cliente Web', 'email': 'web@example.com', 'phone': '123'},
                             '_send_order_email_async': lambda *args: None}.items():
             patcher = patch.object(main, name, value)
             patcher.start()

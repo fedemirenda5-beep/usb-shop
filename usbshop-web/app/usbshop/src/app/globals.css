@@ -4242,3 +4242,8 @@ input.button {
     background-position: 200% 50%;
   }
 }
+
+.buyer-nav { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.buyer-welcome { padding: 16px 20px; margin: 12px 0; border: 1px solid #c7dc9c; border-radius: 14px; background: #f2f8e7; color: #243b16; overflow-wrap: anywhere; }
+.buyer-welcome strong { display: block; font-size: 17px; line-height: 1.5; }
+.buyer-welcome p { margin: 6px 0 0; line-height: 1.5; }

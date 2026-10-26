@@ -37,6 +37,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 import consignments
 import storefront
+import customer_access
 from product_search import rank_products
 from product_discovery import discovery_order
 
@@ -4256,6 +4257,9 @@ def _ensure_runtime_schema(force: bool = False) -> None:
             _ensure_sellers_table(conn)
             consignments.ensure_schema(conn)
             storefront.ensure_schema(conn, DB_IS_POSTGRES)
+            customer_access.ensure_schema(conn, DB_IS_POSTGRES)
+            if not _has_column(conn, "web_orders", "buyer_customer_id"):
+                conn.execute("ALTER TABLE web_orders ADD COLUMN buyer_customer_id INTEGER")
             conn.commit()
             _RUNTIME_SCHEMA_READY = True
         finally:
@@ -4851,6 +4855,7 @@ def list_products(
     sort: Optional[str] = None,
     ids: Optional[str] = None,
     seed: int = 0,
+    buyer_token: Optional[str] = Cookie(None, alias=customer_access.COOKIE),
 ) -> list[dict]:
     conn = _connect()
     try:
@@ -4972,17 +4977,17 @@ def list_products(
     finally:
         conn.close()
 
+    can_view_prices = _buyer_can_view_prices(buyer_token if isinstance(buyer_token, str) else None)
     return [
         {
             "id": row["id"],
             "name": row["name"],
             "sku": row["sku"],
-            "price": _storefront_price(row),
+            "price": _storefront_price(row) if can_view_prices else None,
             "search_match": "approximate" if approximate else "exact",
-            "originalPrice": _base_price(row),
+            "originalPrice": _base_price(row) if can_view_prices else None,
             "soldCount": sold_counts.get(int(row["id"]), 0),
-            "flashOffer": _flash_offer_payload(row),
-            "cost": float(row["cost"] or 0),
+            "flashOffer": _flash_offer_payload(row) if can_view_prices else None,
             "stock": _bundle_available_stock(
                 bundle_items_map.get(int(row["id"]), []),
                 reserved_stock_by_product,
@@ -5082,7 +5087,10 @@ def _find_recent_identical_order(conn: DBConn, payload: OrderPayload):
 
 
 @app.post("/orders")
-def create_order(payload: OrderPayload) -> dict:
+def create_order(payload: OrderPayload, buyer_token: Optional[str] = Cookie(None, alias=customer_access.COOKIE)) -> dict:
+    buyer = _require_buyer(buyer_token if isinstance(buyer_token, str) else None)
+    # Use the verified commercial identity, never an arbitrary identity from the browser.
+    payload = payload.model_copy(update={"customer_name": buyer["name"], "customer_email": buyer["email"], "customer_phone": (payload.customer_phone or '').strip() or buyer["phone"]})
     if not payload.items:
         raise HTTPException(status_code=400, detail="El pedido no tiene productos")
     if not (payload.customer_name or "").strip():
@@ -5098,12 +5106,15 @@ def create_order(payload: OrderPayload) -> dict:
         idempotency_key = payload.idempotency_key.strip()
         _lock_inventory(conn)
         existing_order = conn.execute(
-            "SELECT id, total FROM web_orders WHERE idempotency_key = ?",
+            "SELECT id, total, buyer_customer_id FROM web_orders WHERE idempotency_key = ?",
             (idempotency_key,),
         ).fetchone()
         if existing_order is None:
             existing_order = _find_recent_identical_order(conn, payload)
         if existing_order is not None:
+            owner = conn.execute("SELECT buyer_customer_id FROM web_orders WHERE id = ?", (existing_order["id"],)).fetchone()
+            if owner["buyer_customer_id"] != buyer["customer_id"]:
+                raise HTTPException(409, "El pedido pertenece a otra cuenta")
             return {
                 "id": int(existing_order["id"] if isinstance(existing_order, dict) else existing_order[0]),
                 "total": float(existing_order["total"] if isinstance(existing_order, dict) else existing_order[1]),
@@ -5226,6 +5237,7 @@ def create_order(payload: OrderPayload) -> dict:
                 )
             order_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+        conn.execute("UPDATE web_orders SET buyer_customer_id = ? WHERE id = ?", (buyer["customer_id"], order_id))
         for product_id, quantity, unit_price in items:
             conn.execute(
                 """
@@ -5559,19 +5571,19 @@ def admin_save_showcase(payload: dict = Body(...), session_token: Optional[str] 
 
 
 @app.get("/featured")
-def featured_products(limit: int = 8) -> list[dict]:
-    return _storefront_collection(min(8, max(1, limit)), "featured")
+def featured_products(limit: int = 8, buyer_token: Optional[str] = Cookie(None, alias=customer_access.COOKIE)) -> list[dict]:
+    return _buyer_catalog(_storefront_collection(min(8, max(1, limit)), "featured"), buyer_token)
 
 
 @app.get("/storefront/collections")
-def storefront_collections() -> dict:
+def storefront_collections(buyer_token: Optional[str] = Cookie(None, alias=customer_access.COOKIE)) -> dict:
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
         reserved = _fetch_reserved_stock(conn)
         return {
-            "new_arrivals": _storefront_collection(4, "new", conn, reserved),
-            "restocked": _storefront_collection(4, "restocked", conn, reserved),
+            "new_arrivals": _buyer_catalog(_storefront_collection(4, "new", conn, reserved), buyer_token),
+            "restocked": _buyer_catalog(_storefront_collection(4, "restocked", conn, reserved), buyer_token),
         }
     finally:
         conn.close()
@@ -6090,7 +6102,7 @@ async def auth_me(session: Optional[str] = Cookie(default=None, alias=SESSION_CO
     # Signature/expiry verification does not access the database. Keep it off
     # the shared worker queue used by blocking queries and image downloads.
     payload = _verify_session(session or "")
-    if not payload:
+    if not payload or payload.get('role') not in {ROLE_ADMIN, ROLE_STAFF}:
         raise HTTPException(status_code=401, detail="No autenticado")
     user_id = payload.get("id")
     normalized_id = None
@@ -8301,7 +8313,7 @@ def admin_sync_backoffice_customers_from_orders(
             return {"created": 0, "updated": 0, "skipped": 0, "total": 0}
         rows = conn.execute(
             """
-            SELECT customer_name, customer_email, customer_phone
+            SELECT customer_name, customer_email, customer_phone, buyer_customer_id
             FROM web_orders
             ORDER BY created_at DESC, id DESC
             """
@@ -8317,6 +8329,10 @@ def admin_sync_backoffice_customers_from_orders(
                 skipped += 1
                 continue
             existing = None
+            if row["buyer_customer_id"]:
+                # The account is already linked. Do not recreate or overwrite a commercial ficha.
+                skipped += 1
+                continue
             if next_email:
                 existing = conn.execute(
                     "SELECT id, name, email, phone FROM customers WHERE LOWER(COALESCE(email, '')) = ? AND deleted_at IS NULL LIMIT 1",
@@ -9241,7 +9257,7 @@ def admin_create_invoice(
         if customer_id <= 0 and order_id and document_type in {"FACTURA", "PRESUPUESTO"}:
             web_order = conn.execute(
                 """
-                SELECT customer_name, customer_phone, customer_email
+                SELECT customer_name, customer_phone, customer_email, buyer_customer_id
                 FROM web_orders
                 WHERE id = ?
                 """,
@@ -9275,7 +9291,9 @@ def admin_create_invoice(
                     customer_name,
                 ),
             ).fetchone()
-            if existing_customer is not None:
+            if web_order["buyer_customer_id"]:
+                customer_id = int(web_order["buyer_customer_id"])
+            elif existing_customer is not None:
                 customer_id = int(existing_customer["id"] if isinstance(existing_customer, dict) else existing_customer[0])
             else:
                 created_customer_at = created_at
@@ -13147,3 +13165,25 @@ def admin_create_expense(
         }
     finally:
         conn.close()
+
+
+def _buyer_catalog(products, token):
+    allowed = _buyer_can_view_prices(token if isinstance(token, str) else None)
+    for product in products:
+        product.pop("cost", None)
+        if not allowed:
+            product.update(price=None, originalPrice=None, flashOffer=None)
+    return products
+
+
+@app.middleware("http")
+async def buyer_private_cache(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path in {"/products", "/featured", "/storefront/collections"} or request.url.path.startswith("/buyer/"):
+        response.headers["Cache-Control"] = "private, no-store"
+        response.headers["Vary"] = "Cookie, Origin"
+    return response
+
+
+import sys as _sys
+customer_access.install(app, _sys.modules[__name__])

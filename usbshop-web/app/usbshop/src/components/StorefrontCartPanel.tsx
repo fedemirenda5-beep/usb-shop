@@ -1,5 +1,7 @@
 "use client";
 
+import { useBuyer } from './BuyerSession';
+
 import Link from "next/link";
 import PendingOrderRecovery from './PendingOrderRecovery';
 
@@ -65,6 +67,8 @@ export default function StorefrontCartPanel({
   onBackToSummary,
   onCheckout,
 }: StorefrontCartPanelProps) {
+  const { approved } = useBuyer();
+  if (!approved) return <a href="/mi-cuenta/">Ingresá para ver precios y comprar</a>;
   return (
     <>
       <PendingOrderRecovery />

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { QueryProvider } from "@/components/QueryProvider";
+import { BuyerSession } from '@/components/BuyerSession';
 import "./globals.css";
 import "./storefront.css";
 
@@ -17,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body className="body">
         <QueryProvider>
-          <div className="page-shell">{children}</div>
+          <BuyerSession><div className="page-shell">{children}</div></BuyerSession>
         </QueryProvider>
       </body>
     </html>

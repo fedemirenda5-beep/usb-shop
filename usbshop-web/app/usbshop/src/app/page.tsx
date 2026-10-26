@@ -53,7 +53,12 @@ const fetchJson = async <T,>(path: string): Promise<T | null> => {
     if (!response.ok) {
       return null;
     }
-    return (await response.json()) as T;
+    // Static HTML is public, including its hydration payload. Never embed financial
+    // data, even when this build reads a cached response from an older API.
+    const data = await response.json();
+    return JSON.parse(JSON.stringify(data, (field, value) =>
+      ['price', 'originalPrice', 'flashOffer', 'cost', 'price_list_1', 'price_list_2'].includes(field) ? null : value
+    )) as T;
   } catch {
     return null;
   } finally {

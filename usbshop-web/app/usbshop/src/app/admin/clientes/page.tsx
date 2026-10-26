@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import BuyerAccountsPanel from './BuyerAccountsPanel';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
@@ -809,6 +810,8 @@ export default function ClientesPage() {
           </button>
         </div>
       </div>
+
+      <BuyerAccountsPanel customer={selectedCustomer} />
 
       {error ? <div className={styles.errorBox}>{error}</div> : null}
 

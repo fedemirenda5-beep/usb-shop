@@ -14,6 +14,59 @@ Mantener el panel admin operativo sin mezclar cambios a medias, fuentes de datos
 
 Regla: el admin siempre debe leer desde la API. No se agregan pantallas que lean directo desde archivos o bases en el frontend.
 
+## Acceso de compradores
+
+En **Clientes**, el bloque **Acceso de clientes a la web** muestra solicitudes
+pendientes y permite aprobar, rechazar o suspender cuentas desde escritorio y celular.
+La aprobación normal requiere tocar **Aceptar**: vincula una ficha coincidente
+única y disponible, o crea la ficha si no existen coincidencias. Si hay varias
+coincidencias, una ficha inactiva o una cuenta ya vinculada, pide revisar ese caso.
+La opción **Revisar ficha del cliente** permite elegir manualmente otra ficha.
+El cliente elige su contraseña al registrarse y la conserva tras la aprobación.
+Se guarda su hash con sal, sin contraseña legible ni acceso a ella desde el admin.
+Las cuentas de compradores son independientes de los usuarios del personal.
+Los compradores ingresan únicamente en la tienda por `/mi-cuenta/`; `/login/`
+y `/admin/` corresponden al personal. La sesión de comprador no habilita el admin.
+La tienda muestra una bienvenida con el nombre comercial al ingresar con una
+cuenta habilitada, sin ventanas que interrumpan la compra ni mensajes de clientes
+en las pantallas del personal.
+
+Para un cliente habitual, abrir su ficha, verificar su email y elegir **Generar
+invitación**. Copiar el enlace o compartirlo por WhatsApp. El cliente elige su
+contraseña y entra habilitado, sin otra aprobación. El enlace se usa una vez,
+vence a los siete días y generar otro invalida el anterior. Tratarlo como un
+acceso privado y compartirlo únicamente con el cliente correspondiente.
+
+El registro y la recuperación de contraseña están en `/mi-cuenta/`. Un registro
+público queda pendiente; una coincidencia de nombre, email o teléfono no aprueba
+automáticamente ni vincula una ficha. La recuperación vence en una hora.
+El admin sugiere fichas por email, teléfono argentino normalizado y nombre completo
+sin distinguir tildes, mayúsculas, puntuación ni orden de las palabras. Una ficha
+única y disponible aparece preseleccionada; la vinculación ocurre al aprobar.
+Si hay varias coincidencias, elegir la ficha correcta. Crear una ficha nueva pese
+a coincidencias requiere confirmar que corresponde a otra persona o comercio.
+Al vincular se conservan todos los datos comerciales, comprobantes y cuenta
+corriente existentes. El nombre y teléfono de la cuenta usan los de la ficha;
+el email de ingreso queda separado del email comercial, que no se modifica.
+Las sesiones duran 30 días y suspender una cuenta revoca su acceso y enlaces.
+Los pedidos guardan el cliente comercial vinculado para conservar su historial.
+
+El catálogo sigue siendo público. `/products`, `/featured` y
+`/storefront/collections` entregan precios solo con sesión de comprador aprobado;
+los costos no se entregan al catálogo. `/orders` exige el mismo acceso.
+Los avisos de solicitudes, aprobaciones y recuperación usan la configuración de
+correo existente. Los fallos de envío se registran sin revertir las operaciones.
+
+Publicar API y frontend juntos: la API crea `buyer_accounts`, `buyer_tokens` y
+`web_orders.buyer_customer_id` en su inicialización, sin modificar cuentas del
+personal ni aprobar clientes de forma masiva. Las invitaciones se generan después
+de publicar; no hay envíos masivos automáticos.
+
+Validación: `.venv/Scripts/python.exe -m unittest test_buyer_access -v` desde la API;
+`node tests/buyer-access.cjs` desde el frontend con la web servida localmente
+(`TEST_WEB_URL`, por defecto puerto 3031, y `PLAYWRIGHT_MODULE` opcionales).
+Las pruebas usan bases descartables y respuestas simuladas; no envían correos reales.
+
 ## Modulos actuales
 
 - `Dashboard`: usa `/admin/dashboard`, un resumen de consultas agregadas. Si la API aun no tiene esa ruta, vuelve temporalmente a `/admin/reports/overview`.
