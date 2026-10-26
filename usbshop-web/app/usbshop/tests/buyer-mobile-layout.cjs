@@ -34,7 +34,7 @@ const shots = process.env.SCREENSHOT_DIR || path.join(os.tmpdir(), 'usbshop-buye
           for (const route of ['/', '/catalog/']) {
             await page.goto(base + route);
             await page.locator('.product-title').filter({ hasText: products[0].name }).first().waitFor();
-            if (route === '/') await page.locator('.buyer-nav').getByRole('link').filter({ hasText: status === 'guest' ? /Ingresar/ : status === 'pending' ? /Solicitud/ : /Distribuidora/ }).waitFor();
+            if (route === '/') await page.locator('.buyer-nav').getByRole('link').filter({ hasText: status === 'guest' ? /Ingreso clientes/ : status === 'pending' ? /Solicitud/ : /Distribuidora/ }).waitFor();
             if (status === 'approved') await page.locator('.product-price').first().waitFor();
             const card = page.locator('.product-card').filter({ has: page.locator('.product-title', { hasText: products[0].name }) }).first();
             if (width === 390 && route === '/') {

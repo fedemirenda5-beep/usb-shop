@@ -249,6 +249,8 @@
 .navbar-account-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .navbar-account-actions .buyer-nav { min-width: 0; flex-wrap: nowrap; }
 .navbar-account-actions .buyer-nav a { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; line-height: 24px; }
+.navbar-account-actions .buyer-nav a.buyer-entry { padding: 10px 16px; border: 1px solid #a3ef00; border-radius: 10px; background: #7c24d9; color: #fff; font-weight: 700; box-shadow: 0 4px 12px #7c24d91f; text-align: center; }
+.navbar-account-actions .buyer-nav a.buyer-entry:hover { background: #6120aa; border-color: #91d500; box-shadow: 0 6px 16px #7c24d92b; }
 .buyer-access-note { margin: 8px 0 0; color: #6d6378; font-size: 13px; line-height: 1.5; }
 .product-buttons > .button { display: flex; align-items: center; justify-content: center; text-align: center; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .product-buttons .product-price-access { white-space: normal; line-height: 1.4; }
@@ -272,4 +274,11 @@
   .buyer-welcome { padding: 12px; }
   .buyer-welcome strong { font-size: 14px; }
   .buyer-welcome p { font-size: 12px; }
+}
+
+@media (max-width: 360px) {
+  .storefront .logo { gap: 8px; }
+  .storefront .logo-badge { width: 30px; height: 30px; }
+  .storefront .logo-text h1 { font-size: 24px; }
+  .navbar-account-actions .buyer-nav a.buyer-entry { padding: 8px 10px; font-size: 11px; }
 }
