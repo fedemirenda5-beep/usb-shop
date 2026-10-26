@@ -244,3 +244,32 @@
 
 .storefront [hidden] { display: none !important; }
 .storefront--home .section-header .button--ghost { display: inline-flex; }
+
+/* Account actions stay together; price access uses full card buttons. */
+.navbar-account-actions { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.navbar-account-actions .buyer-nav { min-width: 0; flex-wrap: nowrap; }
+.navbar-account-actions .buyer-nav a { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 240px; line-height: 24px; }
+.buyer-access-note { margin: 8px 0 0; color: #6d6378; font-size: 13px; line-height: 1.5; }
+.product-buttons > .button { display: flex; align-items: center; justify-content: center; text-align: center; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.product-buttons .product-price-access { white-space: normal; line-height: 1.4; }
+
+@media (max-width: 760px) {
+  .navbar .navbar-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .navbar .navbar-brand { grid-column: 1; grid-row: 1; width: auto; min-width: 0; }
+  .navbar-account-actions { grid-column: 2; grid-row: 1; gap: 8px; }
+  .navbar-account-actions .button { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 8px 12px; }
+  .navbar .hero-search--standalone { grid-column: 1 / -1; grid-row: 2; width: 100%; min-width: 0; margin: 0; }
+  .navbar .navbar-note { grid-column: 1 / -1; grid-row: 3; width: 100%; }
+  .navbar-account-actions--signed-in { grid-column: 1 / -1; grid-row: 2; justify-content: space-between; }
+  .navbar-account-actions--signed-in .buyer-nav { flex: 1; }
+  .navbar-account-actions--signed-in .buyer-nav a { flex: 0 1 auto; max-width: min(200px, 45vw); }
+  .navbar .navbar-top--signed-in .hero-search--standalone { grid-row: 3; }
+  .navbar .navbar-top--signed-in .navbar-note { grid-row: 4; }
+  .navbar-account-actions .cart-pill { flex-shrink: 0; }
+  .navbar-account-actions .cart-pill > span:last-child { display: none; }
+  .product-buttons { flex-direction: column; }
+  .product-buttons > .button { width: 100%; min-height: 42px; white-space: normal; line-height: 1.4; }
+  .buyer-welcome { padding: 12px; }
+  .buyer-welcome strong { font-size: 14px; }
+  .buyer-welcome p { font-size: 12px; }
+}

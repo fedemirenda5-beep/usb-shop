@@ -517,7 +517,7 @@ function ProductCard({
         {canSeePrice && hasDiscount ? (
           <p className="product-price product-price--before">${product.originalPrice.toLocaleString("es-AR")}</p>
         ) : null}
-        {canSeePrice ? <p className={`product-price${hasDiscount ? " product-price--offer" : ""}`}>${product.price.toLocaleString("es-AR")}</p> : <a className="button button--ghost" href="/mi-cuenta/">Ingresá para ver precios</a>}
+        {canSeePrice ? <p className={`product-price${hasDiscount ? " product-price--offer" : ""}`}>${product.price.toLocaleString("es-AR")}</p> : null}
       </div>
       <div className="product-actions">
         {badge ? <span className="product-badge">{badge}</span> : <span />}
@@ -532,6 +532,7 @@ function ProductCard({
               Ver detalle
             </button>
           ) : null}
+          {!canSeePrice && <a className="button button--lime product-price-access" href="/mi-cuenta/">Ver precios</a>}
           {onAdd && canSeePrice ? (
             <button
               type="button"

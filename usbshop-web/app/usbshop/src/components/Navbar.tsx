@@ -207,7 +207,7 @@ export default function Navbar({
   showTrust = true,
   children,
 }: NavbarProps) {
-  const { approved } = useBuyer();
+  const { approved, buyer, loading } = useBuyer();
   const [campaignBanner, setCampaignBanner] = useState<CampaignBanner | null>(null);
   const cartIsFull = cartCount > 0;
 
@@ -258,7 +258,7 @@ export default function Navbar({
 
   return (
     <><header className="navbar">
-      <div className="navbar-top">
+      <div className={`navbar-top${buyer ? ' navbar-top--signed-in' : ''}`}>
         <div className="navbar-brand">
           <Link href="/" className="logo">
             <div className="logo-badge">
@@ -309,8 +309,9 @@ export default function Navbar({
             </div>
           </Link>
         ) : null}
+        <div className={`navbar-account-actions${buyer ? ' navbar-account-actions--signed-in' : ''}`}>
         <BuyerNav />
-        {!approved ? <Link href="/mi-cuenta/" className="button button--lime">Ver precios y comprar</Link> : onCartClick ? (
+        {approved && (onCartClick ? (
           <button type="button" className="cart-pill" onClick={onCartClick}>
             {cartPillContent}
           </button>
@@ -318,8 +319,10 @@ export default function Navbar({
           <Link href="#carrito" className="cart-pill">
             {cartPillContent}
           </Link>
-        )}
+        ))}
+        </div>
       </div>
+      {!loading && !buyer && <p className="buyer-access-note">Ingresá para ver precios y comprar.</p>}
     </header><BuyerWelcome /></>
   );
 }

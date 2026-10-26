@@ -69,7 +69,7 @@ export function BuyerNav() {
   const { buyer, loading } = useBuyer();
   const [busy, setBusy] = useState(false);
   return <div className="buyer-nav">
-    <a className="button button--ghost" href="/mi-cuenta/">{loading ? 'Mi cuenta' : buyer ? (buyer.status === 'approved' ? buyer.name : buyer.status === 'pending' ? 'Solicitud pendiente' : 'Mi cuenta') : 'Ingresar / Crear cuenta'}</a>
+    <a className="button button--ghost" href="/mi-cuenta/" title={buyer?.name} aria-label={!loading && !buyer ? 'Ingresar o crear cuenta' : undefined}>{loading ? 'Mi cuenta' : buyer ? (buyer.status === 'approved' ? buyer.name : buyer.status === 'pending' ? 'Solicitud pendiente' : 'Mi cuenta') : 'Ingresar'}</a>
     {buyer && <button className="button button--ghost" disabled={busy} onClick={async () => {
       setBusy(true);
       try {
