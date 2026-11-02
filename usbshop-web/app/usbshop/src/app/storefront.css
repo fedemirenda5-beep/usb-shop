@@ -197,7 +197,7 @@
   .storefront .footer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 16px; }
   .storefront .footer-brands { gap: 20px; }
 }
-.storefront :is(#catalogo, #novedades, #ofertas, #destacados, #category-strip) { scroll-margin-top: 24px; }
+.storefront :is(#catalogo, #novedades, #destacados, #category-strip) { scroll-margin-top: 24px; }
 
 /* Keep the home page focused on merchandise from the first screen. */
 .storefront--home .navbar { padding: 14px 0; }

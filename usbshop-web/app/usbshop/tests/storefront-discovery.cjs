@@ -45,7 +45,11 @@ const products = Array.from({ length: 210 }, (_, i) => ({
       assert.equal(first.length, 8);
       assert.ok(discoveryRequests[0].searchParams.has('seed'));
       assert(await page.locator('#catalogo').isVisible(), 'Full catalog is visible by default');
-      const curatedNames = await names(page.locator('#novedades, #reposiciones, #destacados, #ofertas, #bajaron-de-precio, #descubri-productos'));
+      const curatedNames = await names(page.locator('#novedades, #reposiciones, #destacados, #bajaron-de-precio, #descubri-productos'));
+      assert.equal(await page.locator('#ofertas').count(), 0, 'The low-stock offers section is removed');
+      assert((await page.locator('#destacados').evaluate(node => node.getBoundingClientRect().top)) >
+        (await page.locator('#novedades').evaluate(node => node.getBoundingClientRect().top)),
+      'The configured showcase follows new arrivals');
       assert.equal(new Set(curatedNames).size, curatedNames.length, 'Promoted sections do not repeat products');
       const categories = await discovery.locator('.product-meta > span').allTextContents();
       assert.ok(new Set(categories).size > 1);

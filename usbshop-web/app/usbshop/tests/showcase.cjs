@@ -62,6 +62,8 @@ const products = Array.from({ length: 10 }, (_, index) => ({
     await page.locator('#novedades .product-card').getByText('Vidriera 9', { exact: true }).waitFor();
     await page.locator('#reposiciones .product-card').getByText('Vidriera 10', { exact: true }).waitFor();
     assert.equal(await page.locator('#featured-grid .product-card').count(), 4);
+    await page.getByRole('heading', { name: 'En nuestra vidriera' }).waitFor();
+    assert.equal(await page.locator('#ofertas').count(), 0, 'the offers section is removed');
     const firstWindow = await page.locator('#featured-grid .product-card h3').allTextContents();
     assert.deepEqual(firstWindow, ['Vidriera 2', 'Vidriera 3', 'Vidriera 4', 'Vidriera 5']);
     await page.waitForTimeout(8200);
