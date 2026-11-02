@@ -12,6 +12,7 @@ type ProductPayload = {
   name: string;
   sku: string;
   barcode?: string | null;
+  barcodes?: string[];
   imeis?: string[];
   price: number;
   price_list_1?: number | null;

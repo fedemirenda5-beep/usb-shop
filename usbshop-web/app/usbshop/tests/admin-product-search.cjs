@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3017';
-const car = { id: 6427, name: 'Auto acrobático 4x4 con control', sku: '828A', barcode: '123456', stock: 6, price: 100, cost: 50, category_id: 1, is_active: true };
+const car = { id: 6427, name: 'Auto acrobático 4x4 con control', sku: '828A', barcode: '123456', barcodes: ['123456', '654321'], stock: 6, price: 100, cost: 50, category_id: 1, is_active: true };
 const holder = { ...car, id: 101, name: 'Soporte para auto', sku: 'SOPORTE', stock: 0 };
 
 (async () => {
@@ -72,7 +72,7 @@ const holder = { ...car, id: 101, name: 'Soporte para auto', sku: 'SOPORTE', sto
     await productSearch.press('Escape');
     assert.equal(await productSearch.inputValue(), '');
     console.log('PASS keyboard selection and Escape');
-    await productSearch.fill('123456');
+    await productSearch.fill('654321');
     await productSearch.press('Enter');
     await page.waitForTimeout(500);
     const quantity = page.locator('tbody tr').filter({ hasText: car.name }).locator('input[type="number"]').first();

@@ -5,7 +5,7 @@ from product_search import rank_products, one_edit
 
 def product(product_id, name, *, sku='', stock=5, category='Juguetes', description='', barcode=''):
     return dict(id=product_id, name=name, sku=sku, stock=stock, category=category,
-                search_category=category, description=description, barcode=barcode)
+                search_category=category, description=description, barcode=barcode, barcodes=[])
 
 
 class ProductSearchTests(unittest.TestCase):
@@ -62,6 +62,13 @@ class ProductSearchTests(unittest.TestCase):
             self.assertEqual(self.ids(query, rows, admin=True), ([], False))
         self.assertEqual(self.ids('123456789', rows, admin=True), ([10], False))
         self.assertEqual(self.ids('10', rows, admin=True), ([10], False))
+
+    def test_secondary_barcode_matches_as_an_exact_admin_identifier(self):
+        rows = [product(10, 'Auriculares', barcode='7790001')]
+        rows[0]['barcodes'] = ['7790002', '7790003']
+        for barcode in rows[0]['barcodes']:
+            self.assertEqual(self.ids(barcode, rows, admin=True), ([10], False))
+        self.assertEqual(self.ids('7790004', rows, admin=True), ([], False))
 
     def test_every_meaningful_word_must_match(self):
         self.assertEqual(self.ids('auto submarino'), ([], False))

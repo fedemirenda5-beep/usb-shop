@@ -379,7 +379,8 @@
   font-size: 0.875rem;
 }
 
-.btnClearImage {
+.btnClearImage,
+.btnBarcode {
   border: 1px solid #d1d5db;
   background: #fff;
   color: #374151;
@@ -389,7 +390,12 @@
   cursor: pointer;
 }
 
-.btnClearImage:disabled {
+.btnBarcode {
+  align-self: flex-start;
+}
+
+.btnClearImage:disabled,
+.btnBarcode:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

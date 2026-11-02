@@ -26,6 +26,7 @@ type ProductOption = {
   name: string;
   sku: string;
   barcode?: string | null;
+  barcodes?: string[];
   category_id?: number | null;
   category_name?: string | null;
   imeis?: string[];
@@ -848,7 +849,7 @@ export default function GenerarComprobantePage() {
     const normalizedValue = rawValue.trim().toLowerCase();
     if (!normalizedValue) return null;
     return (
-      products.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => (product.barcodes || [product.barcode]).some((barcode) => String(barcode || '').trim().toLowerCase() === normalizedValue)) ||
       products.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
       products.find((product) => String(product.id) === normalizedValue) ||
       null
@@ -883,7 +884,7 @@ export default function GenerarComprobantePage() {
     const remoteProducts = await loadScannerProducts(rawValue);
     const normalizedValue = rawValue.trim().toLowerCase();
     return (
-      remoteProducts.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      remoteProducts.find((product) => (product.barcodes || [product.barcode]).some((barcode) => String(barcode || '').trim().toLowerCase() === normalizedValue)) ||
       remoteProducts.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
       remoteProducts.find((product) => String(product.id) === normalizedValue) ||
       null
@@ -1565,7 +1566,7 @@ export default function GenerarComprobantePage() {
                     <div className={styles.productSearchMain}>
                       <strong>{scannedDraft.product.name}</strong>
                       <span>
-                        #{scannedDraft.product.id} · {scannedDraft.product.sku || 'Sin SKU'} · Cod. {scannedDraft.product.barcode || '-'} · Disponible local {scannedDraft.product.available_stock ?? scannedDraft.product.stock}
+                        #{scannedDraft.product.id} · {scannedDraft.product.sku || 'Sin SKU'} · Cod. {(scannedDraft.product.barcodes || [scannedDraft.product.barcode]).filter(Boolean).join(', ') || '-'} · Disponible local {scannedDraft.product.available_stock ?? scannedDraft.product.stock}
                       </span>
                     </div>
                   </div>
@@ -1621,7 +1622,7 @@ export default function GenerarComprobantePage() {
                           </div>
                           <div className={styles.productSearchMain}>
                             <strong>{product.name}</strong>
-                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Cod. {product.barcode || '-'} · Disponible local {product.available_stock ?? product.stock}</span>
+                          <span>#{product.id} · {product.sku || 'Sin SKU'} · Cod. {(product.barcodes || [product.barcode]).filter(Boolean).join(', ') || '-'} · Disponible local {product.available_stock ?? product.stock}</span>
                           </div>
                         </div>
                         <div className={styles.productSearchPrices}>
@@ -1693,7 +1694,7 @@ export default function GenerarComprobantePage() {
                             <strong>{selectedProduct?.name || `Producto #${item.product_id}`}</strong>
                             <div className={styles.itemMeta}>
                               {selectedProduct
-                                ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${selectedProduct.barcode || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
+                                ? `${selectedProduct.sku || 'Sin SKU'} · Cod. ${(selectedProduct.barcodes || [selectedProduct.barcode]).filter(Boolean).join(', ') || '-'}${item.manual_price ? ' · precio manual' : ''}${item.imeis.length > 0 ? ` · IMEIs ${item.imeis.join(', ')}` : ''}`
                                 : 'Producto no encontrado'}
                             </div>
                             {productRequiresImei(selectedProduct) && ['FACTURA', 'NOTA_CREDITO'].includes(form.document_type) ? (

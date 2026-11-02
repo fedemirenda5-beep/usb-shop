@@ -20,6 +20,7 @@ interface Product {
   name: string;
   sku: string;
   barcode?: string | null;
+  barcodes?: string[];
   imeis?: string[];
   price: number;
   price_list_1?: number | null;
@@ -447,7 +448,7 @@ export default function ProductosPage() {
       .filter((product) => {
         return matchesSearchQuery(
           normalized,
-          buildSearchHaystack(product.name, product.sku, product.barcode || '', product.category || '')
+          buildSearchHaystack(product.name, product.sku, ...(product.barcodes || [product.barcode || '']), product.category || '')
         );
       })
       .slice(0, 12);
@@ -506,7 +507,7 @@ export default function ProductosPage() {
     const normalizedValue = normalizeSearchValue(rawValue);
     if (!normalizedValue) return null;
     const localMatch =
-      products.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => (product.barcodes || [product.barcode]).some((barcode) => String(barcode || '').trim().toLowerCase() === normalizedValue)) ||
       products.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
       products.find((product) => String(product.id) === normalizedValue) ||
       null;
@@ -522,7 +523,7 @@ export default function ProductosPage() {
     const data = await res.json();
     const remoteProducts = Array.isArray(data) ? (data as Product[]) : [];
     return (
-      remoteProducts.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      remoteProducts.find((product) => (product.barcodes || [product.barcode]).some((barcode) => String(barcode || '').trim().toLowerCase() === normalizedValue)) ||
       remoteProducts.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
       remoteProducts.find((product) => String(product.id) === normalizedValue) ||
       null
@@ -1267,7 +1268,7 @@ export default function ProductosPage() {
                 );
               })()}
               <div><span>SKU</span><strong>{selectedProduct.sku || '-'}</strong></div>
-              <div><span>Codigo</span><strong>{selectedProduct.barcode || '-'}</strong></div>
+              <div><span>Codigos</span><strong>{selectedProduct.barcodes?.join(', ') || selectedProduct.barcode || '-'}</strong></div>
               <div><span>Rubro</span><strong>{selectedProduct.category || categoryMap.get(selectedProduct.category_id || 0) || 'Sin rubro'}</strong></div>
               <div><span>Costo</span><strong>{currencyFormatter.format(selectedProduct.cost || 0)}</strong></div>
               <div><span>Stock</span><strong>{selectedProduct.stock}</strong></div>

@@ -1693,6 +1693,96 @@ def _ensure_products_barcode_column(conn: DBConn) -> None:
     _invalidate_table_cache("products")
 
 
+def _ensure_product_barcodes_table(conn: DBConn) -> None:
+    if DB_IS_POSTGRES:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS product_barcodes (
+                id SERIAL PRIMARY KEY,
+                product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                barcode TEXT NOT NULL UNIQUE
+            )
+            """
+        )
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS product_barcodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                barcode TEXT NOT NULL UNIQUE,
+                FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+            )
+            """
+        )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_product_barcodes_product_id ON product_barcodes(product_id)")
+    conn.commit()
+    _invalidate_table_cache("product_barcodes")
+
+
+def _normalize_product_barcodes(payload: dict) -> list[str]:
+    if "barcodes" in payload:
+        values = payload.get("barcodes")
+        if not isinstance(values, list):
+            raise HTTPException(status_code=400, detail="La lista de codigos de barras no es valida")
+    else:
+        values = [payload.get("barcode")]
+    return list(dict.fromkeys(str(value or "").strip() for value in values if str(value or "").strip()))
+
+
+def _assert_product_barcodes_available(conn: DBConn, product_id: int, barcodes: list[str]) -> None:
+    if not barcodes:
+        return
+    placeholders = ", ".join(["?"] * len(barcodes))
+    duplicate_alias = conn.execute(
+        f"SELECT barcode FROM product_barcodes WHERE barcode IN ({placeholders}) AND product_id <> ? LIMIT 1",
+        [*barcodes, product_id],
+    ).fetchone()
+    duplicate_primary = conn.execute(
+        f"SELECT barcode FROM products WHERE barcode IN ({placeholders}) AND id <> ? LIMIT 1",
+        [*barcodes, product_id],
+    ).fetchone()
+    if duplicate_alias or duplicate_primary:
+        raise HTTPException(status_code=400, detail="Ya existe un producto con ese codigo de barras")
+
+
+def _replace_product_barcodes(conn: DBConn, product_id: int, barcodes: list[str]) -> None:
+    conn.execute("DELETE FROM product_barcodes WHERE product_id = ?", (product_id,))
+    for barcode in barcodes[1:]:
+        conn.execute(
+            "INSERT INTO product_barcodes (product_id, barcode) VALUES (?, ?)",
+            (product_id, barcode),
+        )
+
+
+def _fetch_product_barcodes(conn: DBConn, rows: list[Any]) -> dict[int, list[str]]:
+    primary = {
+        int(row["id"]): str(row["barcode"]).strip()
+        for row in rows
+        if row["barcode"] and str(row["barcode"]).strip()
+    }
+    product_ids = [int(row["id"]) for row in rows]
+    aliases: dict[int, list[str]] = {product_id: [] for product_id in product_ids}
+    for start in range(0, len(product_ids), 500):
+        batch = product_ids[start : start + 500]
+        if not batch:
+            continue
+        placeholders = ", ".join(["?"] * len(batch))
+        alias_rows = conn.execute(
+            f"SELECT product_id, barcode FROM product_barcodes WHERE product_id IN ({placeholders}) ORDER BY id",
+            batch,
+        ).fetchall()
+        for row in alias_rows:
+            product_id = int(row["product_id"])
+            barcode = str(row["barcode"]).strip()
+            if barcode and barcode != primary.get(product_id):
+                aliases.setdefault(product_id, []).append(barcode)
+    return {
+        product_id: ([primary[product_id]] if product_id in primary else []) + values
+        for product_id, values in aliases.items()
+    }
+
+
 def _ensure_products_highlight_new_arrivals_column(conn: DBConn) -> None:
     if _has_column(conn, "products", "highlight_new_arrivals"):
         return
@@ -6248,6 +6338,8 @@ def admin_list_products(
     conn = _connect()
     try:
         _ensure_product_bundle_support(conn)
+        _ensure_products_barcode_column(conn)
+        _ensure_product_barcodes_table(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
         has_highlight_new_arrivals = _has_column(conn, "products", "highlight_new_arrivals")
@@ -6302,6 +6394,8 @@ def admin_list_products(
             query += " LIMIT ? OFFSET ?"
             params.extend([limit_value, offset_value])
         rows = conn.execute(query, params).fetchall()
+        barcode_map = _fetch_product_barcodes(conn, rows)
+        rows = [dict(row, barcodes=barcode_map.get(int(row["id"]), [])) for row in rows]
         approximate = False
         if q:
             rows, approximate = rank_products(q, rows, admin=True)
@@ -6345,6 +6439,7 @@ def admin_list_products(
                     "name": row["name"],
                     "sku": row["sku"],
                     "barcode": row["barcode"],
+                    "barcodes": row["barcodes"],
                     "price": float(row["price"] or 0),
                     "price_list_1": float(row["price_list_1"] or 0),
                     "price_list_2": float(row["price_list_2"] or 0),
@@ -6397,7 +6492,8 @@ def admin_create_product(
     
     name = str(payload.get("name") or "").strip()
     sku = str(payload.get("sku") or "").strip()
-    barcode = str(payload.get("barcode") or "").strip() or None
+    barcodes = _normalize_product_barcodes(payload)
+    barcode = barcodes[0] if barcodes else None
     price = float(payload.get("price") or 0)
     cost = float(payload.get("cost") or 0)
     stock = int(payload.get("stock") or 0)
@@ -6416,6 +6512,7 @@ def admin_create_product(
     try:
         _ensure_product_bundle_support(conn)
         _ensure_products_barcode_column(conn)
+        _ensure_product_barcodes_table(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
@@ -6435,8 +6532,7 @@ def admin_create_product(
             raise HTTPException(status_code=400, detail="Carga todos los IMEIs disponibles del equipo antes de guardar")
         if conn.execute("SELECT id FROM products WHERE sku = ?", (sku,)).fetchone():
             raise HTTPException(status_code=400, detail="Ya existe un producto con ese SKU")
-        if barcode and conn.execute("SELECT id FROM products WHERE barcode = ?", (barcode,)).fetchone():
-            raise HTTPException(status_code=400, detail="Ya existe un producto con ese codigo de barras")
+        _assert_product_barcodes_available(conn, 0, barcodes)
 
         columns = ["name", "sku", "price", "stock"]
         values: list[Any] = [name, sku, price, stock]
@@ -6500,6 +6596,7 @@ def admin_create_product(
 
         # Product, images, IMEIs and bundle components must succeed together.
         _replace_product_images(conn, product_id, image_values)
+        _replace_product_barcodes(conn, product_id, barcodes)
         _replace_product_imeis(conn, product_id, imeis)
         _replace_product_bundle_items(conn, product_id, bundle_items if is_bundle else [])
         conn.commit()
@@ -6509,6 +6606,7 @@ def admin_create_product(
             "name": name,
             "sku": sku,
             "barcode": barcode,
+            "barcodes": barcodes,
             "price": price,
             "price_list_1": float(payload.get("price_list_1") or 0),
             "price_list_2": float(payload.get("price_list_2") or 0),
@@ -6824,6 +6922,7 @@ def admin_update_product(
     try:
         _ensure_product_bundle_support(conn)
         _ensure_products_barcode_column(conn)
+        _ensure_product_barcodes_table(conn)
         _ensure_products_cost_column(conn)
         _ensure_products_highlight_new_arrivals_column(conn)
         _ensure_products_flash_offer_columns(conn)
@@ -6853,17 +6952,13 @@ def admin_update_product(
         if "sku" in payload:
             updates.append("sku = ?")
             params.append(str(payload["sku"]).strip())
-        if "barcode" in payload and _has_column(conn, "products", "barcode"):
-            raw_barcode = str(payload.get("barcode") or "").strip() or None
-            if raw_barcode:
-                duplicated_barcode = conn.execute(
-                    "SELECT id FROM products WHERE barcode = ? AND id <> ?",
-                    (raw_barcode, product_id),
-                ).fetchone()
-                if duplicated_barcode:
-                    raise HTTPException(status_code=400, detail="Ya existe un producto con ese codigo de barras")
+        if ("barcodes" in payload or "barcode" in payload) and _has_column(conn, "products", "barcode"):
+            barcodes = _normalize_product_barcodes(payload)
+            _assert_product_barcodes_available(conn, product_id, barcodes)
+            raw_barcode = barcodes[0] if barcodes else None
             updates.append("barcode = ?")
             params.append(raw_barcode)
+            _replace_product_barcodes(conn, product_id, barcodes)
         if "price" in payload:
             updates.append("price = ?")
             params.append(float(payload["price"]))

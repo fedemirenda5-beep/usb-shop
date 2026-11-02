@@ -81,6 +81,35 @@ class ProductUpdateTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 400)
         self.assertEqual(self.product(), {'stock': 0, 'category_id': 1})
 
+    def test_multiple_barcodes_are_saved_searched_and_unique(self):
+        created = main.admin_create_product(None, None, {
+            'name': 'Producto con varios codigos',
+            'sku': 'PROD-CODIGOS',
+            'stock': 1,
+            'barcodes': ['7790001', '7790002', '7790002'],
+        })
+        self.assertEqual(created['barcode'], '7790001')
+        self.assertEqual(created['barcodes'], ['7790001', '7790002'])
+
+        matches = main.admin_list_products(None, 'admin', q='7790002')
+        self.assertEqual([product['id'] for product in matches], [created['id']])
+        self.assertEqual(matches[0]['barcodes'], ['7790001', '7790002'])
+
+        with self.assertRaises(HTTPException) as error:
+            main.admin_create_product(None, None, {
+                'name': 'Codigo duplicado',
+                'sku': 'PROD-DUPLICADO',
+                'barcodes': ['7790002'],
+            })
+        self.assertEqual(error.exception.status_code, 400)
+
+        with self.assertRaises(HTTPException) as error:
+            self.update({'barcodes': ['PROD-1', '7790002']})
+        self.assertEqual(error.exception.status_code, 400)
+
+        main.admin_update_product(created['id'], None, None, {'barcodes': ['7790001']})
+        self.assertEqual(main.admin_list_products(None, 'admin', q='7790002'), [])
+
     def test_existing_phone_can_be_featured_without_rewriting_legacy_inventory(self):
         conn = main._connect()
         try:

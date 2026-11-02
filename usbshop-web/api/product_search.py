@@ -56,7 +56,7 @@ def score_product(query, row, *, admin=False, fuzzy=False):
         return 0
     identifiers = [row['sku']]
     if admin:
-        identifiers += [row['barcode'], str(row['id'])]
+        identifiers += [row['barcode'], *row.get('barcodes', []), str(row['id'])]
     if code and any(code == compact(value) for value in identifiers if value):
         return 10000
     title = words(row['name'])

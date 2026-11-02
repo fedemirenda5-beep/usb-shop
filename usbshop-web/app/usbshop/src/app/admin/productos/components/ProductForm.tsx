@@ -11,6 +11,7 @@ interface ProductFormData {
   name: string;
   sku: string;
   barcode?: string | null;
+  barcodes?: string[];
   imeis?: string[];
   price: number;
   price_list_1?: number | null;
@@ -32,7 +33,6 @@ interface ProductFormData {
 interface ProductFormState {
   name: string;
   sku: string;
-  barcode: string;
   imeis: string;
   price: string;
   price_list_1: string;
@@ -195,7 +195,6 @@ const buildInitialState = (initialData?: ProductFormData & { id?: number }): Pro
   return {
     name: source.name,
     sku: source.sku,
-    barcode: source.barcode || '',
     imeis: Array.isArray(source.imeis) ? source.imeis.join('\n') : '',
     price: basePrice,
     price_list_1: source.price_list_1 ? toDecimalString(source.price_list_1) : fallbackListPrice,
@@ -223,6 +222,13 @@ export function ProductForm({
 }: ProductFormProps) {
   const router = useRouter();
   const [formData, setFormData] = useState<ProductFormState>(() => buildInitialState(initialData));
+  const [barcodes, setBarcodes] = useState<string[]>(() => {
+    const values = Array.isArray(initialData?.barcodes) ? initialData.barcodes : [];
+    const initialBarcodes = values.length > 0 ? values : [initialData?.barcode || ''];
+    return Array.from(new Set(initialBarcodes.map((value) => value.trim()).filter(Boolean)));
+  });
+  const [barcodeInput, setBarcodeInput] = useState('');
+  const [barcodeMessage, setBarcodeMessage] = useState('');
   const [imeiScan, setImeiScan] = useState('');
   const [imeiScanMessage, setImeiScanMessage] = useState('');
   const imeiScanRef = useRef<HTMLInputElement>(null);
@@ -296,6 +302,19 @@ export function ProductForm({
       return;
     }
     event.preventDefault();
+    addBarcode();
+  };
+
+  const addBarcode = () => {
+    const value = barcodeInput.trim();
+    if (!value) return;
+    if (barcodes.includes(value)) {
+      setBarcodeMessage('Este codigo de barras ya esta cargado.');
+      return;
+    }
+    setBarcodes((current) => [...current, value]);
+    setBarcodeInput('');
+    setBarcodeMessage(`Codigo ${value} agregado.`);
   };
 
   const handleFieldChange = (name: keyof ProductFormState, value: string | boolean) => {
@@ -502,6 +521,9 @@ export function ProductForm({
         throw new Error('Agrega al menos un producto al combo');
       }
       const imeis = parseImeiValues(formData.imeis);
+      if (barcodeInput.trim()) {
+        throw new Error('Tenes un codigo de barras pendiente. Presiona Agregar codigo antes de guardar.');
+      }
       if (isCellphonesCategory && imeiScan.trim()) {
         throw new Error('Tenés un IMEI pendiente. Presioná Agregar IMEI antes de guardar el producto.');
       }
@@ -534,7 +556,8 @@ export function ProductForm({
       await onSubmit({
         name: formData.name.trim(),
         sku: formData.sku.trim(),
-        barcode: formData.barcode.trim() || null,
+        barcode: barcodes[0] || null,
+        barcodes,
         imeis,
         price,
         price_list_1: formData.price_list_1.trim() ? priceList1 : 0,
@@ -604,18 +627,42 @@ export function ProductForm({
         </div>
 
         <div className={styles.field}>
-          <label htmlFor="barcode">Codigo de barras</label>
+          <label htmlFor="barcode">Codigos de barras</label>
           <input
             id="barcode"
             type="text"
-            name="barcode"
-            value={formData.barcode}
-            onChange={handleChange}
+            value={barcodeInput}
+            onChange={(event) => {
+              setBarcodeInput(event.target.value);
+              setBarcodeMessage('');
+            }}
             onKeyDown={handleBarcodeKeyDown}
             placeholder="Ej: 7791234567890"
             disabled={loading}
             className={styles.input}
           />
+          <button type="button" className={styles.btnBarcode} onClick={addBarcode} disabled={loading || !barcodeInput.trim()}>
+            Agregar codigo
+          </button>
+          <p role="status" className={styles.help}>{barcodeMessage || 'Podes cargar mas de un codigo; presiona Enter o Agregar codigo en cada uno.'}</p>
+          {barcodes.length > 0 ? (
+            <ul className={styles.imeiList} aria-label="Codigos de barras cargados">
+              {barcodes.map((barcode, index) => (
+                <li key={barcode}>
+                  <span>{barcode}{index === 0 ? ' (principal)' : ''}</span>
+                  <button
+                    type="button"
+                    className={styles.btnBarcode}
+                    onClick={() => setBarcodes((current) => current.filter((value) => value !== barcode))}
+                    disabled={loading}
+                    aria-label={`Quitar codigo de barras ${barcode}`}
+                  >
+                    Quitar
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         <div className={styles.field}>

@@ -20,6 +20,7 @@ type ScannerProductPreview = {
   name: string;
   sku: string;
   barcode?: string | null;
+  barcodes?: string[];
   price: number;
   price_list_1?: number | null;
   stock: number;
@@ -101,7 +102,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const normalizedValue = rawValue.trim().toLowerCase();
     if (!normalizedValue) return null;
     return (
-      products.find((product) => String(product.barcode || '').trim().toLowerCase() === normalizedValue) ||
+      products.find((product) => (product.barcodes || [product.barcode]).some((barcode) => String(barcode || '').trim().toLowerCase() === normalizedValue)) ||
       products.find((product) => String(product.sku || '').trim().toLowerCase() === normalizedValue) ||
       products.find((product) => String(product.id) === normalizedValue) ||
       null
@@ -398,7 +399,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   <span className={styles.scannerPreviewEyebrow}>Producto escaneado</span>
                   <strong>{scannerPreviewProduct.name}</strong>
                   <span className={styles.scannerPreviewMeta}>
-                    #{scannerPreviewProduct.id} · {scannerPreviewProduct.sku || 'Sin SKU'} · Cod. {scannerPreviewProduct.barcode || '-'}
+                    #{scannerPreviewProduct.id} · {scannerPreviewProduct.sku || 'Sin SKU'} · Cod. {(scannerPreviewProduct.barcodes || [scannerPreviewProduct.barcode]).filter(Boolean).join(', ') || '-'}
                   </span>
                   <div className={styles.scannerPreviewStats}>
                     <div>
