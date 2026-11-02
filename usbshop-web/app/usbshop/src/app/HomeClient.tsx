@@ -1451,11 +1451,11 @@ export default function HomeClient({
   }, [products, featuredSource]);
 
   const homeSections = useMemo(() => uniqueStorefrontSections([
+    { key: 'featured', products: featured, limit: HOME_SECTION_CARD_LIMIT },
     { key: 'flash', products: flashOfferProducts, limit: 2 },
     { key: 'new', products: newArrivals, limit: HOME_SECTION_CARD_LIMIT },
     { key: 'restocked', products: restocked, limit: HOME_SECTION_CARD_LIMIT },
     { key: 'discounts', products: discountedProducts, limit: HOME_SECTION_CARD_LIMIT },
-    { key: 'featured', products: featured, limit: HOME_SECTION_CARD_LIMIT },
     { key: 'offers', products: weeklyOffers.filter(product => product.isOffer || hasDiscountedPrice(product)), limit: HOME_SECTION_CARD_LIMIT },
   ]), [flashOfferProducts, newArrivals, restocked, discountedProducts, featured, weeklyOffers]);
   const homeProductIds = useMemo(

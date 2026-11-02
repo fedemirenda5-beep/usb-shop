@@ -24,3 +24,15 @@ test('sections fill with distinct available products and leave the source intact
   assert.ok(all.every(p => p.stock > 0));
   assert.equal(products.length, 12);
 });
+
+test('featured products take priority over other storefront sections', () => {
+  const featured = [{ id: 2, stock: 5 }, { id: 1, stock: 5 }];
+  const sections = uniqueStorefrontSections([
+    { key: 'featured', products: featured, limit: 4 },
+    { key: 'new', products: [{ id: 1, stock: 5 }, { id: 3, stock: 5 }], limit: 4 },
+    { key: 'restocked', products: [{ id: 2, stock: 5 }, { id: 4, stock: 5 }], limit: 4 },
+  ]);
+  assert.deepEqual(sections.featured.map(product => product.id), [2, 1]);
+  assert.deepEqual(sections.new.map(product => product.id), [3]);
+  assert.deepEqual(sections.restocked.map(product => product.id), [4]);
+});

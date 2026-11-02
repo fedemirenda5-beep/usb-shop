@@ -5674,13 +5674,13 @@ def _storefront_collection(limit: int, kind: str, conn: Optional[DBConn] = None,
             date_column = "p.created_at" if kind == "new" else "sf.restocked_at"
             date_expr = date_column if DB_IS_POSTGRES else f"julianday({date_column})"
             placeholder = "?" if DB_IS_POSTGRES else "julianday(?)"
-            # New arrivals always fill the row with the latest available dated
-            # products, even when fewer than four arrived in the past 14 days.
+            # Keep "new arrivals" inside its advertised 14-day window.
             conditions.append(f"{date_expr} <= {placeholder}")
             query_params = [now.isoformat()]
-            if kind == "restocked":
+            if kind in {"new", "restocked"}:
                 conditions.append(f"{date_expr} >= {placeholder}")
-                query_params.append((now - timedelta(days=7)).isoformat())
+                window_days = 14 if kind == "new" else 7
+                query_params.append((now - timedelta(days=window_days)).isoformat())
         base_conditions = []
         if has_deleted_at:
             base_conditions.append("deleted_at IS NULL")
