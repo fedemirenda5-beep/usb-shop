@@ -46,6 +46,8 @@ const DEFAULT_API_BASE_URL = (() => {
 const DEFAULT_ORDER_SECRET = process.env.NEXT_PUBLIC_ORDER_SECRET || "";
 const DEFAULT_API_TIMEOUT_MS = 18_000;
 const RUNTIME_CONFIG_TIMEOUT_MS = 3_000;
+const DEFAULT_AUTH_TIMEOUT_MS = 30_000;
+const LOGIN_AUTH_TIMEOUT_MS = 90_000;
 const DEFAULT_API_RETRY_ATTEMPTS = 2;
 const DEFAULT_API_RETRY_DELAY_MS = 700;
 const RETRYABLE_HTTP_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -402,9 +404,10 @@ export async function ensureApiBaseUrl(timeoutMs = 5000): Promise<void> {
 // Login can safely be repeated after a lost response; sales and other writes cannot.
 export async function fetchAuthResponse(path: '/auth/me' | '/auth/login' | '/auth/logout', init: RequestInit = {}): Promise<Response> {
   await ensureApiBaseUrl();
+  const timeoutMs = path === '/auth/login' ? LOGIN_AUTH_TIMEOUT_MS : DEFAULT_AUTH_TIMEOUT_MS;
   return fetchWithRetry(`${getApiBaseUrl()}${path}`, {
     ...init, credentials: 'include', cache: 'no-store',
-  }, 30_000, 2, path === '/auth/login');
+  }, timeoutMs, 2, path === '/auth/login');
 }
 
 export async function fetchApiResponse(path: string, init?: RequestInit, timeoutMs = DEFAULT_API_TIMEOUT_MS): Promise<Response> {

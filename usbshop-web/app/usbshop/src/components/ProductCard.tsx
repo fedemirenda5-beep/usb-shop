@@ -427,6 +427,7 @@ function ProductCard({
             loading="eager"
             decoding="async"
             fetchPriority={imagePriority}
+            draggable={false}
             width={CARD_IMAGE_WIDTH}
             height={CARD_IMAGE_HEIGHT}
             onError={handleImageError}

@@ -252,7 +252,7 @@ export default function LoginPage() {
 
           {(localError || error) && <div role="alert" className={styles.error}>{localError || error}</div>}
           {localNotice ? <div className={styles.notice}>{localNotice}</div> : null}
-          {submitting && slowConnection && <div role="status" className={styles.notice}>Seguimos intentando conectar. No hace falta volver a tocar Ingresar.</div>}
+          {submitting && slowConnection && <div role="status" className={styles.notice}>El servidor puede estar iniciando. Mantén esta página abierta; no vuelvas a tocar Ingresar mientras conectamos.</div>}
 
           <button type="submit" disabled={submitting || !username.trim() || !password.trim()} className={styles.button}>
             {submitting ? 'Ingresando...' : 'Ingresar'}

@@ -189,6 +189,9 @@ La web publicada apunta a `https://api.usbshop.com.ar`.
   plan, Render lo suspende tras 15 minutos sin trafico y el siguiente acceso puede
   esperar aproximadamente un minuto: https://render.com/docs/free.
   Confirmar el plan real en Render; el archivo no prueba la configuracion activa.
+- El login espera hasta 90 segundos por intento para tolerar ese inicio en frio y
+  muestra un aviso mientras conecta. Para evitar la espera, hace falta una instancia
+  siempre activa; el cambio de plan tiene costo.
 - Para eliminar la suspension por inactividad, usar una instancia siempre activa.
   El cambio de plan tiene costo y debe decidirse antes de modificar el alojamiento.
 - Verificacion local: desde `usbshop-web/api`, ejecutar
