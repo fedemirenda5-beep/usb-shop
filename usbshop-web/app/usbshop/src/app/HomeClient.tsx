@@ -99,6 +99,7 @@ const SEARCH_PAGE_SIZE = 48;
 const SEARCH_DEBOUNCE_MS = 250;
 const HOME_SECTION_CARD_LIMIT = 4;
 const STOREFRONT_FETCH_TIMEOUT_MS = 15_000;
+const STOREFRONT_COLLECTIONS_TIMEOUT_MS = 7_000;
 const STOREFRONT_FETCH_ATTEMPTS = 1;
 const STOREFRONT_BASE_ATTEMPTS = 2;
 const STOREFRONT_RETRY_DELAY_MS = 250;
@@ -117,6 +118,7 @@ const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v10";
 const FEATURED_CACHE_KEY = "usbshop_featured_cache_v10";
 const COLLECTIONS_CACHE_KEY = "usbshop_collections_cache_v1";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const COLLECTIONS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const NEW_ARRIVAL_PIN_WINDOW_DAYS = 21;
 const NEW_ARRIVAL_PIN_WINDOW_MS = NEW_ARRIVAL_PIN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const getStaggerDelay = (index: number, step = 0.05, max = 0.6) =>
@@ -754,7 +756,8 @@ export default function HomeClient({
   const fetchWithRetry = async <T,>(
     path: string,
     attempts = STOREFRONT_BASE_ATTEMPTS,
-    delayMs = STOREFRONT_RETRY_DELAY_MS
+    delayMs = STOREFRONT_RETRY_DELAY_MS,
+    timeoutMs = STOREFRONT_FETCH_TIMEOUT_MS
   ): Promise<{ data: T; baseUrl: string }> => {
     let lastError: unknown;
     await loadRuntimeConfig();
@@ -763,7 +766,7 @@ export default function HomeClient({
       return fetchJson<T>(path, undefined, {
         attempts: STOREFRONT_FETCH_ATTEMPTS,
         baseUrl,
-        timeoutMs: STOREFRONT_FETCH_TIMEOUT_MS,
+        timeoutMs,
       });
     };
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -789,18 +792,31 @@ export default function HomeClient({
 
   useEffect(() => {
     let active = true;
-    setCollectionsLoading(true);
+    const cached = loadCachedList<Product[][]>(COLLECTIONS_CACHE_KEY, COLLECTIONS_CACHE_TTL_MS);
+    let hasCachedCollections = false;
+    if (cached?.baseUrl === getApiBaseUrl() && cached.data.length === 2 && cached.data.every(Array.isArray)) {
+      setNewArrivals(cached.data[0].map((item: Product) => normalizeProduct(item, cached.baseUrl)));
+      setRestocked(cached.data[1].map((item: Product) => normalizeProduct(item, cached.baseUrl)));
+      setCollectionsLoading(false);
+      hasCachedCollections = true;
+    } else {
+      setCollectionsLoading(true);
+    }
     setCollectionsError(false);
     const refresh = async () => {
       await loadRuntimeConfig();
       if (!active) return;
-      const cached = loadCachedList<Product[][]>(COLLECTIONS_CACHE_KEY, PRODUCTS_CACHE_TTL_MS);
-      if (cached?.baseUrl === getApiBaseUrl() && cached.data.length === 2 && cached.data.every(Array.isArray)) {
+      if (!hasCachedCollections && cached?.baseUrl === getApiBaseUrl() && cached.data.length === 2 && cached.data.every(Array.isArray)) {
         setNewArrivals(cached.data[0].map((item: Product) => normalizeProduct(item, cached.baseUrl)));
         setRestocked(cached.data[1].map((item: Product) => normalizeProduct(item, cached.baseUrl)));
         setCollectionsLoading(false);
       }
-      return fetchWithRetry<{ new_arrivals: Product[]; restocked: Product[] }>("/storefront/collections")
+      return fetchWithRetry<{ new_arrivals: Product[]; restocked: Product[] }>(
+        "/storefront/collections",
+        STOREFRONT_BASE_ATTEMPTS,
+        STOREFRONT_RETRY_DELAY_MS,
+        STOREFRONT_COLLECTIONS_TIMEOUT_MS
+      )
       .then(({ data, baseUrl }) => {
         if (!active) return;
         setNewArrivals(data.new_arrivals.map(item => normalizeProduct(item, baseUrl)));
@@ -1826,15 +1842,15 @@ export default function HomeClient({
       </a>
 
 
-      {categoryStrip}
-
       {!isSearching && !selectedCategory && (collectionsLoading || collectionsError || homeSections.new.length > 0) ? (
       <section id="novedades" className="section">
         <div className="section-header">
-          <div>
+          <div className="new-arrivals-copy">
+            <p className="new-arrivals-kicker">Nuevos ingresos</p>
             <h2 className="section-title">
               Novedades
             </h2>
+            <p className="section-description">Lo último que entró a la tienda, listo para descubrir.</p>
           </div>
           {!isSearching && !selectedCategory ? (
             <button
@@ -1872,6 +1888,8 @@ export default function HomeClient({
         </div>
       </section>
       ) : null}
+
+      {categoryStrip}
 
       {!isSearching && !selectedCategory && homeSections.restocked.length > 0 ? (
         <section id="reposiciones" className="section">

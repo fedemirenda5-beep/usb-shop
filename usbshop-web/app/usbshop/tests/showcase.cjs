@@ -14,6 +14,7 @@ const products = Array.from({ length: 10 }, (_, index) => ({
     const context = await browser.newContext();
     let saved = null;
     let failSave = true;
+    let stallCollections = false;
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.pathname === '/usbshop-config.json') return route.fulfill({ json: { apiBaseUrl: 'http://127.0.0.1:8000' } });
@@ -29,7 +30,10 @@ const products = Array.from({ length: 10 }, (_, index) => ({
       if (url.pathname === '/products') return route.fulfill({ json: products });
       if (url.pathname === '/categories') return route.fulfill({ json: [] });
       if (url.pathname === '/featured') return route.fulfill({ json: saved ? saved.filter(id => products[id - 1].stock > 0).map(id => products[id - 1]) : [] });
-      if (url.pathname === '/storefront/collections') return route.fulfill({ json: { new_arrivals: [products[8]], restocked: [products[9]] } });
+      if (url.pathname === '/storefront/collections') {
+        if (stallCollections) await new Promise(() => {});
+        return route.fulfill({ json: { new_arrivals: [products[8]], restocked: [products[9]] } });
+      }
       if (url.origin !== base) return route.abort();
       return route.continue();
     });
@@ -63,6 +67,13 @@ const products = Array.from({ length: 10 }, (_, index) => ({
     await page.waitForTimeout(8200);
     const secondWindow = await page.locator('#featured-grid .product-card h3').allTextContents();
     assert.notDeepEqual(secondWindow, firstWindow);
+    const collectionsCache = await page.evaluate(() => JSON.parse(localStorage.getItem('usbshop_collections_cache_v1')));
+    collectionsCache.savedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    await page.evaluate(value => localStorage.setItem('usbshop_collections_cache_v1', JSON.stringify(value)), collectionsCache);
+    stallCollections = true;
+    await page.reload();
+    await page.locator('#novedades .product-card').first().waitFor({ timeout: 3000 });
+    assert.equal(await page.getByText('Cargando novedades…').count(), 0, 'stale cached arrivals render without waiting for the API');
     saved = [];
     await page.reload();
     await page.waitForTimeout(1000);

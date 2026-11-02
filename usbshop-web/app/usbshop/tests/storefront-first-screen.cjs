@@ -26,11 +26,16 @@ const products = Array.from({ length: 8 }, (_, index) => ({
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(base);
+      await page.getByText('Nuevos ingresos', { exact: true }).waitFor();
+      await page.getByText('Lo último que entró a la tienda, listo para descubrir.', { exact: true }).waitFor();
       const card = page.locator('#novedades .product-card').first();
       await card.waitFor();
       const photo = await card.locator('.product-media').boundingBox();
       const price = await card.locator('.product-price').last().boundingBox();
       assert(photo.y < 300, `At ${width}px products start at ${photo.y}px`);
+      assert((await page.locator('#novedades').evaluate(node => node.getBoundingClientRect().top)) <
+        (await page.locator('#category-strip').evaluate(node => node.getBoundingClientRect().top)),
+      'New arrivals lead the category filters');
       assert(price.y + price.height < 768, `At ${width}px the price must be in the first screen`);
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Overflow at ${width}px`);
       const chips = await page.locator('.category-chip').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
