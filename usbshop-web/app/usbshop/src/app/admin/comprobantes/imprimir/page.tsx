@@ -345,11 +345,6 @@ export default function ImprimirComprobantePage() {
     }, 350);
   };
 
-  useEffect(() => {
-    if (!html || loading) return;
-    openPopupWithHtml();
-  }, [html, loading]);
-
   const handleManualPrint = () => {
     openPopupWithHtml();
   };
