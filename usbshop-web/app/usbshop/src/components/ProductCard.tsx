@@ -12,6 +12,7 @@ type CardProps = {
     stock?: number;
     soldCount?: number;
     badge?: string;
+    updated_at?: string | null;
     imageUrl?: string | null;
     imageUrls?: string[] | null;
     description?: string | null;
@@ -96,15 +97,27 @@ const appendCacheBuster = (src: string, attempt: number) => {
   return src.includes("?") ? `${src}&${token}` : `${src}?${token}`;
 };
 
-const appendRefreshKey = (src: string, refreshKey?: number) => {
-  if (!refreshKey || /[?&]img_v=/.test(src)) {
+const appendRefreshKey = (src: string, refreshKey?: number | string) => {
+  if (!refreshKey || /[?&](?:img_v|v)=/.test(src)) {
     return src;
   }
-  const token = `img_v=${refreshKey}`;
+  const token = `img_v=${encodeURIComponent(String(refreshKey))}`;
   return src.includes("?") ? `${src}&${token}` : `${src}?${token}`;
 };
 
-const buildProxyImageSrc = (productId: number, index?: number) => {
+const buildImageVersion = (updatedAt: string | null | undefined, imageUrls: string[]) => {
+  const source = `${updatedAt || ""}|${imageUrls.join("|")}`;
+  if (source === "|") {
+    return undefined;
+  }
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = Math.imul(hash ^ source.charCodeAt(index), 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+const buildProxyImageSrc = (productId: number, index?: number, imageVersion?: string) => {
   const baseUrl = getApiBaseUrl();
   const params = new URLSearchParams({
     w: String(CARD_IMAGE_WIDTH),
@@ -114,6 +127,9 @@ const buildProxyImageSrc = (productId: number, index?: number) => {
   });
   if (Number.isInteger(index)) {
     params.set("i", String(index));
+  }
+  if (imageVersion) {
+    params.set("v", imageVersion);
   }
   const path = `/products/${productId}/image?${params.toString()}`;
   if (!baseUrl) {
@@ -180,6 +196,10 @@ function ProductCard({
       .filter((value): value is string => Boolean(value));
     return list;
   }, [product.imageUrls, product.imageUrl]);
+  const imageVersion = buildImageVersion(product.updated_at, images);
+  const imageRefreshToken = imageRefreshKey
+    ? `${imageVersion || ""}-${imageRefreshKey}`
+    : imageVersion;
   const fallbackLabel = React.useMemo(
     () => getFallbackLabel(product.category || product.name),
     [product.category, product.name]
@@ -192,7 +212,7 @@ function ProductCard({
   // Switching from the original in an effect used to start two downloads.
   const [proxySrc, setProxySrc] = React.useState<string | null>(() =>
     product.id && (!images[0] || isAbsoluteImageUrl(images[0]))
-      ? buildProxyImageSrc(product.id, images[0] ? 0 : undefined)
+      ? buildProxyImageSrc(product.id, images[0] ? 0 : undefined, imageRefreshToken)
       : null
   );
   const [hasTriedProxy, setHasTriedProxy] = React.useState(Boolean(proxySrc));
@@ -216,8 +236,8 @@ function ProductCard({
     if (!base) {
       return null;
     }
-    return appendRefreshKey(base, imageRefreshKey);
-  }, [imageRefreshKey, optimizedImgSrc, imgSrc, proxySrc, useRawImage]);
+    return appendRefreshKey(base, imageRefreshToken);
+  }, [imageRefreshToken, optimizedImgSrc, imgSrc, proxySrc, useRawImage]);
   const [imgAttempt, setImgAttempt] = React.useState(0);
   const [imgFailed, setImgFailed] = React.useState(false);
   const imageRef = React.useRef<HTMLImageElement | null>(null);
@@ -253,7 +273,7 @@ function ProductCard({
 
   React.useEffect(() => {
     setImageIndex(0);
-  }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
+  }, [product.id, product.updated_at, product.imageUrl, product.imageUrls, imageRefreshKey]);
 
   React.useEffect(() => {
     if (imageIndex >= images.length && images.length > 0) {
@@ -267,17 +287,17 @@ function ProductCard({
     setImgFailed(false);
     setUseRawImage(false);
     if (product.id && (!images[imageIndex] || isAbsoluteImageUrl(images[imageIndex]))) {
-      setProxySrc(buildProxyImageSrc(product.id, images[imageIndex] ? imageIndex : undefined));
+      setProxySrc(buildProxyImageSrc(product.id, images[imageIndex] ? imageIndex : undefined, imageRefreshToken));
       setHasTriedProxy(true);
     } else {
       setProxySrc(null);
       setHasTriedProxy(false);
     }
-  }, [imageIndex, images, imageRefreshKey]);
+  }, [imageIndex, images, imageRefreshToken, product.id]);
 
   React.useEffect(() => {
     setFailedImageIndexes(new Set());
-  }, [product.id, product.imageUrl, product.imageUrls, imageRefreshKey]);
+  }, [product.id, product.updated_at, product.imageUrl, product.imageUrls, imageRefreshKey]);
 
   const canRenderImage = shouldLoadImage || imagePriority === "high";
   const imagePending = Boolean(displaySrc && !imgFailed && canRenderImage && loadedSrc !== displaySrc);
@@ -293,7 +313,7 @@ function ProductCard({
     if (!imagePending || !canUseOriginal || !imgSrc) return;
     // Give the small thumbnail a head start, then race the original without
     // cancelling a thumbnail that may still finish first.
-    const originalSrc = appendRefreshKey(imgSrc, imageRefreshKey);
+    const originalSrc = appendRefreshKey(imgSrc, imageRefreshToken);
     let original: HTMLImageElement | null = null;
     const timer = window.setTimeout(() => {
       original = new Image();
@@ -310,7 +330,7 @@ function ProductCard({
       window.clearTimeout(timer);
       if (original) original.onload = null;
     };
-  }, [displaySrc, imagePending, canUseOriginal, imgSrc, imageRefreshKey]);
+  }, [displaySrc, imagePending, canUseOriginal, imgSrc, imageRefreshToken]);
 
   React.useEffect(() => {
     if (!imagePending) return;
@@ -339,7 +359,7 @@ function ProductCard({
       return;
     }
     if (!proxySrc && !hasTriedProxy && product.id) {
-      setProxySrc(buildProxyImageSrc(product.id, Number.isInteger(imageIndex) ? imageIndex : undefined));
+      setProxySrc(buildProxyImageSrc(product.id, Number.isInteger(imageIndex) ? imageIndex : undefined, imageRefreshToken));
       setHasTriedProxy(true);
       setImgAttempt(0);
       setImgFailed(false);
@@ -567,6 +587,7 @@ const areCardPropsEqual = (prev: CardProps, next: CardProps) => {
     prev.product.stock === next.product.stock &&
     prev.product.soldCount === next.product.soldCount &&
     prev.product.badge === next.product.badge &&
+    prev.product.updated_at === next.product.updated_at &&
     prev.product.imageUrl === next.product.imageUrl &&
     prev.product.description === next.product.description &&
     prev.product.isFeatured === next.product.isFeatured &&

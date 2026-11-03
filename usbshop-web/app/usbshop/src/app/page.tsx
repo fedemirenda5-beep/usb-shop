@@ -71,7 +71,7 @@ export const revalidate = 300;
 export default async function Page() {
   const apiBase = getServerApiBaseUrl();
   const [initialProducts, initialFeatured, initialCategories] = await Promise.all([
-    fetchJson<Product[]>(`/products?sort=newest&limit=${PRODUCTS_PAGE_SIZE}&offset=0`),
+    fetchJson<Product[]>(`/products?sort=best_selling&limit=${PRODUCTS_PAGE_SIZE}&offset=0`),
     fetchJson<Product[]>(`/featured?limit=${FEATURED_LIMIT}`),
     fetchJson<Category[]>("/categories"),
   ]);

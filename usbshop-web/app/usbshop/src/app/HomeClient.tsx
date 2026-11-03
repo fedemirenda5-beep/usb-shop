@@ -114,7 +114,7 @@ const getCardImagePriority = (index: number, prioritizeRow = false): "high" | "a
 };
 const CART_STORAGE_KEY = "usbshop_cart_v1";
 const CART_TTL_MS = 2 * 24 * 60 * 60 * 1000;
-const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v10";
+const PRODUCTS_CACHE_KEY = "usbshop_products_cache_v11";
 const FEATURED_CACHE_KEY = "usbshop_featured_cache_v10";
 const COLLECTIONS_CACHE_KEY = "usbshop_collections_cache_v1";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -851,7 +851,7 @@ export default function HomeClient({
     signal?: AbortSignal
   ) => {
     const params = new URLSearchParams({
-      sort: "newest",
+      sort: "best_selling",
       limit: String(limit),
       offset: String(offset),
     });
@@ -1207,6 +1207,10 @@ export default function HomeClient({
     if (categoryCompare !== 0) {
       return categoryCompare;
     }
+    const soldCountCompare = (b.soldCount ?? 0) - (a.soldCount ?? 0);
+    if (soldCountCompare !== 0) {
+      return soldCountCompare;
+    }
     return (
       a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true }) ||
       compareByNewest(a, b)
@@ -1377,7 +1381,9 @@ export default function HomeClient({
       return matchesSearch(product);
       })
       .sort(selectedCategory
-        ? (a, b) => Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0) || compareByNewest(a, b)
+        ? (a, b) => (b.soldCount ?? 0) - (a.soldCount ?? 0) ||
+          Number((b.stock ?? 0) > 0) - Number((a.stock ?? 0) > 0) ||
+          compareByNewest(a, b)
         : compareByCategoryThenName);
   }, [catalogSource, searchTokens, selectedCategory, categoryRank, productSearchIndex, productCategoryIndex, searchResultIds]);
 

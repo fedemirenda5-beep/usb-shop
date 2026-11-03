@@ -63,7 +63,7 @@ const collectOrderedCategories = (preferred: string[], fallback: string[]) => {
   }
   return next;
 };
-const PRODUCTS_CACHE_KEY = "usbshop_catalog_cache_v1";
+const PRODUCTS_CACHE_KEY = "usbshop_catalog_cache_v2";
 const PRODUCTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const INITIAL_PAGE_SIZE = 60;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -164,7 +164,11 @@ export default function CatalogPage() {
   const fetchProductsPage = async (offset = 0, search = "", signal?: AbortSignal) => {
     await loadRuntimeConfig();
     const baseUrl = getApiBaseUrl();
-    const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
+    const params = new URLSearchParams({
+      sort: "best_selling",
+      limit: String(pageSize),
+      offset: String(offset),
+    });
     if (search) params.set("q", search);
     const data = await fetchJson<Product[]>(`/products?${params}`, { signal, cache: "no-store" });
     return { data, baseUrl, normalized: normalizeProducts(data, baseUrl) };
@@ -267,19 +271,20 @@ export default function CatalogPage() {
     const categoryRank = new Map(
       orderedCategories.map((category, index) => [normalizeLabel(category), index])
     );
-    const compareByCategoryThenNewest = (a: Product, b: Product) => {
+    const compareByCategoryThenSales = (a: Product, b: Product) => {
       const rankA = categoryRank.get(normalizeLabel(a.category)) ?? Number.MAX_SAFE_INTEGER;
       const rankB = categoryRank.get(normalizeLabel(b.category)) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) {
         return rankA - rankB;
       }
-      const dateCompare = toComparableTimestamp(b) - toComparableTimestamp(a);
-      if (dateCompare !== 0) {
-        return dateCompare;
+      const soldCountCompare = (b.soldCount ?? 0) - (a.soldCount ?? 0);
+      if (soldCountCompare !== 0) {
+        return soldCountCompare;
       }
-      return a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true });
+      return toComparableTimestamp(b) - toComparableTimestamp(a) ||
+        a.name.localeCompare(b.name, "es", { sensitivity: "base", numeric: true });
     };
-    return [...products].sort(compareByCategoryThenNewest);
+    return [...products].sort(compareByCategoryThenSales);
   }, [categories, products, query, debouncedQuery]);
 
   const skeletonCards = useMemo(() => Array.from({ length: 12 }, (_, idx) => idx), []);

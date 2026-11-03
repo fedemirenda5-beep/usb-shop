@@ -4,9 +4,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3010';
 const products = Array.from({ length: 24 }, (_, index) => ({
   id: 900001 + index, name: `Cargador ${index + 1}`, category: 'Cargadores', price: 100, stock: 5,
+  soldCount: 24 - index,
   imageUrl: `https://images.invalid/original-${index + 1}.jpg`,
 }));
-const firstRow = new Set(products.slice(-4).map(product => product.id));
+const firstRow = new Set(products.slice(0, 4).map(product => product.id));
 const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aHn8AAAAASUVORK5CYII=', 'base64');
 
 (async () => {
@@ -58,14 +59,20 @@ const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQ
     const page = await context.newPage();
     await page.goto(`${base}/?categoria=Cargadores`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => {
-      const images = [...document.querySelectorAll('#featured-grid .product-image')].slice(0, 4);
+      const images = [...document.querySelectorAll('#selected-category-results .featured-grid .product-image')].slice(0, 4);
       return images.length === 4 && images.every(image => image.fetchPriority === 'high' && image.loading === 'eager' && image.complete && image.naturalWidth > 0);
     });
     assert.equal(started.size, 4);
+    assert.deepEqual(
+      await page.locator('#selected-category-results .featured-grid .product-title').allTextContents(),
+      products.slice(0, 12).map(product => product.name),
+      'show each category in descending units sold'
+    );
     assert.equal(originals.length, 0, 'do not start a second download of the full-size originals');
     for (const id of firstRow) assert.equal(imageRequests.filter(request => request.id === id).length, 1, 'one stable thumbnail request per first-row image');
     assert(imageRequests.every(request => request.url.searchParams.get('w') === '420'));
-    assert.equal(await page.locator('#featured-grid .product-card').count(), 12, 'keep catalog rendering bounded');
+    assert(imageRequests.every(request => request.url.searchParams.has('v')), 'version thumbnail URLs when product images change');
+    assert.equal(await page.locator('#selected-category-results .featured-grid .product-card').count(), 12, 'keep catalog rendering bounded');
     console.log('PASS first row downloads concurrently, uses only thumbnails and retains bounded rendering');
     noveltyMode = true;
     await page.goto(base, { waitUntil: 'domcontentloaded' });

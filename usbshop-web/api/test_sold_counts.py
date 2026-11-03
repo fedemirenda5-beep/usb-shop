@@ -53,6 +53,32 @@ class SoldCountTests(unittest.TestCase):
         self.invoice(quantity=2, kind='NOTA_CREDITO')
         self.assertEqual(self.count(), 0)
 
+    def test_best_selling_sort_uses_net_invoiced_units_and_stable_pages(self):
+        self.invoice(quantity=4)
+        conn = main._connect()
+        try:
+            conn.execute('UPDATE products SET stock = 20 WHERE id = 2')
+            conn.commit()
+        finally:
+            conn.close()
+        self.invoice(
+            quantity=7,
+            items=[{'product_id': 2, 'quantity': 7, 'unit_price': 2000}],
+        )
+        self.invoice(
+            quantity=2,
+            kind='NOTA_CREDITO',
+            items=[{'product_id': 2, 'quantity': 2, 'unit_price': 2000}],
+        )
+
+        all_products = main.list_products(sort='best_selling', limit=10)
+        first_page = main.list_products(sort='best_selling', limit=1)
+        second_page = main.list_products(sort='best_selling', limit=1, offset=1)
+
+        self.assertEqual([product['id'] for product in all_products[:2]], [2, 1])
+        self.assertEqual([product['soldCount'] for product in all_products[:2]], [5, 4])
+        self.assertEqual(first_page + second_page, all_products[:2])
+
 
 if __name__ == '__main__':
     unittest.main()

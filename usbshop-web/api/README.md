@@ -84,6 +84,7 @@ python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local -
 ## Endpoints
 - `GET /health`
 - `GET /products?limit=50&q=`
+- `GET /products?sort=best_selling` ordena por unidades netas facturadas (facturas menos notas de credito), con paginacion estable.
 - `GET /featured?limit=6`
 - `GET /products/{id}/image`
 - `GET /catalog-assets/{asset_path}`

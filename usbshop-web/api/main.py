@@ -1547,10 +1547,11 @@ def _set_remote_image_cache(url: str, content: bytes, media_type: str) -> tuple[
     return content, media_type
 
 
-def _fetch_remote_image_bytes(url: str) -> tuple[bytes, str]:
+def _fetch_remote_image_bytes(url: str, cache_version: Optional[str] = None) -> tuple[bytes, str]:
     if not _is_allowed_remote_image_url(url):
         raise HTTPException(status_code=400, detail="Origen remoto de imagen no permitido")
-    cached = _get_remote_image_cache(url)
+    cache_key = f"{url}|{cache_version}" if cache_version else url
+    cached = _get_remote_image_cache(cache_key)
     if cached is not None:
         return cached
     request = UrlRequest(url, method="GET")
@@ -1563,7 +1564,7 @@ def _fetch_remote_image_bytes(url: str) -> tuple[bytes, str]:
         raise HTTPException(status_code=404, detail="Imagen remota vacia")
     if len(content) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Imagen remota demasiado grande")
-    return _set_remote_image_cache(url, content, media_type)
+    return _set_remote_image_cache(cache_key, content, media_type)
 
 
 def _remote_thumbnail_cache_key(
@@ -1572,8 +1573,10 @@ def _remote_thumbnail_cache_key(
     height: Optional[int],
     quality: int,
     fmt: str,
+    cache_version: Optional[str] = None,
 ) -> str:
-    return f"{url}|{width or 0}|{height or 0}|{quality}|{fmt}"
+    key = f"{url}|{width or 0}|{height or 0}|{quality}|{fmt}"
+    return f"{key}|{cache_version}" if cache_version else key
 
 
 def _get_remote_thumbnail_cache(cache_key: str) -> Optional[tuple[bytes, str]]:
@@ -4949,6 +4952,7 @@ def list_products(
 ) -> list[dict]:
     conn = _connect()
     try:
+        sort_key = str(sort or "").strip().lower()
         _ensure_product_bundle_support(conn)
         has_deleted_at = _has_column(conn, "products", "deleted_at")
         has_is_active = _has_column(conn, "products", "is_active")
@@ -5011,6 +5015,22 @@ def list_products(
             ) latest ON latest.id = p.id
             LEFT JOIN categories c ON c.id = p.category_id
         """
+        if sort_key == "best_selling":
+            query += """
+                LEFT JOIN (
+                    SELECT ii.product_id,
+                           SUM(CASE
+                               WHEN UPPER(TRIM(COALESCE(i.document_type, ''))) IN ('FACTURA', 'FACTURA_C')
+                                   THEN ii.quantity
+                               WHEN UPPER(TRIM(COALESCE(i.document_type, ''))) = 'NOTA_CREDITO'
+                                   THEN -ii.quantity
+                               ELSE 0
+                           END) AS net_sold
+                    FROM invoice_items ii
+                    JOIN invoices i ON i.id = ii.invoice_id
+                    GROUP BY ii.product_id
+                ) sales ON sales.product_id = p.id
+            """
         if conditions:
             query += f" WHERE {' AND '.join(conditions)}"
         params: list = []
@@ -5029,10 +5049,19 @@ def list_products(
             placeholders = ", ".join(["?"] * len(parsed_ids))
             query += f" AND p.id IN ({placeholders})" if conditions else f" WHERE p.id IN ({placeholders})"
             params.extend(parsed_ids)
-        sort_key = str(sort or "").strip().lower()
         if sort_key == "discover" and not q:
             order_by, order_params = discovery_order(seed)
             params.extend(order_params)
+        elif sort_key == "best_selling":
+            if has_created_at and has_updated_at:
+                tie_breaker = "COALESCE(p.created_at, p.updated_at) DESC, p.id DESC"
+            elif has_created_at:
+                tie_breaker = "p.created_at DESC, p.id DESC"
+            elif has_updated_at:
+                tie_breaker = "p.updated_at DESC, p.id DESC"
+            else:
+                tie_breaker = "p.id DESC"
+            order_by = f"CASE WHEN COALESCE(sales.net_sold, 0) > 0 THEN sales.net_sold ELSE 0 END DESC, {tie_breaker}"
         elif sort_key in {"", "newest"}:
             if has_created_at and has_updated_at:
                 order_by = "COALESCE(p.created_at, p.updated_at) DESC, p.id DESC"
@@ -6211,24 +6240,30 @@ async def product_image(
     h: Optional[int] = Query(default=None),
     q: Optional[int] = Query(default=72),
     format: Optional[str] = Query(default="webp"),
+    v: Optional[str] = None,
 ):
+    if v is not None and len(v) > 64:
+        raise HTTPException(status_code=422, detail="Version de imagen invalida")
     return await anyio.to_thread.run_sync(
-        partial(_product_image_response, product_id, i, w, h, q, format),
+        partial(_product_image_response, product_id, i, w, h, q, format, v),
         limiter=_image_worker_limiter(),
     )
 
 
 def _product_image_response(
     product_id: int, i: Optional[int], w: Optional[int], h: Optional[int],
-    q: Optional[int], format: Optional[str],
+    q: Optional[int], format: Optional[str], image_version: Optional[str] = None,
 ):
     conn = _connect()
     try:
         row = conn.execute(
-            "SELECT image_path FROM products WHERE id = ? AND deleted_at IS NULL",
+            "SELECT image_path, updated_at FROM products WHERE id = ? AND deleted_at IS NULL",
             (product_id,),
         ).fetchone()
         primary_image = str(row["image_path"]).strip() if row and row["image_path"] else ""
+        row_keys = row.keys() if row is not None and hasattr(row, "keys") else ()
+        stored_version = str(row["updated_at"] or "").strip() if "updated_at" in row_keys else ""
+        cache_version = "|".join(value for value in (stored_version, image_version or "") if value) or None
         image_candidates = _product_image_candidates(conn, product_id, primary_image)
     finally:
         conn.close()
@@ -6246,7 +6281,9 @@ def _product_image_response(
         remote_bytes = None
         remote_media_type = None
         if should_resize and Image is not None and ImageOps is not None:
-            cache_key = _remote_thumbnail_cache_key(image_value, width, height, quality, normalized_format)
+            cache_key = _remote_thumbnail_cache_key(
+                image_value, width, height, quality, normalized_format, cache_version,
+            )
             cached_thumbnail = _get_remote_thumbnail_cache(cache_key)
             if cached_thumbnail is not None:
                 content, media_type = cached_thumbnail
@@ -6254,7 +6291,10 @@ def _product_image_response(
                                 headers={"Cache-Control": "public, max-age=86400, s-maxage=86400"})
             # Download failures propagate once; only rendering can fall back to
             # the original bytes. Do not occupy a worker for a second download.
-            remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
+            if cache_version:
+                remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value, cache_version)
+            else:
+                remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
             try:
                 content, media_type = _render_thumbnail_from_bytes(
                     remote_bytes, width, height, quality, normalized_format,
@@ -6268,7 +6308,10 @@ def _product_image_response(
             except Exception:
                 logging.exception("No se pudo generar thumbnail remoto para %s", image_value)
         if remote_bytes is None:
-            remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
+            if cache_version:
+                remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value, cache_version)
+            else:
+                remote_bytes, remote_media_type = _fetch_remote_image_bytes(image_value)
         return Response(
             content=remote_bytes,
             media_type=remote_media_type,
