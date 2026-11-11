@@ -31,9 +31,10 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
   const [busy, setBusy] = useState(false);
   const [address, setAddress] = useState('');
   const [link, setLink] = useState('');
+  const [linkPurpose, setLinkPurpose] = useState<'invite' | 'reset' | null>(null);
   const load = async () => { setAccounts(await api('/admin/buyer-accounts')); };
   useEffect(() => { void load().catch(err => setError(err.message)); }, []);
-  useEffect(() => { setAddress(customer?.email || ''); setLink(''); setNotice(''); }, [customer?.id, customer?.email]);
+  useEffect(() => { setAddress(customer?.email || ''); setLink(''); setLinkPurpose(null); setNotice(''); }, [customer?.id, customer?.email]);
   const update = async (account: Account, status: string, customerId?: number | null, createCustomer = false, confirmDistinct = false) => {
     setBusy(true); setError(''); setNotice('');
     try {
@@ -49,15 +50,27 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
     {error && <p role="alert" className={styles.error}>{error}</p>}{notice && <p role="status">{notice}</p>}
     {customer && <div className={styles.card}>
       <strong>{customer.name}</strong><p>{selectedAccount ? `${selectedAccount.email} · ${labels[selectedAccount.status]}` : 'Todavía no tiene acceso a la web.'}</p>
-      {selectedAccount && <p>Contraseña elegida por el cliente. Guardada de forma protegida; no es visible para el personal.</p>}
+      {selectedAccount && <>
+        <p><strong>Email de ingreso:</strong> {selectedAccount.email}</p>
+        <p>La contraseña no es visible: se guarda de forma protegida. Si el cliente la olvidó, podés generar un enlace de cambio de un solo uso.</p>
+        <button type="button" disabled={busy} onClick={async () => {
+          setBusy(true); setError(''); setLink(''); setLinkPurpose(null);
+          try {
+            const result = await api(`/admin/buyer-accounts/${selectedAccount.id}/password-reset`);
+            setLink(result.url); setLinkPurpose('reset');
+          } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo generar el enlace'); }
+          finally { setBusy(false); }
+        }}>Generar enlace para cambiar contraseña</button>
+      </>}
       {selectedAccount?.status === 'approved' ? <button disabled={busy} onClick={() => void update(selectedAccount, 'blocked')}>Suspender acceso</button> : selectedAccount && <button disabled={busy} onClick={() => void update(selectedAccount, 'approved', customer.id)}>Habilitar acceso</button>}
       {!selectedAccount || selectedAccount.status === 'approved' ? <form onSubmit={async event => {
         event.preventDefault(); setBusy(true); setError(''); setLink('');
-        try { const result = await api(`/admin/buyer-invitations/${customer.id}`, { email: address }); setLink(result.url); }
+        setLinkPurpose(null);
+        try { const result = await api(`/admin/buyer-invitations/${customer.id}`, { email: address }); setLink(result.url); setLinkPurpose('invite'); }
         catch (err) { setError(err instanceof Error ? err.message : 'No se pudo generar'); }
         finally { setBusy(false); }
       }}><label>Email del cliente<input type="email" value={address} onChange={event => setAddress(event.target.value)} required /></label><button disabled={busy}>Generar invitación</button><small>El cliente elige su contraseña y queda habilitado. El enlace dura 7 días y se usa una sola vez.</small></form> : null}
-      {link && <div><label>Invitación lista<input value={link} readOnly onFocus={event => event.target.select()} /></label><div className={styles.actions}><button onClick={() => void navigator.clipboard.writeText(link).then(() => setNotice('Enlace copiado.')).catch(() => setNotice('Seleccioná el enlace para copiarlo.'))}>Copiar enlace</button><a target="_blank" rel="noreferrer" href={`https://wa.me/${whatsappNumber(customer.phone || '')}?text=${encodeURIComponent(`Hola ${customer.name}, te invitamos a USB Shop. Elegí tu contraseña y ya podés ver precios y comprar: ${link}`)}`}>Compartir por WhatsApp</a></div></div>}
+      {link && <div><label>{linkPurpose === 'reset' ? 'Enlace para cambiar contraseña' : 'Invitación lista'}<input value={link} readOnly onFocus={event => event.target.select()} /></label><small>Este enlace se usa una sola vez y vence en {linkPurpose === 'reset' ? '1 hora' : '7 días'}.</small><div className={styles.actions}><button onClick={() => void navigator.clipboard.writeText(link).then(() => setNotice('Enlace copiado.')).catch(() => setNotice('Seleccioná el enlace para copiarlo.'))}>Copiar enlace</button><a target="_blank" rel="noreferrer" href={`https://wa.me/${whatsappNumber(customer.phone || '')}?text=${encodeURIComponent(linkPurpose === 'reset' ? `Hola ${customer.name}, usá este enlace para elegir una nueva contraseña de acceso a USB Shop. El enlace vence en 1 hora: ${link}` : `Hola ${customer.name}, te invitamos a USB Shop. Elegí tu contraseña y ya podés ver precios y comprar: ${link}`)}`}>Compartir por WhatsApp</a></div></div>}
     </div>}
     {open && <><div className={styles.actions}><label>Mostrar<select value={filter} onChange={event => setFilter(event.target.value)}><option value="pending">Pendientes</option><option value="all">Todas las cuentas</option><option value="approved">Aprobadas</option><option value="blocked">Bloqueadas</option><option value="rejected">Rechazadas</option></select></label><button onClick={() => void load().catch(err => setError(err.message))}>Actualizar</button></div>
       <div className={styles.grid}>{accounts.filter(item => filter === 'all' || item.status === filter).map(item => <AccountCard key={item.id} account={item} busy={busy} update={update} />)}</div>

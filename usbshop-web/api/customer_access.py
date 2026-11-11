@@ -308,6 +308,21 @@ def install(app, m):
         finally:
             conn.close()
 
+    @app.post('/admin/buyer-accounts/{account_id}/password-reset')
+    def admin_password_reset(account_id: int, session_token: str = Cookie(None, alias=m.SESSION_COOKIE)):
+        m._require_admin(session_token)
+        conn = connect()
+        try:
+            lock_accounts(conn)
+            row = conn.execute('SELECT email, customer_id FROM buyer_accounts WHERE id = ?', (account_id,)).fetchone()
+            if not row or not row['customer_id']:
+                raise HTTPException(404, 'Cuenta vinculada no encontrada')
+            link = new_token(conn, 'reset', row['email'], account_id=account_id)
+            conn.commit()
+            return {'url': link, 'email': row['email'], 'expires_in_seconds': 3600}
+        finally:
+            conn.close()
+
     @app.post('/admin/buyer-invitations/{customer_id}')
     def invite(customer_id: int, payload: dict = Body(...), session_token: str = Cookie(None, alias=m.SESSION_COOKIE)):
         m._require_admin(session_token)

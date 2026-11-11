@@ -139,6 +139,19 @@ class BuyerAccessTests(unittest.TestCase):
         other.cookies.set(customer_access.COOKIE, old_cookie)
         self.assertIsNone(other.get('/buyer/me').json())
 
+    def test_admin_can_generate_single_use_password_reset_for_linked_customer(self):
+        self.activate(self.invite())
+        account = next(item for item in self.client.get('/admin/buyer-accounts').json() if item['customer_id'] == 1)
+        response = self.client.post(f"/admin/buyer-accounts/{account['id']}/password-reset")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()['email'], 'existing@example.com')
+        self.assertEqual(response.json()['expires_in_seconds'], 3600)
+        token = response.json()['url'].split('token=')[1]
+        self.assertEqual(self.activate(token).status_code, 200)
+        self.assertEqual(self.activate(token).status_code, 400)
+        self.assertEqual(self.client.post('/buyer/login', json={
+            'email': 'existing@example.com', 'password': 'new-secret-123'}).status_code, 200)
+
     def test_expired_and_replaced_invitations_cannot_activate(self):
         old = self.invite()
         current = self.invite()
