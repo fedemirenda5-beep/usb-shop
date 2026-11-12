@@ -247,6 +247,34 @@ def install(app, m):
             notify(address, 'Elegí una nueva contraseña · USB Shop', f'Usá este enlace dentro de una hora:\n{link}')
         return {'message': 'Si el email tiene una cuenta, te enviamos un enlace para recuperar el acceso.'}
 
+    @app.post('/buyer/change-password')
+    def change_password(request: Request, response: Response, payload: dict = Body(...),
+                        buyer_token: str = Cookie(None, alias=COOKIE)):
+        current = account(buyer_token)
+        if not current:
+            raise HTTPException(401, 'Ingresá para cambiar tu contraseña')
+        current_password = str(payload.get('current_password') or '')
+        new_password = password(payload.get('new_password'))
+        if not current_password:
+            raise HTTPException(400, 'Ingresá tu contraseña actual')
+        conn = connect()
+        try:
+            lock_accounts(conn)
+            row = conn.execute('SELECT * FROM buyer_accounts WHERE id = ?', (current['id'],)).fetchone()
+            if not row or row['session_version'] != current['session_version']:
+                raise HTTPException(401, 'La sesión venció. Ingresá nuevamente.')
+            if not m._verify_password(current_password[:129], row['password_hash'])[0]:
+                raise HTTPException(400, 'La contraseña actual es incorrecta')
+            conn.execute('''UPDATE buyer_accounts
+                SET password_hash = ?, session_version = session_version + 1 WHERE id = ?''',
+                (m._hash_password(new_password), row['id']))
+            conn.execute("DELETE FROM buyer_tokens WHERE account_id = ? AND purpose = 'reset'", (row['id'],))
+            row = conn.execute('SELECT * FROM buyer_accounts WHERE id = ?', (row['id'],)).fetchone()
+            conn.commit()
+        finally:
+            conn.close()
+        return session(request, response, row)
+
     @app.post('/buyer/activate')
     def activate(request: Request, response: Response, payload: dict = Body(...)):
         pwd = password(payload.get('password'))

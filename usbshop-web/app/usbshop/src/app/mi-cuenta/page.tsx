@@ -13,6 +13,10 @@ export default function BuyerAccountPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   useEffect(() => {
     const value = new URLSearchParams(window.location.hash.slice(1)).get('token');
     if (value) { setToken(value); setMode('activate'); window.history.replaceState(null, '', window.location.pathname); }
@@ -24,6 +28,31 @@ export default function BuyerAccountPage() {
     {buyer && mode !== 'activate' ? <div>
       <p>Hola, {buyer.name}.</p>
       {buyer.status === 'approved' ? <a className="button button--lime" href="/">Ver precios y comprar</a> : <><p>{buyer.status === 'pending' ? 'Recibimos tu solicitud. Estamos habilitando tu acceso y te avisaremos por email.' : 'Tu acceso está suspendido. Contactanos para revisarlo.'}</p><a className="button button--ghost" href="https://wa.me/542364574765?text=Hola%2C%20ya%20cre%C3%A9%20mi%20cuenta%20y%20quiero%20consultar%20por%20la%20habilitaci%C3%B3n.">Consultar por WhatsApp</a></>}
+      {!changingPassword ? <button className="buyer-password-toggle" type="button" onClick={() => { setChangingPassword(true); setPasswordError(''); setPasswordMessage(''); }}>Cambiar contraseña</button> : <form onSubmit={async event => {
+        event.preventDefault();
+        if (passwordBusy) return;
+        const form = event.currentTarget;
+        const data = Object.fromEntries(new FormData(form));
+        if (data.new_password !== data.confirm_password) { setPasswordError('Las contraseñas nuevas no coinciden.'); setPasswordMessage(''); return; }
+        setPasswordBusy(true); setPasswordError(''); setPasswordMessage('');
+        try {
+          const response = await fetchApiResponse('/buyer/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+          const result = await response.json();
+          if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'No se pudo cambiar la contraseña');
+          form.reset();
+          setPasswordMessage('Tu contraseña se cambió correctamente.');
+          setChangingPassword(false);
+        } catch (err) { setPasswordError(err instanceof Error ? err.message : 'No pudimos conectar. Intentá nuevamente.'); }
+        finally { setPasswordBusy(false); }
+      }}>
+        <label>Contraseña actual<input name="current_password" type="password" autoComplete="current-password" maxLength={128} required /></label>
+        <label>Nueva contraseña<input name="new_password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></label>
+        <label>Confirmar nueva contraseña<input name="confirm_password" type="password" autoComplete="new-password" minLength={8} maxLength={128} required /></label>
+        {passwordError && <p role="alert" className="buyer-error">{passwordError}</p>}
+        <button className="button button--lime" disabled={passwordBusy}>{passwordBusy ? 'Guardando…' : 'Guardar contraseña'}</button>
+        <button className="buyer-password-toggle" type="button" onClick={() => { setChangingPassword(false); setPasswordError(''); }}>Cancelar</button>
+      </form>}
+      {passwordMessage && <p role="status">{passwordMessage}</p>}
     </div> : <form onSubmit={async event => {
       event.preventDefault();
       if (busy) return;

@@ -139,6 +139,29 @@ class BuyerAccessTests(unittest.TestCase):
         other.cookies.set(customer_access.COOKIE, old_cookie)
         self.assertIsNone(other.get('/buyer/me').json())
 
+    def test_signed_in_buyer_can_change_password_without_email_link(self):
+        self.activate(self.invite())
+        old_cookie = self.client.cookies.get(customer_access.COOKIE)
+        path = '/buyer/change-password'
+        self.assertEqual(self.client.post(path, json={
+            'current_password': 'wrong-password', 'new_password': 'fresh-secret-456'
+        }).status_code, 400)
+        changed = self.client.post(path, json={
+            'current_password': 'new-secret-123', 'new_password': 'fresh-secret-456'
+        })
+        self.assertEqual(changed.status_code, 200, changed.text)
+        self.assertEqual(self.client.get('/buyer/me').json()['email'], 'existing@example.com')
+        self.assertEqual(self.client.post('/buyer/login', json={
+            'email': 'existing@example.com', 'password': 'new-secret-123'
+        }).status_code, 401)
+        self.assertEqual(self.client.post('/buyer/login', json={
+            'email': 'existing@example.com', 'password': 'fresh-secret-456'
+        }).status_code, 200)
+        other = TestClient(main.app)
+        self.addCleanup(other.close)
+        other.cookies.set(customer_access.COOKIE, old_cookie)
+        self.assertIsNone(other.get('/buyer/me').json())
+
     def test_admin_can_generate_single_use_password_reset_for_linked_customer(self):
         self.activate(self.invite())
         account = next(item for item in self.client.get('/admin/buyer-accounts').json() if item['customer_id'] == 1)
