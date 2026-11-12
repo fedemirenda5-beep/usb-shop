@@ -52,7 +52,7 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
       <strong>{customer.name}</strong><p>{selectedAccount ? `${selectedAccount.email} · ${labels[selectedAccount.status]}` : 'Todavía no tiene acceso a la web.'}</p>
       {selectedAccount && <>
         <p><strong>Email de ingreso:</strong> {selectedAccount.email}</p>
-        <p>La contraseña no es visible: se guarda de forma protegida. Si el cliente la olvidó, podés generar un enlace de cambio de un solo uso.</p>
+        <p>La contraseña no es visible: se guarda de forma protegida. Para ayudar al cliente, generá un enlace y compartíselo por WhatsApp; no depende del email. El cliente lo abre en USB Shop y elige una clave nueva. Si vuelve a necesitarlo, podés generar otro enlace.</p>
         <button type="button" disabled={busy} onClick={async () => {
           setBusy(true); setError(''); setLink(''); setLinkPurpose(null);
           try {
@@ -60,7 +60,7 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
             setLink(result.url); setLinkPurpose('reset');
           } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo generar el enlace'); }
           finally { setBusy(false); }
-        }}>Generar enlace para cambiar contraseña</button>
+        }}>{linkPurpose === 'reset' ? 'Generar otro enlace de cambio' : 'Habilitar cambio de contraseña'}</button>
       </>}
       {selectedAccount?.status === 'approved' ? <button disabled={busy} onClick={() => void update(selectedAccount, 'blocked')}>Suspender acceso</button> : selectedAccount && <button disabled={busy} onClick={() => void update(selectedAccount, 'approved', customer.id)}>Habilitar acceso</button>}
       {!selectedAccount || selectedAccount.status === 'approved' ? <form onSubmit={async event => {
