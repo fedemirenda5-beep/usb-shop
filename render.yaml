@@ -18,9 +18,9 @@ services:
           name: usbshop-db
           property: connectionString
       - key: USB_ALLOWED_ORIGINS
-        value: https://www.usbshop.com.ar,https://usbshop.com.ar
+        value: https://www.usbshop.com.ar,https://usbshop.com.ar,https://usb-shop-2dc00.web.app,https://usb-shop-2dc00.firebaseapp.com
       - key: USB_ALLOWED_ORIGIN_REGEX
-        value: ^https://([a-z0-9-]+\.)*usbshop\.com\.ar$
+        value: '^https://([a-z0-9-]+\.)*usbshop\.com\.ar$|^https://usb-shop-2dc00\.(web\.app|firebaseapp\.com)$'
       - key: USB_AUTH_SECRET
         sync: false
       - key: USB_ORDER_SECRET

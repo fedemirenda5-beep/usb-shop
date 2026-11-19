@@ -11,6 +11,14 @@ import main
 
 
 class AvailabilityTests(unittest.TestCase):
+    def test_firebase_hosting_origins_are_allowed(self):
+        origins = ('https://usb-shop-2dc00.web.app', 'https://usb-shop-2dc00.firebaseapp.com')
+        with patch.dict('os.environ', {'USB_ALLOWED_ORIGINS': '', 'USB_ALLOWED_ORIGIN_REGEX': ''}):
+            for origin in origins:
+                with self.subTest(origin=origin):
+                    self.assertIn(origin, main._allowed_origins())
+                    self.assertRegex(origin, main._allowed_origin_regex())
+
     def test_image_workers_are_bounded_and_do_not_block_database_requests(self):
         async def run():
             release = threading.Event()

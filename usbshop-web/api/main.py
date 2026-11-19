@@ -677,6 +677,8 @@ def _allowed_origins() -> list[str]:
             "http://127.0.0.1:8080",
             "https://usbshop.com.ar",
             "https://www.usbshop.com.ar",
+            "https://usb-shop-2dc00.web.app",
+            "https://usb-shop-2dc00.firebaseapp.com",
         ]
     origins = {origin.strip() for origin in raw.split(",") if origin.strip()}
     if "https://www.usbshop.com.ar" in origins:
@@ -690,7 +692,7 @@ def _allowed_origin_regex() -> str:
     raw = os.getenv("USB_ALLOWED_ORIGIN_REGEX", "").strip()
     if raw:
         return raw
-    return r"^https://([a-z0-9-]+\.)*usbshop\.com\.ar$|^http://(localhost|127\.0\.0\.1)(:\d+)?$|^http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$|^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$|^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$"
+    return r"^https://([a-z0-9-]+\.)*usbshop\.com\.ar$|^https://usb-shop-2dc00\.(web\.app|firebaseapp\.com)$|^http://(localhost|127\.0\.0\.1)(:\d+)?$|^http://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$|^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$|^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$"
 
 
 _load_env_file()
