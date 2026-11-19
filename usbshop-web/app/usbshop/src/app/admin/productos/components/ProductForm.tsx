@@ -233,13 +233,24 @@ export function ProductForm({
   const [imeiScanMessage, setImeiScanMessage] = useState('');
   const imeiScanRef = useRef<HTMLInputElement>(null);
   const addScannedImei = () => {
-    const imei = imeiScan.replace(/\D/g, '');
-    if (!/^[0-9]{15}$/.test(imei)) { setImeiScanMessage('El IMEI debe tener 15 dígitos.'); return; }
+    const imeis = parseImeiValues(imeiScan);
+    if (imeis.length === 0 || imeis.some((imei) => !/^[0-9]{15}$/.test(imei))) {
+      setImeiScanMessage('Cada IMEI debe tener 15 dígitos. Separá varios con espacios, comas o saltos de línea.');
+      return;
+    }
     const existing = parseImeiValues(formData.imeis);
-    if (existing.includes(imei)) { setImeiScanMessage('Este IMEI ya está cargado.'); return; }
-    setFormData(current => ({ ...current, imeis: [...parseImeiValues(current.imeis), imei].join('\n') }));
+    const newImeis = imeis.filter((imei) => !existing.includes(imei));
+    if (newImeis.length === 0) {
+      setImeiScanMessage(imeis.length === 1 ? 'Este IMEI ya está cargado.' : 'Estos IMEIs ya están cargados.');
+      return;
+    }
+    setFormData(current => ({ ...current, imeis: [...parseImeiValues(current.imeis), ...newImeis].join('\n') }));
     setImeiScan('');
-    setImeiScanMessage(`IMEI ${imei} agregado. Se sumó 1 equipo al stock. Guardá el producto para confirmar.`);
+    const duplicateCount = imeis.length - newImeis.length;
+    const addedLabel = `${newImeis.length} IMEI${newImeis.length === 1 ? '' : 's'} agregado${newImeis.length === 1 ? '' : 's'}`;
+    setImeiScanMessage(
+      `${addedLabel}${duplicateCount > 0 ? `; ${duplicateCount} ya estaba${duplicateCount === 1 ? '' : 'n'} cargado${duplicateCount === 1 ? '' : 's'}` : ''}. Se sumó${newImeis.length === 1 ? '' : 'n'} ${newImeis.length} equipo${newImeis.length === 1 ? '' : 's'} al stock. Guardá el producto para confirmar.`
+    );
     imeiScanRef.current?.focus();
   };
   const [imageInputs, setImageInputs] = useState<string[]>(() => buildInitialImages(initialData));
@@ -694,13 +705,13 @@ export function ProductForm({
             <label htmlFor="imei-scan">Escanear IMEI de ingreso</label>
             <input ref={imeiScanRef} id="imei-scan" inputMode="numeric" autoComplete="off" value={imeiScan} disabled={loading}
               className={styles.input}
-              placeholder="Escaneá o escribí el IMEI y presioná Enter"
+              placeholder="Escaneá o pegá IMEIs y presioná Enter"
               aria-describedby="imei-help imei-status"
               onChange={event => { setImeiScan(event.target.value); setImeiScanMessage(''); }}
               onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addScannedImei(); } }} />
             <button type="button" className={styles.btnSubmit} onClick={addScannedImei} disabled={loading || !imeiScan.trim()}>Agregar IMEI</button>
             <p id="imei-status" role="status" className={styles.help}>{imeiScanMessage}</p>
-            <p id="imei-help" className={styles.help}>Cargá solo el IMEI principal de cada equipo, aunque tenga dos. Podés seguir escaneando uno detrás de otro.</p>
+            <p id="imei-help" className={styles.help}>Cargá solo el IMEI principal de cada equipo, aunque tenga dos. Podés escanear uno detrás de otro o pegar varios separados por espacios, comas o saltos de línea.</p>
             {loadedImeis.length > 0 ? (
               <ul className={styles.imeiList} aria-label="Equipos cargados">
                 {loadedImeis.map(imei => (

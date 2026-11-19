@@ -64,11 +64,13 @@ const detail = { invoice, items: [{ id: 1, product_id: 1, product_name: product.
     await page.getByLabel('Escanear IMEI de ingreso').fill('123');
     await page.getByRole('button', { name: 'Agregar IMEI', exact: true }).click();
     assert.equal(await page.locator('#stock').inputValue(), '1');
-    await page.getByLabel('Escanear IMEI de ingreso').fill('356789012345679');
-    await page.getByRole('button', { name: 'Agregar IMEI', exact: true }).click();
-    assert.equal(await page.locator('#stock').inputValue(), '2');
+    await page.getByLabel('Escanear IMEI de ingreso').fill(`${imei},356789012345679\n356789012345680`);
+    await page.getByLabel('Escanear IMEI de ingreso').press('Enter');
+    assert.equal(await page.locator('#stock').inputValue(), '3');
+    await page.getByRole('status').filter({ hasText: '2 IMEIs agregados; 1 ya estaba cargado' }).waitFor();
     assert.equal(await page.getByLabel('Escanear IMEI de ingreso').evaluate(node => node === document.activeElement), true);
     await page.getByRole('button', { name: 'Quitar IMEI 356789012345679', exact: true }).click();
+    await page.getByRole('button', { name: 'Quitar IMEI 356789012345680', exact: true }).click();
     assert.equal(await page.locator('#stock').inputValue(), '1');
     await page.getByText('Pegar o editar varios IMEIs', { exact: true }).click();
     await page.locator('#imeis').fill(`${imei}\n356789012345679\n${imei}`);
