@@ -20,6 +20,7 @@ const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3012';
             summary: { products: 0, active_customers: 0, stock_units: 0, sales_count: 0, sales_total: 0,
               estimated_margin: 0, expenses_total: 0, cc_open_balance: 0 }, low_stock: [],
           } });
+          if (url.pathname === '/admin/products') return route.fulfill({ json: [] });
           if (url.origin !== new URL(base).origin) return route.abort();
           return route.continue();
         });
@@ -36,11 +37,15 @@ const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3012';
           /^\/_next\/static\/chunks\/app\/admin\/[^/]+\/page-/.test(path));
         assert.deepEqual(unusedModules, [], 'opening the dashboard must not download unopened modules');
         console.log(`PASS ${mobile ? 'mobile' : 'desktop'} dashboard: ${requests.length} requests, no unopened modules`);
+        await page.keyboard.type('TGSA58268000');
+        await page.keyboard.press('Enter');
+        await page.getByText('No existe un producto con el codigo "TGSA58268000"').waitFor();
         if (mobile) await page.getByRole('button', { name: 'Ver menu', exact: true }).click();
         await page.locator('nav a[href="/admin/imeis/"]').or(page.locator('nav a[href="/admin/imeis"]')).click();
         await page.getByLabel('IMEI del equipo').waitFor();
+        assert.equal(await page.getByText('No existe un producto con el codigo "TGSA58268000"').count(), 0);
         assert.deepEqual(errors, []);
-        console.log(`PASS ${mobile ? 'mobile' : 'desktop'} navigation loads the requested module`);
+        console.log(`PASS ${mobile ? 'mobile' : 'desktop'} navigation loads the requested module and clears scanner errors`);
       } finally {
         await context.close();
       }

@@ -145,6 +145,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   }, [isDashboardPage]);
 
   useEffect(() => {
+    setScannerPreviewError('');
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!scannerPreviewError) return;
+    const timeout = window.setTimeout(() => setScannerPreviewError(''), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [scannerPreviewError]);
+
+  useEffect(() => {
     if (!user || isGenerateInvoicePage) {
       resetScannerBuffer();
       return;
