@@ -363,6 +363,14 @@ export default function ComprobantesPage() {
     }
   };
 
+  const canReclassifyInvoiceToAccount = (invoice: Invoice) =>
+    canReclassifyInvoices &&
+    invoice.document_type === 'FACTURA' &&
+    String(invoice.sale_mode || '').trim().toUpperCase() === 'CONTADO' &&
+    Boolean(invoice.customer_id) &&
+    !invoice.web_order_id &&
+    !invoice.consignment_id;
+
   const saveSellerAssignment = async () => {
     if (!detail?.invoice?.id) return;
     const nextSellerId = Number(sellerDraftId);
@@ -530,12 +538,7 @@ export default function ComprobantesPage() {
                         >
                           Ver
                         </button>
-                        {canReclassifyInvoices &&
-                        item.document_type === 'FACTURA' &&
-                        String(item.sale_mode || '').trim().toUpperCase() === 'CONTADO' &&
-                        Boolean(item.customer_id) &&
-                        !item.web_order_id &&
-                        !item.consignment_id ? (
+                        {canReclassifyInvoiceToAccount(item) ? (
                           <button
                             type="button"
                             className={styles.confirmButton}
@@ -545,7 +548,7 @@ export default function ComprobantesPage() {
                               void reclassifyInvoiceToAccount(item);
                             }}
                           >
-                            {reclassifyingId === item.id ? 'Pasando...' : 'A CC'}
+                            {reclassifyingId === item.id ? 'Pasando...' : 'Pasar a cuenta corriente'}
                           </button>
                         ) : null}
                         {item.document_type === 'PRESUPUESTO' ? (
@@ -646,6 +649,16 @@ export default function ComprobantesPage() {
             {detail ? (
               <div className={styles.printArea}>
                 <div className={styles.detailInlineActions}>
+                  {canReclassifyInvoiceToAccount(detail.invoice) ? (
+                    <button
+                      type="button"
+                      className={styles.confirmButton}
+                      disabled={reclassifyingId !== null}
+                      onClick={() => void reclassifyInvoiceToAccount(detail.invoice)}
+                    >
+                      {reclassifyingId === detail.invoice.id ? 'Pasando...' : 'Pasar a cuenta corriente'}
+                    </button>
+                  ) : null}
                   {detail.invoice.document_type === 'PRESUPUESTO' ? (
                     <button
                       type="button"
