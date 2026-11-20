@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchApiResponse, getFriendlyApiError } from '@/lib/api';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
+import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './comprobantes.module.css';
 
@@ -160,16 +161,19 @@ const getPriceListLabel = (value?: number | null) => {
 export default function ComprobantesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAdminSession();
   const [items, setItems] = useState<Invoice[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [reclassifyMessage, setReclassifyMessage] = useState('');
   const [detailError, setDetailError] = useState('');
   const [detailOnly, setDetailOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [reclassifyingId, setReclassifyingId] = useState<number | null>(null);
   const [pendingDeleteInvoice, setPendingDeleteInvoice] = useState<Invoice | null>(null);
   const [pendingConfirmInvoice, setPendingConfirmInvoice] = useState<Invoice | null>(null);
   const [sellerOptions, setSellerOptions] = useState<SellerOption[]>([]);
@@ -178,6 +182,7 @@ export default function ComprobantesPage() {
   const [sellerActionError, setSellerActionError] = useState('');
   const [sellerActionMessage, setSellerActionMessage] = useState('');
   const detailRequestRef = useRef(0);
+  const canReclassifyInvoices = String(user?.role || '').toLowerCase() === 'admin';
 
   const syncInvoiceRow = (invoice: InvoiceDetail['invoice']) => {
     setItems((current) =>
@@ -326,6 +331,38 @@ export default function ComprobantesPage() {
     setPendingConfirmInvoice(invoice);
   };
 
+  const reclassifyInvoiceToAccount = async (invoice: Invoice) => {
+    const confirmed = window.confirm(
+      `Pasar la factura #${invoice.id} (${money(invoice.total)}) a cuenta corriente? Si hay un ajuste manual de venta coincidente en fecha e importe, se reemplazara por el movimiento de la factura.`
+    );
+    if (!confirmed) return;
+    try {
+      setReclassifyingId(invoice.id);
+      setError('');
+      setReclassifyMessage('');
+      const res = await fetchApiResponse(`/admin/invoices/${invoice.id}/sale-mode`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sale_mode: 'CUENTA_CORRIENTE',
+          replace_matching_adjustment: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'No se pudo reclasificar la factura');
+      await loadInvoices(search);
+      if (selectedId === invoice.id) await loadDetail(invoice.id);
+      const balanceMessage = Number.isFinite(Number(data.balance))
+        ? ` Saldo actualizado: ${money(Number(data.balance))}.`
+        : '';
+      setReclassifyMessage(`Factura #${invoice.id} reclasificada a cuenta corriente.${balanceMessage}`);
+    } catch (err) {
+      setError(getFriendlyApiError(err, 'No se pudo reclasificar la factura'));
+    } finally {
+      setReclassifyingId(null);
+    }
+  };
+
   const saveSellerAssignment = async () => {
     if (!detail?.invoice?.id) return;
     const nextSellerId = Number(sellerDraftId);
@@ -416,6 +453,7 @@ export default function ComprobantesPage() {
       </section>
 
       {error ? <div className={styles.error}>{error}</div> : null}
+      {reclassifyMessage ? <div className={styles.successMessage} role="status">{reclassifyMessage}</div> : null}
 
       <div className={styles.tablePane}>
         <div className={styles.tableWrap}>
@@ -492,6 +530,24 @@ export default function ComprobantesPage() {
                         >
                           Ver
                         </button>
+                        {canReclassifyInvoices &&
+                        item.document_type === 'FACTURA' &&
+                        String(item.sale_mode || '').trim().toUpperCase() === 'CONTADO' &&
+                        Boolean(item.customer_id) &&
+                        !item.web_order_id &&
+                        !item.consignment_id ? (
+                          <button
+                            type="button"
+                            className={styles.confirmButton}
+                            disabled={reclassifyingId !== null}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void reclassifyInvoiceToAccount(item);
+                            }}
+                          >
+                            {reclassifyingId === item.id ? 'Pasando...' : 'A CC'}
+                          </button>
+                        ) : null}
                         {item.document_type === 'PRESUPUESTO' ? (
                           <button
                             type="button"

@@ -102,6 +102,16 @@ export const getArgentinaNowDateTimeLocalInput = () => {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 };
 
+export const toArgentinaDateTimeLocalInput = (value?: string | null) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return `${raw}T00:00`;
+  const parsed = parseDateValue(raw);
+  if (!parsed) return '';
+  const parts = extractParts(parsed);
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+};
+
 export const argentinaDateTimeLocalToIso = (value?: string | null) => {
   if (!value) return null;
   const normalized = value.length === 16 ? `${value}:00` : value;

@@ -5,7 +5,12 @@ import { type FormEvent, useDeferredValue, useEffect, useMemo, useRef, useState 
 import { fetchApiResponse } from '@/lib/api';
 import { openAdminAccountPrint } from '@/lib/adminAccountPrint';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
-import { formatArgentinaDateTime } from '@/lib/datetime';
+import {
+  argentinaDateTimeLocalToIso,
+  formatArgentinaDateTime,
+  getArgentinaNowDateTimeLocalInput,
+  toArgentinaDateTimeLocalInput,
+} from '@/lib/datetime';
 import { useAdminSession } from '@/hooks/useAdminSession';
 import { ADMIN_LIMITS } from '../adminConfig';
 import styles from './cuentas-corrientes.module.css';
@@ -188,6 +193,7 @@ export default function CuentasCorrientesPage() {
     payment_method: 'Transferencia',
     reference: '',
     invoice_id: '',
+    created_at: getArgentinaNowDateTimeLocalInput(),
   });
   const deferredSearch = useDeferredValue(search);
   const deferredMovementSearch = useDeferredValue(movementSearch);
@@ -343,6 +349,10 @@ export default function CuentasCorrientesPage() {
       if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
         throw new Error('Ingresa un importe valido. Podes usar 306000, 306.000 o 306,00');
       }
+      const createdAt = argentinaDateTimeLocalToIso(form.created_at);
+      if (!createdAt) {
+        throw new Error('Ingresa una fecha y hora validas.');
+      }
       const endpoint = editingMovementId
         ? `/admin/cc/${selectedId}/movements/${editingMovementId}`
         : `/admin/cc/${selectedId}/movements`;
@@ -353,6 +363,7 @@ export default function CuentasCorrientesPage() {
         payment_method: form.payment_method || null,
         reference: form.reference || null,
         invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
+        created_at: createdAt,
       };
       const res = await fetchApiResponse(endpoint, {
         method: editingMovementId ? 'PUT' : 'POST',
@@ -510,6 +521,7 @@ export default function CuentasCorrientesPage() {
       payment_method: mode === 'payment' ? current.payment_method || 'Transferencia' : '',
       invoice_id: mode === 'payment' ? current.invoice_id : '',
       reference: mode === 'payment' ? current.reference : current.reference || 'Faltante de pago / deuda historica',
+      created_at: current.created_at || getArgentinaNowDateTimeLocalInput(),
     }));
   };
 
@@ -535,6 +547,7 @@ export default function CuentasCorrientesPage() {
       payment_method: 'Transferencia',
       reference: '',
       invoice_id: '',
+      created_at: getArgentinaNowDateTimeLocalInput(),
     });
   };
 
@@ -549,6 +562,7 @@ export default function CuentasCorrientesPage() {
       payment_method: movement.payment_method || (nextMode === 'payment' ? 'Transferencia' : ''),
       reference: movement.reference || '',
       invoice_id: movement.invoice_id ? String(movement.invoice_id) : '',
+      created_at: toArgentinaDateTimeLocalInput(movement.created_at),
     });
     window.requestAnimationFrame(() => {
       movementFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1029,6 +1043,15 @@ export default function CuentasCorrientesPage() {
                       value={form.amount}
                       onChange={(e) => setForm((current) => ({ ...current, amount: e.target.value }))}
                       placeholder="306.000"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Fecha y hora</span>
+                    <input
+                      type="datetime-local"
+                      value={form.created_at}
+                      onChange={(e) => setForm((current) => ({ ...current, created_at: e.target.value }))}
                       required
                     />
                   </label>

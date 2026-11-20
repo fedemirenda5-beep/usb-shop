@@ -9985,6 +9985,168 @@ def admin_invoice_detail(
         conn.close()
 
 
+@app.put("/admin/invoices/{invoice_id}/sale-mode")
+def admin_reclassify_invoice_to_account(
+    invoice_id: int,
+    request: Request,
+    payload: dict = Body(...),
+    session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
+) -> dict[str, Any]:
+    admin = _require_full_admin(session_token)
+    if str(payload.get("sale_mode") or "").strip().upper() != "CUENTA_CORRIENTE":
+        raise HTTPException(status_code=400, detail="Solo se admite reclasificar a cuenta corriente")
+
+    conn = _connect()
+    try:
+        _ensure_syncable_tables(conn)
+        _ensure_accounting_tables(conn)
+        lock_clause = " FOR UPDATE" if DB_IS_POSTGRES else ""
+        invoice = conn.execute(
+            """
+            SELECT id, customer_id, total, created_at, document_type, sale_mode, payment_method
+            FROM invoices
+            WHERE id = ?
+            """ + lock_clause,
+            (invoice_id,),
+        ).fetchone()
+        if invoice is None:
+            raise HTTPException(status_code=404, detail="Comprobante no encontrado")
+        if str(invoice["document_type"] or "").strip().upper() != "FACTURA":
+            raise HTTPException(status_code=400, detail="Solo se pueden reclasificar facturas")
+        customer_id = int(invoice["customer_id"] or 0)
+        if customer_id <= 0:
+            raise HTTPException(status_code=400, detail="La factura no tiene cliente")
+        created_at = str(invoice["created_at"] or "").strip()
+        invoice_date = _argentina_date_for_filter(created_at)
+        if invoice_date is None:
+            raise HTTPException(status_code=409, detail="La factura no tiene una fecha valida para reclasificar")
+
+        if _has_table(conn, "web_orders") and conn.execute(
+            "SELECT 1 FROM web_orders WHERE confirmed_invoice_id = ? LIMIT 1",
+            (invoice_id,),
+        ).fetchone():
+            raise HTTPException(status_code=400, detail="No se pueden reclasificar facturas vinculadas a pedidos web")
+        if _has_table(conn, "consignment_invoice_requests") and conn.execute(
+            "SELECT 1 FROM consignment_invoice_requests WHERE invoice_id = ? LIMIT 1",
+            (invoice_id,),
+        ).fetchone():
+            raise HTTPException(status_code=400, detail="No se pueden reclasificar facturas de consignacion")
+
+        current_mode = str(invoice["sale_mode"] or "").strip().upper() or "CONTADO"
+        existing_sale = conn.execute(
+            """
+            SELECT id
+            FROM account_movements
+            WHERE customer_id = ? AND invoice_id = ? AND movement_type = 'DEBIT' AND entry_kind = 'SALE'
+            """
+            + _active_account_movements_clause(conn)
+            + " LIMIT 1",
+            (customer_id, invoice_id),
+        ).fetchone()
+        if current_mode == "CUENTA_CORRIENTE":
+            if existing_sale is not None:
+                return {
+                    "invoice_id": invoice_id,
+                    "sale_mode": current_mode,
+                    "message": "La factura ya estaba en cuenta corriente",
+                }
+            raise HTTPException(status_code=409, detail="La factura ya figura en cuenta corriente pero no tiene su movimiento asociado")
+        if current_mode != "CONTADO":
+            raise HTTPException(status_code=409, detail="La modalidad actual de la factura no permite esta reclasificacion")
+        if existing_sale is not None:
+            raise HTTPException(status_code=409, detail="La factura ya tiene un movimiento de venta en la cuenta")
+
+        invoice_total = round(float(invoice["total"] or 0), 2)
+        if invoice_total <= 0:
+            raise HTTPException(status_code=400, detail="La factura no tiene un importe valido")
+        matching_adjustments = []
+        adjustment_rows = conn.execute(
+            """
+            SELECT id, amount, reference, created_at
+            FROM account_movements
+            WHERE customer_id = ? AND invoice_id IS NULL
+              AND movement_type = 'DEBIT'
+              AND (entry_kind = 'ADJUSTMENT' OR entry_kind IS NULL)
+            """
+            + _active_account_movements_clause(conn)
+            ,
+            (customer_id,),
+        ).fetchall()
+        matching_adjustments = [
+            row
+            for row in adjustment_rows
+            if round(float(row["amount"] or 0), 2) == invoice_total
+            and _argentina_date_for_filter(row["created_at"]) == invoice_date
+            and str(row["reference"] or "").strip().lower().startswith("venta")
+        ]
+
+        replace_matching_adjustment = payload.get("replace_matching_adjustment") is True
+        if len(matching_adjustments) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail="Hay varios ajustes de venta coincidentes; revisa la cuenta antes de reclasificar",
+            )
+        if matching_adjustments and not replace_matching_adjustment:
+            raise HTTPException(
+                status_code=409,
+                detail="Hay un ajuste de venta coincidente; confirma si debe reemplazarse",
+            )
+
+        replaced_adjustment_id = None
+        if matching_adjustments:
+            adjustment = matching_adjustments[0]
+            replaced_adjustment_id = int(adjustment["id"])
+            _soft_delete_movement(
+                conn,
+                replaced_adjustment_id,
+                customer_id,
+                edited_by=str(admin.get("username") or admin.get("id") or "ADMIN"),
+            )
+
+        conn.execute(
+            "UPDATE invoices SET sale_mode = 'CUENTA_CORRIENTE' WHERE id = ?",
+            (invoice_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO account_movements (
+                customer_id, invoice_id, amount, movement_type, entry_kind, reference, created_at, payment_method
+            ) VALUES (?, ?, ?, 'DEBIT', 'SALE', ?, ?, ?)
+            """,
+            (
+                customer_id,
+                invoice_id,
+                invoice_total,
+                f"FACTURA #{invoice_id}",
+                created_at,
+                invoice["payment_method"],
+            ),
+        )
+        conn.commit()
+        _clear_admin_overview_cache()
+        balance_rows = conn.execute(
+            """
+            SELECT amount, movement_type
+            FROM account_movements
+            WHERE customer_id = ?
+            """
+            + _active_account_movements_clause(conn)
+            + """
+            ORDER BY created_at ASC, id ASC
+            """,
+            (customer_id,),
+        ).fetchall()
+        return {
+            "invoice_id": invoice_id,
+            "sale_mode": "CUENTA_CORRIENTE",
+            "replaced_adjustment_id": replaced_adjustment_id,
+            "balance": _customer_current_balance_from_rows(balance_rows),
+            "message": "Factura reclasificada a cuenta corriente",
+        }
+    finally:
+        conn.close()
+
+
 @app.put("/admin/invoices/{invoice_id}/seller")
 def admin_update_invoice_seller(
     invoice_id: int,
@@ -10404,7 +10566,10 @@ def admin_cc_create_movement(
     entry_kind = str(payload.get("entry_kind") or "").strip().upper()
     invoice_id = payload.get("invoice_id")
     parsed_invoice_id = int(invoice_id) if invoice_id not in (None, "", 0, "0") else None
-    created_at = str(payload.get("created_at") or "").strip() or datetime.utcnow().isoformat()
+    raw_created_at = str(payload.get("created_at") or "").strip()
+    if raw_created_at and _safe_parse_datetime(raw_created_at) is None:
+        raise HTTPException(status_code=400, detail="Fecha y hora invalidas")
+    created_at = raw_created_at or datetime.utcnow().isoformat()
     reference = str(payload.get("reference") or "").strip() or None
     payment_method = str(payload.get("payment_method") or "").strip() or None
     entry_kind, allowed_entry_kinds = _normalize_cc_entry_kind(movement_type, entry_kind)
@@ -10476,7 +10641,7 @@ def admin_cc_update_movement(
     session_token: Optional[str] = Cookie(default=None, alias=SESSION_COOKIE),
     payload: dict = Body(...),
 ) -> dict:
-    _require_admin(session_token)
+    admin = _require_admin(session_token)
     movement_type = str(payload.get("movement_type") or "").strip().upper()
     if movement_type not in {"DEBIT", "CREDIT"}:
         raise HTTPException(status_code=400, detail="Tipo de movimiento invalido")
@@ -10494,6 +10659,7 @@ def admin_cc_update_movement(
     conn = _connect()
     try:
         _ensure_syncable_tables(conn)
+        _ensure_accounting_tables(conn)
         customer = conn.execute(
             """
             SELECT id
@@ -10506,7 +10672,7 @@ def admin_cc_update_movement(
             raise HTTPException(status_code=404, detail="Cliente no encontrado")
         movement = conn.execute(
             """
-            SELECT id, customer_id, invoice_id, movement_type, entry_kind
+            SELECT *
             FROM account_movements
             WHERE id = ? AND customer_id = ?
             """
@@ -10516,6 +10682,13 @@ def admin_cc_update_movement(
         ).fetchone()
         if movement is None:
             raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+        raw_created_at = payload.get("created_at")
+        if raw_created_at is None:
+            created_at = movement["created_at"]
+        else:
+            created_at = str(raw_created_at).strip()
+            if not created_at or _safe_parse_datetime(created_at) is None:
+                raise HTTPException(status_code=400, detail="Fecha y hora invalidas")
         current_entry_kind = str(movement["entry_kind"] or "").strip().upper()
         if int(movement["invoice_id"] or 0) > 0 and (
             str(movement["movement_type"] or "").strip().upper() == "DEBIT" or current_entry_kind == "SALE"
@@ -10540,11 +10713,31 @@ def admin_cc_update_movement(
         conn.execute(
             """
             UPDATE account_movements
-               SET invoice_id = ?, amount = ?, movement_type = ?, entry_kind = ?, reference = ?, payment_method = ?
+               SET invoice_id = ?, amount = ?, movement_type = ?, entry_kind = ?, reference = ?, payment_method = ?, created_at = ?
              WHERE id = ? AND customer_id = ?
             """,
-            (parsed_invoice_id, amount, movement_type, entry_kind, reference, payment_method, movement_id, customer_id),
+            (parsed_invoice_id, amount, movement_type, entry_kind, reference, payment_method, created_at, movement_id, customer_id),
         )
+        if _can_use_accounting_audit(conn, customer_id) and _has_table(conn, "account_movements_audit"):
+            new_values = dict(movement)
+            new_values.update(
+                invoice_id=parsed_invoice_id,
+                amount=amount,
+                movement_type=movement_type,
+                entry_kind=entry_kind,
+                reference=reference,
+                payment_method=payment_method,
+                created_at=created_at,
+            )
+            _log_movement_audit(
+                conn,
+                movement_id,
+                customer_id,
+                "UPDATE",
+                old_values=dict(movement),
+                new_values=new_values,
+                edited_by=str(admin.get("username") or admin.get("id") or "ADMIN"),
+            )
         conn.commit()
         _clear_admin_overview_cache()
         balance_row = conn.execute(

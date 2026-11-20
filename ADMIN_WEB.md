@@ -129,6 +129,11 @@ En particular, `Cuentas corrientes` quedo alineado asi:
 - detalle, altas, edicion y borrado: `/admin/cc/...`
 - los comprobantes asociados son complementarios y no deben bloquear la apertura de la cuenta
 - `staff` tambien tiene acceso operativo al modulo; solo se ocultan metricas globales sensibles
+- los movimientos manuales permiten indicar y corregir fecha y hora historicas; se guardan en la zona horaria de Argentina
+- solo `admin` puede reclasificar una factura manual de contado a cuenta corriente; la operacion crea el movimiento vinculado a la factura con la fecha original
+- si existe un unico ajuste manual de venta del mismo cliente, importe y fecha, la reclasificacion puede reemplazarlo; ante coincidencias multiples la API rechaza la operacion sin modificar datos
+
+Validacion de reclasificacion y fechas: `.venv/Scripts/python.exe -m unittest test_account_corrections -v` desde `usbshop-web/api`.
 
 ## Como trabajar sin ensuciar el proyecto
 
