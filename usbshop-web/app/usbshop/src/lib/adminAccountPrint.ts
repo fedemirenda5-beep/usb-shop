@@ -1,4 +1,4 @@
-import { formatArgentinaDateTime } from '@/lib/datetime';
+import { formatArgentinaDate, formatArgentinaDateTime } from '@/lib/datetime';
 
 type AccountPrintCustomer = {
   id: number;
@@ -37,7 +37,10 @@ type AccountPrintPayload = {
 const money = (value: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(value || 0);
 
-const formatDate = (value?: string | null) => formatArgentinaDateTime(value);
+const formatDate = (value?: string | null, reference?: string | null) =>
+  /hora no informada/i.test(reference || '')
+    ? formatArgentinaDate(value)
+    : formatArgentinaDateTime(value);
 
 const escapeHtml = (value: unknown) =>
   String(value ?? '')
@@ -52,7 +55,7 @@ const buildPrintableHtml = (payload: AccountPrintPayload, logoUrl: string) => {
     .map(
       (movement) => `
         <tr>
-          <td>${escapeHtml(formatDate(movement.created_at))}</td>
+          <td>${escapeHtml(formatDate(movement.created_at, movement.reference))}</td>
           <td>${escapeHtml(movement.entry_label || movement.document_type || (movement.movement_type === 'DEBIT' ? 'Debito' : 'Pago'))}</td>
           <td>${escapeHtml(movement.reference || movement.payment_method || (movement.invoice_id ? `Comprobante #${movement.invoice_id}` : '-'))}</td>
           <td class="${movement.signed_amount >= 0 ? 'debit' : 'credit'}">${escapeHtml(money(movement.signed_amount))}</td>

@@ -129,7 +129,7 @@ En particular, `Cuentas corrientes` quedo alineado asi:
 - detalle, altas, edicion y borrado: `/admin/cc/...`
 - los comprobantes asociados son complementarios y no deben bloquear la apertura de la cuenta
 - `staff` tambien tiene acceso operativo al modulo; solo se ocultan metricas globales sensibles
-- los movimientos manuales permiten indicar y corregir fecha y hora historicas; se guardan en la zona horaria de Argentina
+- los movimientos manuales permiten indicar y corregir fechas y horas historicas en la zona horaria de Argentina; las fechas sin hora se muestran sin horario y se ordenan al cierre del dia
 - solo `admin` puede reclasificar una factura manual de contado a cuenta corriente; la operacion crea el movimiento vinculado a la factura con la fecha original
 - si existe un unico ajuste manual de venta del mismo cliente, importe y fecha, la reclasificacion puede reemplazarlo; ante coincidencias multiples la API rechaza la operacion sin modificar datos
 

@@ -7,6 +7,7 @@ import { openAdminAccountPrint } from '@/lib/adminAccountPrint';
 import { openAdminInvoicePrint } from '@/lib/adminInvoicePrint';
 import {
   argentinaDateTimeLocalToIso,
+  formatArgentinaDate,
   formatArgentinaDateTime,
   getArgentinaNowDateTimeLocalInput,
   toArgentinaDateTimeLocalInput,
@@ -120,8 +121,10 @@ const parseArAmount = (raw: string): number => {
   return Number(normalized);
 };
 
-const formatDate = (value?: string | null) => {
-  return formatArgentinaDateTime(value);
+const formatDate = (value?: string | null, reference?: string | null) => {
+  return /hora no informada/i.test(reference || '')
+    ? formatArgentinaDate(value)
+    : formatArgentinaDateTime(value);
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -194,6 +197,7 @@ export default function CuentasCorrientesPage() {
     reference: '',
     invoice_id: '',
     created_at: getArgentinaNowDateTimeLocalInput(),
+    date_only: false,
   });
   const deferredSearch = useDeferredValue(search);
   const deferredMovementSearch = useDeferredValue(movementSearch);
@@ -349,7 +353,11 @@ export default function CuentasCorrientesPage() {
       if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
         throw new Error('Ingresa un importe valido. Podes usar 306000, 306.000 o 306,00');
       }
-      const createdAt = argentinaDateTimeLocalToIso(form.created_at);
+      const createdAt = form.date_only
+        ? /^\d{4}-\d{2}-\d{2}$/.test(form.created_at)
+          ? argentinaDateTimeLocalToIso(`${form.created_at}T23:59:59`)
+          : null
+        : argentinaDateTimeLocalToIso(form.created_at);
       if (!createdAt) {
         throw new Error('Ingresa una fecha y hora validas.');
       }
@@ -361,7 +369,9 @@ export default function CuentasCorrientesPage() {
         entry_kind: form.entry_kind,
         amount: parsedAmount,
         payment_method: form.payment_method || null,
-        reference: form.reference || null,
+        reference: form.date_only
+          ? `${form.reference.trim() || form.payment_method || 'Movimiento'}${/hora no informada/i.test(form.reference) ? '' : ' (hora no informada)'}`
+          : form.reference || null,
         invoice_id: form.invoice_id ? Number(form.invoice_id) : null,
         created_at: createdAt,
       };
@@ -381,6 +391,8 @@ export default function CuentasCorrientesPage() {
         reference: '',
         invoice_id: '',
         entry_kind: movementMode === 'payment' ? 'PAYMENT' : 'ADJUSTMENT',
+        created_at: getArgentinaNowDateTimeLocalInput(),
+        date_only: false,
       }));
     } catch (err) {
       setError(getErrorMessage(err, 'Error guardando movimiento'));
@@ -548,11 +560,14 @@ export default function CuentasCorrientesPage() {
       reference: '',
       invoice_id: '',
       created_at: getArgentinaNowDateTimeLocalInput(),
+      date_only: false,
     });
   };
 
   const startEditingMovement = (movement: Movement) => {
     const nextMode = movement.movement_type === 'DEBIT' ? 'debt' : 'payment';
+    const dateTimeLocal = toArgentinaDateTimeLocalInput(movement.created_at);
+    const dateOnly = /hora no informada/i.test(movement.reference || '');
     setEditingMovementId(movement.id);
     setMovementMode(nextMode);
     setForm({
@@ -562,7 +577,8 @@ export default function CuentasCorrientesPage() {
       payment_method: movement.payment_method || (nextMode === 'payment' ? 'Transferencia' : ''),
       reference: movement.reference || '',
       invoice_id: movement.invoice_id ? String(movement.invoice_id) : '',
-      created_at: toArgentinaDateTimeLocalInput(movement.created_at),
+      created_at: dateOnly ? dateTimeLocal.slice(0, 10) : dateTimeLocal,
+      date_only: dateOnly,
     });
     window.requestAnimationFrame(() => {
       movementFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -907,7 +923,7 @@ export default function CuentasCorrientesPage() {
                           if (movement.editable !== false && !detailOnly) startEditingMovement(movement);
                         }}
                       >
-                        <td>{formatDate(movement.created_at)}</td>
+                        <td>{formatDate(movement.created_at, movement.reference)}</td>
                         <td>{movement.entry_label || movement.document_type || (movement.movement_type === 'DEBIT' ? 'Debito' : 'Pago')}</td>
                         <td>
                           {movement.reference || movement.payment_method || (movement.invoice_id ? `Comprobante #${movement.invoice_id}` : '-')}
@@ -1047,13 +1063,35 @@ export default function CuentasCorrientesPage() {
                     />
                   </label>
                   <label>
-                    <span>Fecha y hora</span>
+                    <span>{form.date_only ? 'Fecha' : 'Fecha y hora'}</span>
                     <input
-                      type="datetime-local"
+                      type={form.date_only ? 'date' : 'datetime-local'}
                       value={form.created_at}
                       onChange={(e) => setForm((current) => ({ ...current, created_at: e.target.value }))}
                       required
                     />
+                  </label>
+                  <label className={styles.dateOnlyToggle}>
+                    <input
+                      type="checkbox"
+                      checked={form.date_only}
+                      onChange={(e) => {
+                        const nextDateOnly = e.target.checked;
+                        setForm((current) => ({
+                          ...current,
+                          date_only: nextDateOnly,
+                          created_at: nextDateOnly
+                            ? current.created_at.slice(0, 10)
+                            : current.created_at.includes('T')
+                              ? current.created_at
+                              : `${current.created_at}T00:00`,
+                          reference: nextDateOnly
+                            ? current.reference
+                            : current.reference.replace(/\s*\(hora no informada\)$/i, ''),
+                        }));
+                      }}
+                    />
+                    <span>Hora no informada; ordenar al cierre del dia</span>
                   </label>
                   <label>
                     <span>{movementMode === 'payment' ? 'Metodo' : 'Origen'}</span>

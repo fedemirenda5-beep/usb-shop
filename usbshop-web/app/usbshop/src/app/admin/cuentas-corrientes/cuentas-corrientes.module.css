@@ -94,6 +94,9 @@
 .formGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .formGrid label { display: grid; gap: 6px; }
 .formGrid input, .formGrid select { width: 100%; padding: 10px 12px; border: 1px solid var(--bg-soft); border-radius: 10px; background: white; font: inherit; }
+.formGrid .dateOnlyToggle { display: flex; grid-column: 1 / -1; align-items: center; gap: 8px; }
+.formGrid .dateOnlyToggle input { width: auto; margin: 0; }
+.formGrid .dateOnlyToggle span { text-transform: none; }
 .fullWidth { grid-column: 1 / -1; }
 .emptyPanel, .empty, .error { padding: 14px; border-radius: 12px; }
 .editingNotice { padding: 12px 14px; border-radius: 12px; background: rgba(15,118,110,.08); color: #0f766e; border: 1px solid rgba(15,118,110,.18); font-size: 13px; font-weight: 600; }
