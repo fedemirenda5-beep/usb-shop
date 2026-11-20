@@ -7,5 +7,7 @@
 .buyer-links, .buyer-nav { display: flex; flex-wrap: wrap; gap: 12px; }
 .buyer-links button { background: none; border: none; padding: 10px 0; color: #174d86; cursor: pointer; font: inherit; text-decoration: underline; }
 .buyer-password-toggle { background: none; border: none; padding: 10px 0; color: #174d86; cursor: pointer; font: inherit; text-decoration: underline; }
+.buyer-recovery-help { padding: 12px; background: #f1f5f9; border-radius: 8px; }
+.buyer-recovery-help a { color: #174d86; }
 .buyer-error { color: #b91c1c; }
 @media(max-width: 480px) { .buyer-account { padding: 20px; margin-top: 20px; } }

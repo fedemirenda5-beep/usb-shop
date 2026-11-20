@@ -32,9 +32,10 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
   const [address, setAddress] = useState('');
   const [link, setLink] = useState('');
   const [linkPurpose, setLinkPurpose] = useState<'invite' | 'reset' | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState('');
   const load = async () => { setAccounts(await api('/admin/buyer-accounts')); };
   useEffect(() => { void load().catch(err => setError(err.message)); }, []);
-  useEffect(() => { setAddress(customer?.email || ''); setLink(''); setLinkPurpose(null); setNotice(''); }, [customer?.id, customer?.email]);
+  useEffect(() => { setAddress(customer?.email || ''); setLink(''); setLinkPurpose(null); setTemporaryPassword(''); setNotice(''); }, [customer?.id, customer?.email]);
   const update = async (account: Account, status: string, customerId?: number | null, createCustomer = false, confirmDistinct = false) => {
     setBusy(true); setError(''); setNotice('');
     try {
@@ -52,9 +53,28 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
       <strong>{customer.name}</strong><p>{selectedAccount ? `${selectedAccount.email} · ${labels[selectedAccount.status]}` : 'Todavía no tiene acceso a la web.'}</p>
       {selectedAccount && <>
         <p><strong>Email de ingreso:</strong> {selectedAccount.email}</p>
-        <p>La contraseña no es visible: se guarda de forma protegida. Para ayudar al cliente, generá un enlace y compartíselo por WhatsApp; no depende del email. El cliente lo abre en USB Shop y elige una clave nueva. Si vuelve a necesitarlo, podés generar otro enlace.</p>
+        <p>Si el cliente no puede entrar, generá una clave temporal aquí y compartila por WhatsApp. También podés enviarle un enlace de un solo uso; ninguno de los dos métodos depende del correo.</p>
+        {selectedAccount.status === 'approved' && <>
+          <button type="button" disabled={busy} onClick={async () => {
+            setBusy(true); setError(''); setNotice(''); setLink(''); setLinkPurpose(null); setTemporaryPassword('');
+            try {
+              const result = await api(`/admin/buyer-accounts/${selectedAccount.id}/temporary-password`, {});
+              setTemporaryPassword(result.temporary_password);
+              setNotice('Clave temporal lista. Compartila ahora; por seguridad, el panel no conserva la clave en texto.');
+            } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo generar la clave'); }
+            finally { setBusy(false); }
+          }}>Generar clave temporal</button>
+          {temporaryPassword && <div>
+            <label>Clave temporal (se muestra solo en esta pantalla)<input value={temporaryPassword} readOnly onFocus={event => event.target.select()} /></label>
+            <div className={styles.actions}>
+              <button type="button" onClick={() => void navigator.clipboard.writeText(temporaryPassword).then(() => setNotice('Clave copiada.')).catch(() => setNotice('Seleccioná la clave para copiarla.'))}>Copiar clave</button>
+              <a target="_blank" rel="noreferrer" href={`https://wa.me/${whatsappNumber(customer.phone || '')}?text=${encodeURIComponent(`Hola ${customer.name}, tu acceso a USB Shop está listo. Ingresá en https://www.usbshop.com.ar/mi-cuenta/ con ${selectedAccount.email} y esta clave temporal: ${temporaryPassword}. Después podés cambiarla desde Mi cuenta.`)}`}>Compartir por WhatsApp</a>
+            </div>
+          </div>}
+        </>}
         <button type="button" disabled={busy} onClick={async () => {
           setBusy(true); setError(''); setLink(''); setLinkPurpose(null);
+          setTemporaryPassword('');
           try {
             const result = await api(`/admin/buyer-accounts/${selectedAccount.id}/password-reset`);
             setLink(result.url); setLinkPurpose('reset');
@@ -66,6 +86,7 @@ export default function BuyerAccountsPanel({ customer }: { customer: Customer | 
       {!selectedAccount || selectedAccount.status === 'approved' ? <form onSubmit={async event => {
         event.preventDefault(); setBusy(true); setError(''); setLink('');
         setLinkPurpose(null);
+        setTemporaryPassword('');
         try { const result = await api(`/admin/buyer-invitations/${customer.id}`, { email: address }); setLink(result.url); setLinkPurpose('invite'); }
         catch (err) { setError(err instanceof Error ? err.message : 'No se pudo generar'); }
         finally { setBusy(false); }

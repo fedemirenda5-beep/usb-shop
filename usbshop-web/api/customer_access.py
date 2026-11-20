@@ -351,6 +351,29 @@ def install(app, m):
         finally:
             conn.close()
 
+    @app.post('/admin/buyer-accounts/{account_id}/temporary-password')
+    def admin_temporary_password(account_id: int, session_token: str = Cookie(None, alias=m.SESSION_COOKIE)):
+        m._require_admin(session_token)
+        conn = connect()
+        try:
+            lock_accounts(conn)
+            row = conn.execute('SELECT email, customer_id, status FROM buyer_accounts WHERE id = ?',
+                               (account_id,)).fetchone()
+            if not row or not row['customer_id']:
+                raise HTTPException(404, 'Cuenta vinculada no encontrada')
+            if row['status'] != 'approved':
+                raise HTTPException(409, 'El acceso del cliente no está habilitado')
+            temporary_password = secrets.token_urlsafe(12)
+            conn.execute('''UPDATE buyer_accounts
+                SET password_hash = ?, session_version = session_version + 1 WHERE id = ?''',
+                (m._hash_password(temporary_password), account_id))
+            conn.execute('DELETE FROM buyer_tokens WHERE account_id = ? OR customer_id = ? OR email = ?',
+                         (account_id, row['customer_id'], row['email']))
+            conn.commit()
+            return {'email': row['email'], 'temporary_password': temporary_password}
+        finally:
+            conn.close()
+
     @app.post('/admin/buyer-invitations/{customer_id}')
     def invite(customer_id: int, payload: dict = Body(...), session_token: str = Cookie(None, alias=m.SESSION_COOKIE)):
         m._require_admin(session_token)

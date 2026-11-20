@@ -33,6 +33,7 @@ const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3031';
           if (url.pathname === '/buyer/activate') {
             writes.push(request.postDataJSON());
             buyer = { ...customer, status: 'approved', customer_id: 1 };
+            if (!accounts.some(account => account.customer_id === 1)) accounts.push({ id: 3, name: customer.name, email: customer.email, phone: customer.phone, status: 'approved', customer_id: 1, matches: [] });
             return reply(buyer);
           }
           if (url.pathname === '/buyer/register') {
@@ -43,6 +44,10 @@ const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3031';
             return reply(buyer);
           }
           if (url.pathname === '/admin/buyer-accounts') return reply(accounts);
+          if (/^\/admin\/buyer-accounts\/\d+\/temporary-password$/.test(url.pathname)) {
+            writes.push({ path: url.pathname });
+            return reply({ email: customer.email, temporary_password: 'temp-pass-12345' });
+          }
           if (/^\/admin\/buyer-accounts\/\d+$/.test(url.pathname)) {
             writes.push(request.postDataJSON()); Object.assign(accounts.find(account => account.id === Number(url.pathname.split('/').pop())), request.postDataJSON()); return reply({ ok: true });
           }
@@ -94,9 +99,16 @@ const base = process.env.TEST_WEB_URL || 'http://127.0.0.1:3031';
         await page.getByLabel('Invitación lista').waitFor();
         assert.ok((await page.getByLabel('Invitación lista').inputValue()).includes('#token='));
         assert.ok(await page.getByRole('link', { name: 'Compartir por WhatsApp' }).isVisible());
+        await page.getByRole('button', { name: 'Generar clave temporal' }).click();
+        await page.getByLabel('Clave temporal (se muestra solo en esta pantalla)').waitFor();
+        assert.equal(await page.getByLabel('Clave temporal (se muestra solo en esta pantalla)').inputValue(), 'temp-pass-12345');
+        assert.ok((await page.getByRole('link', { name: 'Compartir por WhatsApp' }).first().getAttribute('href')).includes('temp-pass-12345'));
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false, 'mobile layout must fit');
         buyer = null;
         await page.goto(`${base}/mi-cuenta/`);
+        await page.getByRole('button', { name: 'Olvidé mi contraseña' }).click();
+        await page.getByRole('link', { name: 'Escribinos por WhatsApp y te ayudamos a recuperar el acceso.' }).waitFor();
+        await page.getByRole('button', { name: 'Ya tengo cuenta' }).click();
         await page.getByLabel('Email', { exact: true }).fill(customer.email);
         await page.getByLabel('Contraseña', { exact: true }).fill('wrong-password');
         await page.getByRole('button', { name: 'Ingresar', exact: true }).click();

@@ -91,6 +91,7 @@ python usbshop-web\api\scripts\migrate_product_images.py --strategy copy-local -
 - `POST /sync` (copia la base desde `CONTROLSTOCK_SOURCE_DB` a `CONTROLSTOCK_DB`)
 - `POST /sync/remote` (requiere `USB_SYNC_TOKEN` o `USB_SYNC_SECRET`)
 - `POST /orders` (si `USB_ORDER_SECRET` esta definido, requiere header `X-USB-ORDER-SECRET`)
+- `POST /admin/buyer-accounts/{account_id}/temporary-password` (solo admin; genera una clave para una cuenta aprobada, invalida sesiones y enlaces previos y muestra la clave una sola vez)
 
 ## Diagnostico de disponibilidad
 

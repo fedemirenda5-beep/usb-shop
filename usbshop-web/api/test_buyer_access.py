@@ -175,6 +175,27 @@ class BuyerAccessTests(unittest.TestCase):
         self.assertEqual(self.client.post('/buyer/login', json={
             'email': 'existing@example.com', 'password': 'new-secret-123'}).status_code, 200)
 
+    def test_admin_can_issue_temporary_password_without_email_and_revoke_old_access(self):
+        self.activate(self.invite())
+        account = next(item for item in self.client.get('/admin/buyer-accounts').json() if item['customer_id'] == 1)
+        old_cookie = self.client.cookies.get(customer_access.COOKIE)
+        reset_token = self.client.post(f"/admin/buyer-accounts/{account['id']}/password-reset").json()['url'].split('token=')[1]
+
+        response = self.client.post(f"/admin/buyer-accounts/{account['id']}/temporary-password")
+        self.assertEqual(response.status_code, 200, response.text)
+        temporary_password = response.json()['temporary_password']
+        self.assertGreaterEqual(len(temporary_password), 8)
+        self.assertEqual(response.json()['email'], 'existing@example.com')
+        self.assertEqual(self.activate(reset_token).status_code, 400)
+        self.assertEqual(self.client.post('/buyer/login', json={
+            'email': 'existing@example.com', 'password': 'new-secret-123'}).status_code, 401)
+        self.assertEqual(self.client.post('/buyer/login', json={
+            'email': 'existing@example.com', 'password': temporary_password}).status_code, 200)
+        other = TestClient(main.app)
+        self.addCleanup(other.close)
+        other.cookies.set(customer_access.COOKIE, old_cookie)
+        self.assertIsNone(other.get('/buyer/me').json())
+
     def test_expired_and_replaced_invitations_cannot_activate(self):
         old = self.invite()
         current = self.invite()
@@ -196,6 +217,7 @@ class BuyerAccessTests(unittest.TestCase):
         with patch.object(main, '_require_admin', REAL_REQUIRE_ADMIN):
             self.assertEqual(self.client.get('/admin/buyer-accounts').status_code, 401)
             self.assertEqual(self.client.post('/admin/buyer-accounts/1', json={'status': 'approved'}).status_code, 401)
+            self.assertEqual(self.client.post('/admin/buyer-accounts/1/temporary-password').status_code, 401)
         self.client.cookies.clear()
         import time
         self.client.cookies.set(main.SESSION_COOKIE, main._sign_session({'id': 1, 'role': 'admin', 'exp': int(time.time()) + 3600}))
